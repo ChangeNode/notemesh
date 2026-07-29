@@ -1,0 +1,61 @@
+/* Thin custom layer on top of Pico (imported in app.tsx). */
+
+main.container {
+  max-width: 44rem;
+  padding-block: 1.5rem 3rem;
+}
+
+.muted {
+  color: var(--pico-muted-color);
+  font-size: 0.875em;
+}
+
+.error {
+  color: var(--pico-del-color);
+  font-size: 0.875em;
+}
+
+button.danger {
+  --pico-background-color: #c0392b;
+  --pico-border-color: #c0392b;
+  --pico-color: #fff;
+}
+
+/* Small sync-state indicator dots. */
+.status-dot {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  margin-right: 0.45rem;
+  vertical-align: baseline;
+}
+
+.status-dot.ok { background: #2e7d32; }
+.status-dot.warn { background: #ed6c02; }
+.status-dot.err { background: #c0392b; }
+
+/* Log tail viewer. */
+pre.logs {
+  max-height: 300px;
+  overflow: auto;
+  font-size: 0.8em;
+  line-height: 1.4;
+}
+
+/* Compact tables (Pico's defaults are roomy for an admin panel). */
+table td,
+table th {
+  padding: calc(var(--pico-spacing) / 2) var(--pico-spacing);
+}
+
+td:last-child {
+  text-align: right;
+}
+
+td button,
+td [role="button"] {
+  margin-bottom: 0;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85em;
+}

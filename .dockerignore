@@ -1,0 +1,9 @@
+node_modules
+.vinxi
+.output
+data
+.env
+.env.*
+.git
+Dockerfile
+README.md

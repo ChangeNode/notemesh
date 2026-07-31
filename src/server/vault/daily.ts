@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
+import { getSetting } from "../db";
 import { resolveNotePath, toVaultRelative } from "./paths";
 import { createNote, appendToNote, prependToNote, readNote, noteExists } from "./notes";
 
@@ -10,9 +11,19 @@ interface DailyConfig {
   template?: string;
 }
 
-// Reads the vault's own daily-notes settings when the .obsidian config folder
-// syncs; falls back to YYYY-MM-DD at the vault root (Obsidian's default).
+// Resolution order: admin-configured settings (the ob daemon doesn't sync the
+// .obsidian config folder by default, so this is the reliable path), then the
+// vault's own daily-notes.json if present, then Obsidian's default of
+// YYYY-MM-DD at the vault root.
 function dailyConfig(): DailyConfig {
+  const folderSetting = getSetting("daily_folder");
+  const formatSetting = getSetting("daily_format");
+  if (folderSetting !== undefined || formatSetting) {
+    return {
+      folder: folderSetting ?? "",
+      format: formatSetting || "YYYY-MM-DD",
+    };
+  }
   try {
     const raw = fs.readFileSync(path.join(env.vaultDir, ".obsidian", "daily-notes.json"), "utf8");
     const cfg = JSON.parse(raw);

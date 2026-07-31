@@ -35,6 +35,8 @@ export async function getDashboard() {
     sync: sup.status(),
     logs: sup.getLogs().slice(-80),
     deleteEnabled: getSetting("delete_enabled") === "true",
+    dailyFolder: getSetting("daily_folder") ?? "",
+    dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
     apiKeys: (Array.isArray(keys) ? keys : ((keys as any)?.apiKeys ?? [])).map((k: any) => ({
       id: k.id,
       name: k.name ?? "(unnamed)",
@@ -99,6 +101,17 @@ export async function setDeleteEnabled(enabled: boolean) {
   "use server";
   await requireAdmin();
   setSetting("delete_enabled", enabled ? "true" : "false");
+  return { ok: true };
+}
+
+// Where daily notes live. Needed because the ob daemon doesn't sync the
+// .obsidian config folder, so the vault's own daily-notes settings aren't
+// visible on the server.
+export async function setDailyConfig(folder: string, format: string) {
+  "use server";
+  await requireAdmin();
+  setSetting("daily_folder", folder.trim().replace(/^\/+|\/+$/g, ""));
+  setSetting("daily_format", format.trim() || "YYYY-MM-DD");
   return { ok: true };
 }
 

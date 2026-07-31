@@ -4,6 +4,7 @@ import {
   obLogin,
   obListRemoteVaults,
   obSyncSetup,
+  obSyncStatus,
   looksLikeMfaRequired,
   type RemoteVault,
 } from "./ob/cli";
@@ -90,7 +91,18 @@ export async function setupConfigureVault(
   }
   if (encryptionPassword) storeVaultPassword(encryptionPassword);
   setSetting("vault_configured", "true");
-  setSetting("vault_name", vault);
+  // The picker passes the vault id; sync-status --json knows the display name.
+  let vaultName = vault;
+  const status = await obSyncStatus();
+  if (status.ok) {
+    try {
+      const parsed = JSON.parse(status.stdout);
+      if (typeof parsed.vaultName === "string" && parsed.vaultName) vaultName = parsed.vaultName;
+    } catch {
+      // keep the id as the name
+    }
+  }
+  setSetting("vault_name", vaultName);
   supervisor().resetAndStart();
   return { ok: true };
 }

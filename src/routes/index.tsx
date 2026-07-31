@@ -2,6 +2,7 @@ import { createSignal, createResource, createEffect, onMount, onCleanup, Show, F
 import {
   getDashboard,
   getSyncActivity,
+  setDailyConfig,
   createApiKey,
   deleteApiKey,
   revokeOAuthClient,
@@ -316,6 +317,34 @@ export default function Dashboard() {
               <small class="muted">
                 Deletions sync to every device. Off by default; leave it off unless you need it.
               </small>
+              <hr />
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const form = e.currentTarget as HTMLFormElement;
+                  const folder = (form.elements.namedItem("daily-folder") as HTMLInputElement).value;
+                  const format = (form.elements.namedItem("daily-format") as HTMLInputElement).value;
+                  await setDailyConfig(folder, format);
+                  refetch();
+                }}
+              >
+                <div class="grid">
+                  <div>
+                    <label for="daily-folder">Daily notes folder</label>
+                    <input id="daily-folder" name="daily-folder" type="text" placeholder="e.g. Daily" value={d.dailyFolder} />
+                  </div>
+                  <div>
+                    <label for="daily-format">Daily note filename format</label>
+                    <input id="daily-format" name="daily-format" type="text" value={d.dailyFormat} />
+                  </div>
+                </div>
+                <small class="muted">
+                  Used by the <code>daily_note</code> tool. The sync daemon doesn't sync your
+                  vault's <code>.obsidian</code> settings, so set this to match your Daily Notes
+                  plugin config (format uses moment tokens like YYYY-MM-DD).
+                </small>
+                <button type="submit">Save daily note settings</button>
+              </form>
             </article>
           </>
         )}

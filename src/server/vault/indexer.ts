@@ -53,7 +53,9 @@ export function parseNote(relPath: string, content: string) {
     }
 
     for (const m of line.matchAll(/(^|\s)#([A-Za-z0-9_][A-Za-z0-9_/-]*)/g)) {
-      tags.add(m[2]);
+      // Obsidian requires at least one non-numeric character in a tag; a bare
+      // "#1" in prose is not a tag.
+      if (!/^\d+$/.test(m[2])) tags.add(m[2]);
     }
 
     const task = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/);

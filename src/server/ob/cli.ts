@@ -78,37 +78,43 @@ export interface RemoteVault {
   raw: string;
 }
 
-// ob 0.0.13 output looks like:
-//   Fetching vaults...
-//   Vaults:
-//   "Home" (North America)
-//   "Work Notes" (Europe)
+// ob >= 0.0.14: --json gives { vaults: [{id, name, region}], shared: [...] }.
+// The text parser stays as a fallback in case the JSON shape changes.
 export async function obListRemoteVaults(): Promise<{ result: ObResult; vaults: RemoteVault[] }> {
-  const result = await runOb(["sync-list-remote"], { timeoutMs: 60_000 });
+  const result = await runOb(["sync-list-remote", "--json"], { timeoutMs: 60_000 });
+  if (!result.ok) return { result, vaults: [] };
+  try {
+    const data = JSON.parse(result.stdout);
+    const entries = [...(data.vaults ?? []), ...(data.shared ?? [])];
+    return {
+      result,
+      vaults: entries.map((v: any) => ({
+        id: typeof v.id === "string" ? v.id : undefined,
+        name: String(v.name ?? v.id ?? "(unnamed vault)"),
+        region: typeof v.region === "string" ? v.region : undefined,
+        raw: JSON.stringify(v),
+      })),
+    };
+  } catch {
+    return { result, vaults: parseVaultListText(result.stdout) };
+  }
+}
+
+// Fallback for pre-JSON output: status lines then '"Name" (Region)' entries.
+function parseVaultListText(stdout: string): RemoteVault[] {
   const vaults: RemoteVault[] = [];
-  if (result.ok) {
-    for (const line of result.stdout.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      // Status/header lines, not vaults.
-      if (/^(fetching|listing|loading|vaults?:|[-=+|]+$)/i.test(trimmed)) continue;
-      // Primary shape: "Name" (Region)
-      const quoted = trimmed.match(/^"(.+)"\s*\((.+)\)\s*$/);
-      // Fallback shapes from earlier guesses: "<id> <name>" or "name (id)".
-      const idName = trimmed.match(/^([0-9a-f]{8,})\s+(.+)$/i);
-      const nameParen = trimmed.match(/^[-*]?\s*(.+?)\s*\(([0-9a-f]{8,})\)$/i);
-      if (quoted) {
-        vaults.push({ name: quoted[1], region: quoted[2], raw: trimmed });
-      } else if (idName) {
-        vaults.push({ id: idName[1], name: idName[2].trim(), raw: trimmed });
-      } else if (nameParen) {
-        vaults.push({ id: nameParen[2], name: nameParen[1].trim(), raw: trimmed });
-      } else {
-        vaults.push({ name: trimmed.replace(/^[-*"]\s*/, "").replace(/"$/, ""), raw: trimmed });
-      }
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/^(fetching|listing|loading|vaults?:|[-=+|]+$)/i.test(trimmed)) continue;
+    const quoted = trimmed.match(/^"(.+)"\s*\((.+)\)\s*$/);
+    if (quoted) {
+      vaults.push({ name: quoted[1], region: quoted[2], raw: trimmed });
+    } else {
+      vaults.push({ name: trimmed.replace(/^[-*"]\s*/, "").replace(/"$/, ""), raw: trimmed });
     }
   }
-  return { result, vaults };
+  return vaults;
 }
 
 export async function obSyncSetup(vault: string, encryptionPassword: string): Promise<ObResult> {
@@ -129,7 +135,7 @@ export async function obSyncSetup(vault: string, encryptionPassword: string): Pr
 }
 
 export async function obSyncStatus(): Promise<ObResult> {
-  return runOb(["sync-status", "--path", env.vaultDir], { timeoutMs: 30_000 });
+  return runOb(["sync-status", "--path", env.vaultDir, "--json"], { timeoutMs: 30_000 });
 }
 
 export async function obSyncOnce(): Promise<ObResult> {

@@ -14,7 +14,7 @@ WORKDIR /app
 # The ob CLI is spawned as a child process (not bundled by the server build),
 # so install it globally in the runtime image. Keep the version pinned in
 # lockstep with package.json.
-RUN npm install -g obsidian-headless@0.0.13
+RUN npm install -g obsidian-headless@0.0.14
 COPY --from=build /app/.output ./.output
 ENV NODE_ENV=production \
     PORT=3000 \

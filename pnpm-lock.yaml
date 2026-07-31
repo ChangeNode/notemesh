@@ -51,8 +51,8 @@ importers:
         specifier: ^6.2.4
         version: 6.2.4
       obsidian-headless:
-        specifier: 0.0.13
-        version: 0.0.13
+        specifier: 0.0.14
+        version: 0.0.14
       solid-js:
         specifier: ^1.9.7
         version: 1.9.14
@@ -2487,11 +2487,9 @@ packages:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
     engines: {node: '>= 0.4'}
 
-  obsidian-headless@0.0.13:
-    resolution: {integrity: sha512-biu7K0njASixXkV/foG+gmVWiU75oWGxOPrLWeQheYozeIQfImp72VGdKxwkU0kCXrh24js4zbuArCexcXfi2w==}
+  obsidian-headless@0.0.14:
+    resolution: {integrity: sha512-S1d/hxLKvCUG2g5tRyXFkzPqMs3Ntw1tDyzoF2yfHGRuB4B+Mi3X2vgT8LbfQKrkEEi3LfJRdXtYzAVHcbpccw==}
     engines: {node: '>=22.0.0'}
-    cpu: [x64, arm64]
-    os: [darwin, linux, win32]
     hasBin: true
 
   ofetch@1.5.1:
@@ -5735,7 +5733,7 @@ snapshots:
 
   object-inspect@1.13.4: {}
 
-  obsidian-headless@0.0.13:
+  obsidian-headless@0.0.14:
     dependencies:
       better-sqlite3: 12.11.1
       commander: 14.0.3

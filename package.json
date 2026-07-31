@@ -26,7 +26,7 @@
     "fetch-to-node": "^2.1.0",
     "gray-matter": "^4.0.3",
     "jose": "^6.2.4",
-    "obsidian-headless": "0.0.13",
+    "obsidian-headless": "0.0.14",
     "solid-js": "^1.9.7",
     "vinxi": "^0.5.11",
     "zod": "^3.25.0"

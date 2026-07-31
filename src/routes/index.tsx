@@ -1,15 +1,14 @@
 import { createSignal, createResource, Show, For } from "solid-js";
-import { useAction } from "@solidjs/router";
 import {
   getDashboard,
-  createApiKeyAction,
-  deleteApiKeyAction,
-  revokeOAuthClientAction,
-  setDeleteEnabledAction,
-  syncNowAction,
-  restartSyncAction,
-  rebuildIndexAction,
-  reauthAction,
+  createApiKey,
+  deleteApiKey,
+  revokeOAuthClient,
+  setDeleteEnabled,
+  syncNow,
+  restartSync,
+  rebuildIndex,
+  reauth as reauthServer,
 } from "~/server/admin";
 import { authClient } from "~/lib/auth-client";
 
@@ -22,14 +21,14 @@ const STATE_LABEL: Record<string, { cls: string; label: string }> = {
 
 export default function Dashboard() {
   const [data, { refetch }] = createResource(() => getDashboard());
-  const doCreateKey = useAction(createApiKeyAction);
-  const doDeleteKey = useAction(deleteApiKeyAction);
-  const doRevokeClient = useAction(revokeOAuthClientAction);
-  const doSetDelete = useAction(setDeleteEnabledAction);
-  const doSyncNow = useAction(syncNowAction);
-  const doRestart = useAction(restartSyncAction);
-  const doRebuild = useAction(rebuildIndexAction);
-  const doReauth = useAction(reauthAction);
+  const doCreateKey = createApiKey;
+  const doDeleteKey = deleteApiKey;
+  const doRevokeClient = revokeOAuthClient;
+  const doSetDelete = setDeleteEnabled;
+  const doSyncNow = syncNow;
+  const doRestart = restartSync;
+  const doRebuild = rebuildIndex;
+  const doReauth = reauthServer;
 
   const [newKeyName, setNewKeyName] = createSignal("");
   const [freshKey, setFreshKey] = createSignal<string | null>(null);

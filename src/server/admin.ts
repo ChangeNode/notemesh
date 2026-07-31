@@ -1,4 +1,3 @@
-import { query, action, reload } from "@solidjs/router";
 import { getRequestEvent } from "solid-js/web";
 import { auth } from "./auth";
 import { requireAdmin } from "./session";
@@ -14,7 +13,10 @@ function headers(): Headers {
   return getRequestEvent()!.request.headers;
 }
 
-export const getDashboard = query(async () => {
+// Plain server functions (no solid-router query()/action() wrappers): the
+// dashboard refetches after every mutation, and query()'s key-based cache
+// would serve stale data to those refetches.
+export async function getDashboard() {
   "use server";
   await requireAdmin();
   ensureIndexerStarted();
@@ -46,9 +48,9 @@ export const getDashboard = query(async () => {
     })),
     consentCount: consents.n,
   };
-}, "dashboard");
+}
 
-export const createApiKeyAction = action(async (name: string) => {
+export async function createApiKey(name: string) {
   "use server";
   await requireAdmin();
   const res = await auth.api.createApiKey({
@@ -57,16 +59,16 @@ export const createApiKeyAction = action(async (name: string) => {
   });
   // The plaintext key is shown exactly once; the caller revalidates the list.
   return { key: (res as any).key as string };
-});
+}
 
-export const deleteApiKeyAction = action(async (keyId: string) => {
+export async function deleteApiKey(keyId: string) {
   "use server";
   await requireAdmin();
   await auth.api.deleteApiKey({ body: { keyId }, headers: headers() });
-  return reload({ revalidate: [getDashboard.key] });
-});
+  return { ok: true };
+}
 
-export const revokeOAuthClientAction = action(async (clientId: string) => {
+export async function revokeOAuthClient(clientId: string) {
   "use server";
   await requireAdmin();
   // Remove the client and everything it was granted (tokens + consent), so a
@@ -76,24 +78,24 @@ export const revokeOAuthClientAction = action(async (clientId: string) => {
   d.prepare('DELETE FROM "oauthRefreshToken" WHERE clientId = ?').run(clientId);
   d.prepare('DELETE FROM "oauthConsent" WHERE clientId = ?').run(clientId);
   d.prepare('DELETE FROM "oauthClient" WHERE clientId = ?').run(clientId);
-  return reload({ revalidate: [getDashboard.key] });
-});
+  return { ok: true };
+}
 
-export const setDeleteEnabledAction = action(async (enabled: boolean) => {
+export async function setDeleteEnabled(enabled: boolean) {
   "use server";
   await requireAdmin();
   setSetting("delete_enabled", enabled ? "true" : "false");
-  return reload({ revalidate: [getDashboard.key] });
-});
+  return { ok: true };
+}
 
-export const syncNowAction = action(async () => {
+export async function syncNow() {
   "use server";
   await requireAdmin();
   const res = await obSyncOnce();
   return { ok: res.ok, output: res.combined.split("\n").slice(-5).join("\n") };
-});
+}
 
-export const restartSyncAction = action(async () => {
+export async function restartSync() {
   "use server";
   await requireAdmin();
   const sup = supervisor();
@@ -101,19 +103,18 @@ export const restartSyncAction = action(async () => {
   // Give the child a moment to exit before restarting.
   await new Promise((r) => setTimeout(r, 1_000));
   sup.resetAndStart();
-  return reload({ revalidate: [getDashboard.key] });
-});
+  return { ok: true };
+}
 
-export const rebuildIndexAction = action(async () => {
+export async function rebuildIndex() {
   "use server";
   await requireAdmin();
   indexer().rebuild();
-  return reload({ revalidate: [getDashboard.key] });
-});
+  return { ok: true };
+}
 
 // Re-login with stored credentials (or fresh ones if the password changed).
-export const reauthAction = action(
-  async (input: { email?: string; password?: string; mfa?: string }) => {
+export async function reauth(input: { email?: string; password?: string; mfa?: string }) {
     "use server";
     await requireAdmin();
     let email = input.email;
@@ -134,6 +135,5 @@ export const reauthAction = action(
     }
     if (input.email && input.password) storeObsidianAccount(input.email, input.password);
     supervisor().resetAndStart();
-    return { ok: true };
-  },
-);
+  return { ok: true };
+}

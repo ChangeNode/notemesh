@@ -1,4 +1,3 @@
-import { query } from "@solidjs/router";
 import { getSetting, setSetting } from "./db";
 import { isSetupComplete, runAuthMigrations } from "./auth";
 import {
@@ -26,10 +25,13 @@ async function computeStage(): Promise<SetupStage> {
   return "done";
 }
 
-export const getSetupStage = query(async () => {
+// Plain server function, deliberately NOT wrapped in solid-router's query():
+// query() caches by key, so the wizard's refetch after each step would see the
+// stale stage and never advance.
+export async function getSetupStage(): Promise<SetupStage> {
   "use server";
   return computeStage();
-}, "setupStage");
+}
 
 export interface ObsidianLoginResult {
   ok: boolean;

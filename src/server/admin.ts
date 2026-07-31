@@ -1,5 +1,5 @@
 import { getRequestEvent } from "solid-js/web";
-import { auth } from "./auth";
+import { auth, audit } from "./auth";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
 import { env } from "./env";
@@ -68,7 +68,8 @@ export async function getSyncActivity() {
 
 export async function createApiKey(name: string) {
   "use server";
-  await requireAdmin();
+  const session = await requireAdmin();
+  audit("apikey.create", { user: session.user.id, name });
   const res = await auth.api.createApiKey({
     body: { name: name || "mcp-client" },
     headers: headers(),
@@ -79,14 +80,16 @@ export async function createApiKey(name: string) {
 
 export async function deleteApiKey(keyId: string) {
   "use server";
-  await requireAdmin();
+  const session = await requireAdmin();
+  audit("apikey.delete", { user: session.user.id, keyId });
   await auth.api.deleteApiKey({ body: { keyId }, headers: headers() });
   return { ok: true };
 }
 
 export async function revokeOAuthClient(clientId: string) {
   "use server";
-  await requireAdmin();
+  const session = await requireAdmin();
+  audit("oauth.client.revoke", { user: session.user.id, clientId });
   // Remove the client and everything it was granted (tokens + consent), so a
   // revoked connector loses access immediately.
   const d = db();
@@ -143,7 +146,8 @@ export async function rebuildIndex() {
 // Re-login with stored credentials (or fresh ones if the password changed).
 export async function reauth(input: { email?: string; password?: string; mfa?: string }) {
     "use server";
-    await requireAdmin();
+    const session = await requireAdmin();
+    audit("obsidian.reauth.attempt", { user: session.user.id });
     let email = input.email;
     let password = input.password;
     if (!email || !password) {

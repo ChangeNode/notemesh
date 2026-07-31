@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getSetting } from "../db";
 import { supervisor } from "../ob/supervisor";
+import { VaultPathError } from "../vault/paths";
 import {
   readNote,
   createNote,
@@ -52,12 +53,17 @@ function err(message: string) {
 }
 
 // Wrap a handler so vault errors surface as tool errors, not protocol errors.
+// Only VaultPathError messages (already vault-relative and safe) are returned
+// verbatim; any other error (e.g. a native fs error carrying an absolute path
+// and OS username) is logged server-side and replaced with a generic message.
 function safe<A extends unknown[], R>(fn: (...args: A) => R) {
   return (...args: A) => {
     try {
       return fn(...args);
     } catch (e: any) {
-      return err(e?.message ?? String(e));
+      if (e instanceof VaultPathError) return err(e.message);
+      console.error("[mcp] tool error:", e);
+      return err("The operation failed. Check the server logs for details.");
     }
   };
 }

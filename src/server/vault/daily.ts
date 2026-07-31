@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
-import { resolveNotePath, toVaultRelative } from "./paths";
+import { resolveNotePath, toVaultRelative, VaultPathError } from "./paths";
 import { createNote, appendToNote, prependToNote, readNote, noteExists } from "./notes";
 
 interface DailyConfig {
@@ -60,8 +60,13 @@ function formatDate(date: Date, format: string): string {
 }
 
 export function dailyNotePath(date?: string): string {
+  // Constrain to YYYY-MM-DD so the value is a safe, predictable input (it never
+  // reaches the filesystem — only numeric components do — but validate anyway).
+  if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new VaultPathError(`Invalid date: ${date} (expected YYYY-MM-DD)`);
+  }
   const d = date ? new Date(date + "T00:00:00") : new Date();
-  if (isNaN(d.getTime())) throw new Error(`Invalid date: ${date} (expected YYYY-MM-DD)`);
+  if (isNaN(d.getTime())) throw new VaultPathError(`Invalid date: ${date} (expected YYYY-MM-DD)`);
   const cfg = dailyConfig();
   const name = formatDate(d, cfg.format);
   const rel = cfg.folder ? `${cfg.folder.replace(/\/$/, "")}/${name}.md` : `${name}.md`;

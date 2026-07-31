@@ -1,6 +1,5 @@
 import path from "node:path";
 import fs from "node:fs";
-import { createHash } from "node:crypto";
 
 function required(name: string): string {
   const v = process.env[name];
@@ -26,15 +25,20 @@ export const env = {
     return required("SETUP_TOKEN");
   },
   get encryptionKey(): Buffer {
-    const raw = required("ENCRYPTION_KEY");
-    // Accept exact 32-byte base64 keys, or any sufficiently long random
-    // string (e.g. Railway's generated secrets), derived via SHA-256.
+    const raw = required("ENCRYPTION_KEY").trim();
+    // Require real 256-bit key material — 32 bytes as base64 or hex. This key
+    // encrypts the stored Obsidian/vault passwords AND derives the session
+    // secret, so a low-entropy passphrase (previously accepted and hashed)
+    // would be offline-brute-forceable if the DB leaked. No passphrase path.
+    if (/^[0-9a-fA-F]{64}$/.test(raw)) {
+      return Buffer.from(raw, "hex");
+    }
     const decoded = Buffer.from(raw, "base64");
     if (decoded.length === 32) return decoded;
-    if (raw.length >= 16) {
-      return createHash("sha256").update(raw).digest();
-    }
-    throw new Error("ENCRYPTION_KEY must be at least 16 characters of random data");
+    throw new Error(
+      "ENCRYPTION_KEY must be 32 random bytes, as base64 (`openssl rand -base64 32`) " +
+        "or 64 hex chars (`openssl rand -hex 32`).",
+    );
   },
   get baseUrl(): string {
     const explicit = process.env.BASE_URL;

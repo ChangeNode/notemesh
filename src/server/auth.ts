@@ -18,6 +18,23 @@ function authSecret(): string {
     .digest("base64");
 }
 
+// Constant-time string compare that also hides length via hashing, so the
+// SETUP_TOKEN gate leaks neither the token's bytes nor its length via timing.
+function safeEqual(a: string, b: string): boolean {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+// Minimal structured audit log for security-relevant events (no secrets).
+export function audit(event: string, detail: Record<string, unknown> = {}) {
+  try {
+    console.log(JSON.stringify({ audit: event, ts: new Date().toISOString(), ...detail }));
+  } catch {
+    console.log(`audit ${event}`);
+  }
+}
+
 function userCount(): number {
   try {
     const row = db()
@@ -44,16 +61,26 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email") {
         if (userCount() > 0) {
+          audit("signup.rejected", { reason: "already_claimed" });
           throw new APIError("FORBIDDEN", {
             message: "This instance is already claimed.",
           });
         }
-        const token = ctx.headers?.get("x-setup-token");
-        if (token !== env.setupToken) {
+        const token = ctx.headers?.get("x-setup-token") ?? "";
+        if (!safeEqual(token, env.setupToken)) {
+          audit("signup.rejected", { reason: "bad_setup_token" });
           throw new APIError("FORBIDDEN", {
             message: "Invalid setup token.",
           });
         }
+        audit("signup.accepted", {});
+      }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      // Audit sign-in outcomes (no credentials in the log).
+      if (ctx.path === "/sign-in/email") {
+        const ok = !!(ctx.context as any)?.newSession || !!(ctx.context as any)?.session;
+        audit("signin", { ok });
       }
     }),
   },

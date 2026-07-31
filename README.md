@@ -36,8 +36,10 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
 3. Set these variables on the service:
    - `SETUP_TOKEN` — any random string (Railway can generate one). Gates the
      first-boot setup wizard so a stranger can't claim your fresh instance.
-   - `ENCRYPTION_KEY` — a long random string (32+ chars). Encrypts your stored
-     Obsidian credentials at rest. **Changing it later locks the stored
+   - `ENCRYPTION_KEY` — 32 random bytes as base64 (`openssl rand -base64 32`)
+     or hex (`openssl rand -hex 32`). Encrypts your stored Obsidian credentials
+     at rest and derives the session secret, so it must be real random key
+     material, not a passphrase. **Changing it later locks the stored
      credentials out.**
    - `DATA_DIR=/data`
 4. Deploy, then open the service URL and follow the setup wizard:

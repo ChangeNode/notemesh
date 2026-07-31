@@ -25,8 +25,22 @@ function unauthorized(): Response {
   );
 }
 
+// Cap the JSON-RPC request body so a client can't exhaust memory with a huge
+// payload. MCP tool calls are small; 4 MiB is generous (note content is
+// written via args, but the 10 MiB note cap is the real ceiling).
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
 export async function POST(event: APIEvent) {
   await runAuthMigrations();
+
+  const lenHeader = event.request.headers.get("content-length");
+  if (lenHeader && Number(lenHeader) > MAX_BODY_BYTES) {
+    return new Response(
+      JSON.stringify({ jsonrpc: "2.0", error: { code: -32600, message: "Request too large" }, id: null }),
+      { status: 413, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   if (getSetting("vault_configured") !== "true") {
     return new Response(
       JSON.stringify({

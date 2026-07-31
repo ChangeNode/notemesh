@@ -23,8 +23,16 @@ export function noteExists(notePath: string): boolean {
   }
 }
 
+// Segment names that are confusing or reserved, blocked on create to avoid
+// odd-looking notes (traversal/control chars are already rejected in
+// resolveNotePath; these are cosmetic/robustness).
+const RESERVED_SEGMENTS = new Set(["~", "__proto__", "constructor", "prototype", "CON", "PRN", "AUX", "NUL"]);
+
 export function createNote(notePath: string, content: string): string {
   const abs = resolveNotePath(notePath);
+  if (toVaultRelative(abs).split("/").some((s) => RESERVED_SEGMENTS.has(s))) {
+    throw new VaultPathError("Note path contains a reserved name");
+  }
   if (fs.existsSync(abs)) {
     throw new VaultPathError(`Note already exists: ${toVaultRelative(abs)} (use update_note to replace it)`);
   }

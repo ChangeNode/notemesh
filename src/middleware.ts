@@ -1,6 +1,26 @@
 import { createMiddleware } from "@solidjs/start/middleware";
 import { ensureSyncStarted } from "./server/ob/supervisor";
 
+// Codex 0.146.0 requires the RFC 9207 `iss` authorization-response parameter
+// whenever the AS metadata advertises support for it, but then fails to read
+// the `iss` it is sent (verified: even a callback with `iss` present is
+// rejected as "missing required issuer"). We DO send `iss` on every response;
+// dropping the advertised flag makes compliant clients stop requiring it,
+// working around the Codex bug without weakening anything for our single-AS,
+// single-user model. Remove once Codex fixes its iss parsing.
+async function stripIssParamSupport(res: Response): Promise<Response> {
+  try {
+    const data = await res.json();
+    delete (data as Record<string, unknown>).authorization_response_iss_parameter_supported;
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return res;
+  }
+}
+
 export default createMiddleware({
   onRequest: [
     async (event) => {
@@ -19,7 +39,7 @@ export default createMiddleware({
         const { oauthProviderAuthServerMetadata } = await import("@better-auth/oauth-provider");
         const { auth, runAuthMigrations } = await import("./server/auth");
         await runAuthMigrations();
-        return oauthProviderAuthServerMetadata(auth)(event.request);
+        return stripIssParamSupport(await oauthProviderAuthServerMetadata(auth)(event.request));
       }
       if (
         url.pathname === "/.well-known/openid-configuration" ||
@@ -29,7 +49,7 @@ export default createMiddleware({
         const { oauthProviderOpenIdConfigMetadata } = await import("@better-auth/oauth-provider");
         const { auth, runAuthMigrations } = await import("./server/auth");
         await runAuthMigrations();
-        return oauthProviderOpenIdConfigMetadata(auth)(event.request);
+        return stripIssParamSupport(await oauthProviderOpenIdConfigMetadata(auth)(event.request));
       }
       if (url.pathname === "/.well-known/oauth-protected-resource") {
         const { env } = await import("./server/env");

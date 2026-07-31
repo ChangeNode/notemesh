@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
-import { looksLikeAuthFailure } from "./cli";
+import { looksLikeAuthFailure, obLoginStatus } from "./cli";
 
 export type SyncState =
   | "stopped"
@@ -71,7 +71,9 @@ class SyncSupervisor {
 
   private log(line: string) {
     for (const l of line.split("\n")) {
-      const t = l.trimEnd();
+      // Cap each stored line so a single newline-free blob from ob can't grow
+      // the buffer unbounded.
+      const t = l.trimEnd().slice(0, 2000);
       if (!t) continue;
       this.logs.push({ ts: Date.now(), line: t });
       this.lastActivityAt = Date.now();
@@ -105,17 +107,22 @@ class SyncSupervisor {
     child.stdout?.on("data", (d: Buffer) => this.log(d.toString()));
     child.stderr?.on("data", (d: Buffer) => this.log(d.toString()));
 
-    void child.then((result) => {
+    void child.then(async (result) => {
       this.child = null;
       if (this.stopping) {
         this.state = "stopped";
         this.log(`[supervisor] stopped`);
         return;
       }
-      const recent = this.logs.slice(-30).map((l) => l.line).join("\n");
-      if (looksLikeAuthFailure(recent)) {
+      // Decide "needs re-auth" from ob's own login state, not by scraping the
+      // sync log — an attacker who controls a synced filename (e.g. a file
+      // named "session expired.md") could otherwise force this latch and deny
+      // sync. `ob login` with no args reports status.
+      const status = await obLoginStatus().catch(() => null);
+      const loggedOut = status !== null && (!status.ok || looksLikeAuthFailure(status.combined));
+      if (loggedOut) {
         this.state = "needs-reauth";
-        this.log(`[supervisor] sync exited with an auth error — re-authentication required`);
+        this.log(`[supervisor] not authenticated with Obsidian — re-authentication required`);
         return;
       }
       this.state = "backoff";

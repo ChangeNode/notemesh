@@ -19,12 +19,35 @@ export interface ObResult {
   combined: string;
 }
 
-// The ob CLI (open beta, no --json mode) is driven non-interactively: stdin is
-// closed so any interactive prompt fails fast instead of hanging, and callers
-// parse the text output tolerantly.
+// Reject values that could be misread as flags by the ob argument parser, or
+// that carry control characters. Used for the untrusted vault identifier and
+// for credential values that are passed as flags.
+export class ObArgError extends Error {}
+function assertSafeArg(value: string, label: string) {
+  if (value.startsWith("-")) throw new ObArgError(`${label} may not start with "-"`);
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) throw new ObArgError(`${label} contains control characters`);
+}
+
+// Redact known secret substrings from CLI output before it is logged or shown.
+// execa never passes these through a shell, but ob could echo an argument on an
+// error path; scrub defensively.
+function redact(text: string, secrets: (string | undefined)[]): string {
+  let out = text;
+  for (const s of secrets) {
+    if (s && s.length >= 3) out = out.split(s).join("«redacted»");
+  }
+  return out;
+}
+
+// The ob CLI is driven non-interactively. By default stdin is closed so an
+// unexpected prompt fails fast; when `stdinInput` is given (a single secret),
+// it's written to stdin so ob can consume it via its "prompted if omitted"
+// path instead of receiving the secret on argv (which is world-readable via
+// /proc and ps). `redactSecrets` are scrubbed from all captured output.
 export async function runOb(
   args: string[],
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; stdinInput?: string; redactSecrets?: (string | undefined)[] } = {},
 ): Promise<ObResult> {
   ensureDataDirs();
   let res: Result;
@@ -32,21 +55,26 @@ export async function runOb(
     res = await execa(obBin(), args, {
       env: { HOME: env.obHomeDir },
       cwd: env.dataDir,
-      stdin: "ignore",
+      input: opts.stdinInput,
+      stdin: opts.stdinInput === undefined ? "ignore" : "pipe",
       timeout: opts.timeoutMs ?? 60_000,
       reject: false,
       all: true,
     });
   } catch (e: any) {
-    return { ok: false, stdout: "", stderr: String(e?.message ?? e), combined: String(e?.message ?? e) };
+    const msg = redact(String(e?.message ?? e), opts.redactSecrets ?? []);
+    return { ok: false, stdout: "", stderr: msg, combined: msg };
   }
-  const stdout = String(res.stdout ?? "");
-  const stderr = String(res.stderr ?? "");
+  const stdout = redact(String(res.stdout ?? ""), opts.redactSecrets ?? []);
+  const stderr = redact(String(res.stderr ?? ""), opts.redactSecrets ?? []);
   return {
     ok: res.exitCode === 0,
     stdout,
     stderr,
-    combined: String((res as any).all ?? [stdout, stderr].filter(Boolean).join("\n")),
+    combined: redact(
+      String((res as any).all ?? [stdout, stderr].filter(Boolean).join("\n")),
+      opts.redactSecrets ?? [],
+    ),
   };
 }
 
@@ -61,9 +89,14 @@ export function looksLikeAuthFailure(output: string): boolean {
 }
 
 export async function obLogin(email: string, password: string, mfa?: string): Promise<ObResult> {
-  const args = ["login", "--email", email, "--password", password];
+  assertSafeArg(email, "Email");
+  if (mfa) assertSafeArg(mfa, "MFA code");
+  // Password goes via stdin (ob prompts for it when --password is omitted), so
+  // the durable secret never appears in argv. Email + MFA (ephemeral) stay as
+  // flags; ob then only needs the single stdin value for the password prompt.
+  const args = ["login", "--email", email];
   if (mfa) args.push("--mfa", mfa);
-  return runOb(args, { timeoutMs: 90_000 });
+  return runOb(args, { timeoutMs: 90_000, stdinInput: password + "\n", redactSecrets: [password, mfa] });
 }
 
 // `ob login` with no flags reports current login status.
@@ -107,7 +140,7 @@ function parseVaultListText(stdout: string): RemoteVault[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (/^(fetching|listing|loading|vaults?:|[-=+|]+$)/i.test(trimmed)) continue;
-    const quoted = trimmed.match(/^"(.+)"\s*\((.+)\)\s*$/);
+    const quoted = trimmed.match(/^"([^"]+)"\s*\(([^)]+)\)\s*$/);
     if (quoted) {
       vaults.push({ name: quoted[1], region: quoted[2], raw: trimmed });
     } else {
@@ -118,11 +151,15 @@ function parseVaultListText(stdout: string): RemoteVault[] {
 }
 
 // Password applies only to end-to-end encrypted vaults; managed-encryption
-// vaults (the current default) link without one.
+// vaults (the current default) link without one. `vault` is an id/name that
+// originated from parsed ob JSON — validate it can't be read as a flag.
 export async function obSyncSetup(vault: string, encryptionPassword?: string): Promise<ObResult> {
+  assertSafeArg(vault, "Vault");
   const args = ["sync-setup", "--vault", vault, "--path", env.vaultDir, "--device-name", "obsidian-mcp-server"];
-  if (encryptionPassword) args.push("--password", encryptionPassword);
-  return runOb(args, { timeoutMs: 120_000 });
+  // E2E password via stdin (ob prompts when --password omitted) so it stays
+  // out of argv.
+  const stdinInput = encryptionPassword ? encryptionPassword + "\n" : undefined;
+  return runOb(args, { timeoutMs: 120_000, stdinInput, redactSecrets: [encryptionPassword] });
 }
 
 export async function obSyncStatus(): Promise<ObResult> {

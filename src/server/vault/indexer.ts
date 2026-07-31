@@ -4,7 +4,7 @@ import chokidar, { type FSWatcher } from "chokidar";
 import matter from "gray-matter";
 import { db } from "../db";
 import { env } from "../env";
-import { toVaultRelative } from "./paths";
+import { toVaultRelative, isSafeVaultPath, MAX_NOTE_BYTES } from "./paths";
 
 // Parses one markdown note into everything the index stores.
 export function parseNote(relPath: string, content: string) {
@@ -18,7 +18,12 @@ export function parseNote(relPath: string, content: string) {
     // Bad frontmatter — index the raw content.
   }
 
-  const title = path.basename(relPath, ".md");
+  // Strip control chars and bidi overrides from the display title so a
+  // maliciously-named synced file can't spoof UIs that render titles.
+  const title = path
+    .basename(relPath, ".md")
+    .normalize("NFC")
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "");
   const headings: string[] = [];
   const tags = new Set<string>();
   const links: string[] = [];
@@ -71,10 +76,17 @@ export function parseNote(relPath: string, content: string) {
 
 // Resolve a wikilink target to an indexed note path, mimicking Obsidian's
 // shortest-path-wins resolution: exact path match first, then unique basename.
-function resolveLink(target: string, byBasename: Map<string, string[]>, byPath: Set<string>): string | null {
-  const t = target.replace(/\\/g, "/");
+function resolveLink(
+  target: string,
+  byBasename: Map<string, string[]>,
+  byPathLower: Map<string, string>,
+): string | null {
+  // NFC-normalize so an NFC wikilink matches an NFD on-disk name, and compare
+  // case-insensitively on both branches for consistency.
+  const t = target.replace(/\\/g, "/").normalize("NFC");
   const withExt = t.toLowerCase().endsWith(".md") ? t : `${t}.md`;
-  if (byPath.has(withExt)) return withExt;
+  const exact = byPathLower.get(withExt.toLowerCase());
+  if (exact) return exact;
   const base = path.basename(withExt).toLowerCase();
   const candidates = byBasename.get(base);
   return candidates && candidates.length > 0 ? candidates[0] : null;
@@ -84,8 +96,15 @@ function indexFile(relPath: string, absPath: string) {
   let content: string;
   let st: fs.Stats;
   try {
+    // Never follow a symlink into the target's contents (would let a synced
+    // symlink like `x.md -> /etc/passwd` be read and served via search), and
+    // cap the size so a huge synced file can't OOM the process.
+    const ls = fs.lstatSync(absPath);
+    if (ls.isSymbolicLink() || !ls.isFile()) return;
+    if (ls.size > MAX_NOTE_BYTES) return;
+    if (!isSafeVaultPath(absPath)) return;
     content = fs.readFileSync(absPath, "utf8");
-    st = fs.statSync(absPath);
+    st = ls;
   } catch {
     return; // Deleted between event and read.
   }
@@ -143,9 +162,10 @@ function removeFile(relPath: string) {
 function resolveAllLinks() {
   const d = db();
   const paths = (d.prepare("SELECT path FROM notes").all() as { path: string }[]).map((r) => r.path);
-  const byPath = new Set(paths);
+  const byPathLower = new Map<string, string>();
   const byBasename = new Map<string, string[]>();
   for (const p of paths) {
+    byPathLower.set(p.toLowerCase(), p);
     const base = path.basename(p).toLowerCase();
     const arr = byBasename.get(base) ?? [];
     arr.push(p);
@@ -158,7 +178,7 @@ function resolveAllLinks() {
   const upd = d.prepare("UPDATE links SET resolved_path = ? WHERE source_path = ? AND target = ?");
   const tx = d.transaction(() => {
     for (const row of rows) {
-      upd.run(resolveLink(row.target, byBasename, byPath), row.source_path, row.target);
+      upd.run(resolveLink(row.target, byBasename, byPathLower), row.source_path, row.target);
     }
   });
   tx();
@@ -204,6 +224,10 @@ class VaultIndexer {
     if (!fs.existsSync(env.vaultDir)) fs.mkdirSync(env.vaultDir, { recursive: true });
     this.rebuild();
     this.watcher = chokidar.watch(env.vaultDir, {
+      // Do NOT follow symlinks — the rebuild walk skips them too, and following
+      // them here would let a synced symlink expose out-of-vault file contents
+      // through the index.
+      followSymlinks: false,
       ignored: (p: string) => {
         const rel = toVaultRelative(p);
         return rel.split("/").some((seg) => seg.startsWith("."));
@@ -213,6 +237,9 @@ class VaultIndexer {
     });
     const onChange = (absPath: string) => {
       if (!absPath.toLowerCase().endsWith(".md")) return;
+      // Defense in depth: only index paths that are genuinely inside the vault
+      // with no symlinked component (indexFile re-checks, but reject early).
+      if (!isSafeVaultPath(absPath)) return;
       indexFile(toVaultRelative(absPath), absPath);
       this.scheduleLinkResolve();
     };
@@ -220,7 +247,9 @@ class VaultIndexer {
     this.watcher.on("change", onChange);
     this.watcher.on("unlink", (absPath: string) => {
       if (!absPath.toLowerCase().endsWith(".md")) return;
-      removeFile(toVaultRelative(absPath));
+      const rel = toVaultRelative(absPath);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) return;
+      removeFile(rel);
       this.scheduleLinkResolve();
     });
   }

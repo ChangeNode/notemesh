@@ -2,7 +2,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
-import { resolveNotePath, VaultPathError } from "./paths";
+import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
 import { readNote, createNote } from "./notes";
 import { dailyNotePath } from "./daily";
 
@@ -122,7 +122,7 @@ export function listTasks(filter: "all" | "todo" | "daily" = "all"): TaskItem[] 
 export function toggleTask(notePath: string, line: number): TaskItem {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
-  const lines = fs.readFileSync(abs, "utf8").split("\n");
+  const lines = readVaultFile(abs).split("\n");
   const idx = line - 1;
   if (idx < 0 || idx >= lines.length) throw new VaultPathError(`Line ${line} is out of range`);
   const m = lines[idx].match(/^(\s*[-*+]\s+\[)([ xX])(\]\s+.*)$/);

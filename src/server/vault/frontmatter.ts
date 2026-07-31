@@ -1,18 +1,26 @@
 import fs from "node:fs";
 import matter from "gray-matter";
-import { resolveNotePath, VaultPathError } from "./paths";
+import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
 import { db } from "../db";
 
 export function readProperties(notePath: string): Record<string, unknown> {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
-  return matter(fs.readFileSync(abs, "utf8")).data ?? {};
+  return matter(readVaultFile(abs)).data ?? {};
 }
 
+// Property names that could pollute a prototype if this object were ever
+// merged unsafely downstream. Rejected defensively even though our own reads
+// (JSON.parse + Object.keys) don't pollute.
+const FORBIDDEN_PROP_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+
 export function setProperty(notePath: string, name: string, value: unknown): Record<string, unknown> {
+  if (FORBIDDEN_PROP_NAMES.has(name)) {
+    throw new VaultPathError(`Property name "${name}" is not allowed`);
+  }
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
-  const parsed = matter(fs.readFileSync(abs, "utf8"));
+  const parsed = matter(readVaultFile(abs));
   const data = { ...(parsed.data ?? {}), [name]: value };
   fs.writeFileSync(abs, matter.stringify(parsed.content, data), "utf8");
   return data;
@@ -21,7 +29,7 @@ export function setProperty(notePath: string, name: string, value: unknown): Rec
 export function removeProperty(notePath: string, name: string): Record<string, unknown> {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
-  const parsed = matter(fs.readFileSync(abs, "utf8"));
+  const parsed = matter(readVaultFile(abs));
   const data = { ...(parsed.data ?? {}) };
   delete data[name];
   const body = parsed.content;

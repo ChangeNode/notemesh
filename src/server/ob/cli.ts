@@ -74,9 +74,15 @@ export async function obLoginStatus(): Promise<ObResult> {
 export interface RemoteVault {
   id?: string;
   name: string;
+  region?: string;
   raw: string;
 }
 
+// ob 0.0.13 output looks like:
+//   Fetching vaults...
+//   Vaults:
+//   "Home" (North America)
+//   "Work Notes" (Europe)
 export async function obListRemoteVaults(): Promise<{ result: ObResult; vaults: RemoteVault[] }> {
   const result = await runOb(["sync-list-remote"], { timeoutMs: 60_000 });
   const vaults: RemoteVault[] = [];
@@ -84,17 +90,21 @@ export async function obListRemoteVaults(): Promise<{ result: ObResult; vaults: 
     for (const line of result.stdout.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      // Skip obvious header/divider lines.
-      if (/^([-=+|\s]+|id\s+name.*|name\s+id.*)$/i.test(trimmed)) continue;
-      // Common shapes: "<id> <name>", "- name (id)", or just a name.
+      // Status/header lines, not vaults.
+      if (/^(fetching|listing|loading|vaults?:|[-=+|]+$)/i.test(trimmed)) continue;
+      // Primary shape: "Name" (Region)
+      const quoted = trimmed.match(/^"(.+)"\s*\((.+)\)\s*$/);
+      // Fallback shapes from earlier guesses: "<id> <name>" or "name (id)".
       const idName = trimmed.match(/^([0-9a-f]{8,})\s+(.+)$/i);
       const nameParen = trimmed.match(/^[-*]?\s*(.+?)\s*\(([0-9a-f]{8,})\)$/i);
-      if (idName) {
+      if (quoted) {
+        vaults.push({ name: quoted[1], region: quoted[2], raw: trimmed });
+      } else if (idName) {
         vaults.push({ id: idName[1], name: idName[2].trim(), raw: trimmed });
       } else if (nameParen) {
         vaults.push({ id: nameParen[2], name: nameParen[1].trim(), raw: trimmed });
       } else {
-        vaults.push({ name: trimmed.replace(/^[-*]\s*/, ""), raw: trimmed });
+        vaults.push({ name: trimmed.replace(/^[-*"]\s*/, "").replace(/"$/, ""), raw: trimmed });
       }
     }
   }

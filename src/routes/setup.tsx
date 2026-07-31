@@ -179,7 +179,7 @@ function ObsidianStep(props: { onDone: () => void }) {
 }
 
 function VaultStep(props: { onDone: () => void }) {
-  const [list] = createResource(() => setupListVaults());
+  const [list, { refetch }] = createResource(() => setupListVaults());
   const [vault, setVault] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
@@ -204,18 +204,45 @@ function VaultStep(props: { onDone: () => void }) {
         <strong>Choose a vault</strong>
       </header>
       <form onSubmit={submit}>
-        <Show when={list()} keyed fallback={<p aria-busy="true">Loading your remote vaults…</p>}>
+        {/* Status row: fetch state + refresh, separate from the picker. */}
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem">
+          <Show
+            when={!list.loading}
+            fallback={<span aria-busy="true">Fetching your remote vaults…</span>}
+          >
+            <span class="muted">
+              {list()?.ok
+                ? `Found ${list()!.vaults.length} vault${list()!.vaults.length === 1 ? "" : "s"} in your Obsidian Sync account.`
+                : "Couldn't fetch the vault list."}
+            </span>
+          </Show>
+          <button
+            type="button"
+            class="secondary outline"
+            style="margin:0; padding:0.25rem 0.75rem; font-size:0.85em; white-space:nowrap"
+            disabled={list.loading}
+            onClick={() => {
+              setVault("");
+              refetch();
+            }}
+          >
+            Refresh
+          </button>
+        </div>
+        <Show when={!list.loading && list()} keyed>
           {(l) => (
             <Show
               when={l.ok && l.vaults.length > 0}
               fallback={
                 <>
                   <p class="muted">
-                    Couldn't parse the vault list — enter the vault name exactly as it appears in
-                    Obsidian Sync. Raw output:
+                    Enter the vault name exactly as it appears in Obsidian Sync.
+                    <Show when={l.raw || l.message}> Raw output:</Show>
                   </p>
-                  <pre>{l.raw || l.message || "(no output)"}</pre>
-                  <label for="vault-name">Vault name or ID</label>
+                  <Show when={l.raw || l.message}>
+                    <pre>{l.raw || l.message}</pre>
+                  </Show>
+                  <label for="vault-name">Vault name</label>
                   <input id="vault-name" type="text" required value={vault()} onInput={(e) => setVault(e.currentTarget.value)} />
                 </>
               }
@@ -227,10 +254,17 @@ function VaultStep(props: { onDone: () => void }) {
                 value={vault()}
                 onInput={(e) => setVault(e.currentTarget.value)}
               >
-                <option value="" disabled selected>
+                <option value="" disabled selected={vault() === ""}>
                   Select a vault…
                 </option>
-                <For each={l.vaults}>{(v) => <option value={v.id ?? v.name}>{v.name}</option>}</For>
+                <For each={l.vaults}>
+                  {(v) => (
+                    <option value={v.id ?? v.name}>
+                      {v.name}
+                      {v.region ? ` — ${v.region}` : ""}
+                    </option>
+                  )}
+                </For>
               </select>
             </Show>
           )}

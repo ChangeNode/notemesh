@@ -1,6 +1,7 @@
-import { createSignal, createResource, Show, For } from "solid-js";
+import { createSignal, createResource, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import {
   getDashboard,
+  getSyncActivity,
   createApiKey,
   deleteApiKey,
   revokeOAuthClient,
@@ -11,6 +12,8 @@ import {
   reauth as reauthServer,
 } from "~/server/admin";
 import { authClient } from "~/lib/auth-client";
+
+type LiveStatus = Awaited<ReturnType<typeof getSyncActivity>>;
 
 const STATE_LABEL: Record<string, { cls: string; label: string }> = {
   running: { cls: "ok", label: "Syncing continuously" },
@@ -36,6 +39,35 @@ export default function Dashboard() {
   const [reauthMsg, setReauthMsg] = createSignal<string | null>(null);
   const [mfa, setMfa] = createSignal("");
   const [busy, setBusy] = createSignal(false);
+
+  // Live status/log poll — cheap in-memory read on the server every 2s.
+  const [live, setLive] = createSignal<LiveStatus | null>(null);
+  let logsEl: HTMLPreElement | undefined;
+  onMount(() => {
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      try {
+        setLive(await getSyncActivity());
+      } catch {
+        // transient — next tick retries
+      } finally {
+        inFlight = false;
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, 2_000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  // Follow the log tail unless the user has scrolled up to read.
+  createEffect(() => {
+    live();
+    if (!logsEl || !showLogs()) return;
+    const nearBottom = logsEl.scrollHeight - logsEl.scrollTop - logsEl.clientHeight < 60;
+    if (nearBottom) logsEl.scrollTop = logsEl.scrollHeight;
+  });
 
   async function createKey(e: Event) {
     e.preventDefault();
@@ -80,19 +112,48 @@ export default function Dashboard() {
       <Show when={data()} keyed>
         {(d) => (
           <>
-            {/* Sync status */}
+            {/* Sync status (live-updating via the 2s poll) */}
             <article>
-              <header>
-                <span class={`status-dot ${STATE_LABEL[d.sync.state]?.cls ?? "warn"}`} />
-                <strong>{STATE_LABEL[d.sync.state]?.label ?? d.sync.state}</strong>
-              </header>
-              <p class="muted">
-                Vault <b>{d.vault.vaultName ?? "(unnamed)"}</b> · {d.vault.noteCount} notes ·{" "}
-                {d.vault.totalWords.toLocaleString()} words
-                <Show when={d.sync.lastActivityAt}>
-                  {" "}· last sync activity {new Date(d.sync.lastActivityAt!).toLocaleTimeString()}
-                </Show>
-              </p>
+              {(() => {
+                const sync = () => live()?.sync ?? d.sync;
+                const vault = () => live()?.vault ?? d.vault;
+                const activity = () => (live()?.sync as any)?.activity;
+                const syncing = () => sync().state === "running" && activity()?.active;
+                return (
+                  <>
+                    <header>
+                      <span class={`status-dot ${STATE_LABEL[sync().state]?.cls ?? "warn"}`} />
+                      <strong>
+                        {syncing()
+                          ? "Syncing changes…"
+                          : sync().state === "running"
+                            ? "Watching for changes"
+                            : (STATE_LABEL[sync().state]?.label ?? sync().state)}
+                      </strong>
+                    </header>
+                    <p class="muted">
+                      Vault <b>{vault().vaultName ?? "(unnamed)"}</b> · {vault().noteCount} notes ·{" "}
+                      {vault().totalWords.toLocaleString()} words
+                      <Show when={sync().lastActivityAt}>
+                        {" "}· last sync activity{" "}
+                        {new Date(sync().lastActivityAt!).toLocaleTimeString()}
+                      </Show>
+                    </p>
+                    <Show when={syncing()}>
+                      <progress />
+                      <small class="muted">
+                        {[
+                          activity()!.downloaded > 0 && `${activity()!.downloaded.toLocaleString()} downloaded`,
+                          activity()!.uploaded > 0 && `${activity()!.uploaded.toLocaleString()} uploaded`,
+                          activity()!.deleted > 0 && `${activity()!.deleted.toLocaleString()} deleted`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Transferring…"}
+                      </small>
+                    </Show>
+                  </>
+                );
+              })()}
               <div role="group">
                 <button onClick={() => doSyncNow().then(() => refetch())}>Sync now</button>
                 <button class="secondary" onClick={() => doRestart().then(() => refetch())}>
@@ -119,9 +180,10 @@ export default function Dashboard() {
                 </Show>
               </Show>
               <Show when={showLogs()}>
-                <pre class="logs">
-                  {d.logs.map((l) => `${new Date(l.ts).toLocaleTimeString()}  ${l.line}`).join("\n") ||
-                    "(no log output yet)"}
+                <pre class="logs" ref={logsEl}>
+                  {(live()?.logs ?? d.logs)
+                    .map((l) => `${new Date(l.ts).toLocaleTimeString()}  ${l.line}`)
+                    .join("\n") || "(no log output yet)"}
                 </pre>
               </Show>
             </article>

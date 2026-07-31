@@ -50,6 +50,20 @@ export async function getDashboard() {
   };
 }
 
+// Lightweight poll target for the live status/logs view — everything here is
+// in-memory or a cheap SQLite count, safe to hit every couple of seconds.
+export async function getSyncActivity() {
+  "use server";
+  await requireAdmin();
+  const sup = supervisor();
+  return {
+    now: Date.now(),
+    sync: sup.status(),
+    logs: sup.getLogs().slice(-200),
+    vault: vaultInfo(),
+  };
+}
+
 export async function createApiKey(name: string) {
   "use server";
   await requireAdmin();

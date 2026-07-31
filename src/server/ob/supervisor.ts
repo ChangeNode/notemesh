@@ -16,18 +16,51 @@ interface LogLine {
   line: string;
 }
 
+export interface SyncActivity {
+  downloaded: number;
+  uploaded: number;
+  deleted: number;
+  startedAt: number | null;
+  lastEventAt: number | null;
+}
+
 const MAX_LOG_LINES = 500;
+// A new file event after this much quiet starts a fresh activity burst.
+const BURST_GAP_MS = 15_000;
+// Activity counts as "in progress" if an event landed this recently.
+const ACTIVE_WINDOW_MS = 5_000;
 
 class SyncSupervisor {
   state: SyncState = "stopped";
   lastActivityAt: number | null = null;
   startedAt: number | null = null;
   restartCount = 0;
+  activity: SyncActivity = { downloaded: 0, uploaded: 0, deleted: 0, startedAt: null, lastEventAt: null };
   private child: ResultPromise | null = null;
   private logs: LogLine[] = [];
   private backoffMs = 2_000;
   private stopping = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Parse daemon output lines into a running tally of the current sync burst.
+  private trackActivity(rawLine: string) {
+    const line = rawLine.replace(/^\[[^\]]*\]\s*/, "");
+    const now = Date.now();
+    const isEvent = /^(Starting sync|Download(ing|ed)|Upload(ing|ed)|Accepted|Merging|Merged|Delet(ing|ed)|Remov(ing|ed))\b/.test(line);
+    if (!isEvent) return;
+    const a = this.activity;
+    if (/^Starting sync/.test(line) || (a.lastEventAt && now - a.lastEventAt > BURST_GAP_MS)) {
+      a.downloaded = 0;
+      a.uploaded = 0;
+      a.deleted = 0;
+      a.startedAt = now;
+    }
+    if (a.startedAt === null) a.startedAt = now;
+    if (/^Downloaded\b/.test(line)) a.downloaded += 1;
+    else if (/^Uploaded\b/.test(line)) a.uploaded += 1;
+    else if (/^(Deleted|Removed)\b/.test(line)) a.deleted += 1;
+    a.lastEventAt = now;
+  }
 
   private obBin(): string {
     if (process.env.OB_BIN) return process.env.OB_BIN;
@@ -42,6 +75,7 @@ class SyncSupervisor {
       if (!t) continue;
       this.logs.push({ ts: Date.now(), line: t });
       this.lastActivityAt = Date.now();
+      this.trackActivity(t);
     }
     if (this.logs.length > MAX_LOG_LINES) {
       this.logs = this.logs.slice(-MAX_LOG_LINES);
@@ -118,11 +152,16 @@ class SyncSupervisor {
   }
 
   status() {
+    const a = this.activity ?? { downloaded: 0, uploaded: 0, deleted: 0, startedAt: null, lastEventAt: null };
     return {
       state: this.state,
       startedAt: this.startedAt,
       lastActivityAt: this.lastActivityAt,
       restartCount: this.restartCount,
+      activity: {
+        ...a,
+        active: a.lastEventAt !== null && Date.now() - a.lastEventAt < ACTIVE_WINDOW_MS,
+      },
     };
   }
 }
@@ -132,7 +171,35 @@ const globalKey = "__obSyncSupervisor";
 export function supervisor(): SyncSupervisor {
   const g = globalThis as any;
   if (!g[globalKey]) g[globalKey] = new SyncSupervisor();
-  return g[globalKey];
+  const inst = g[globalKey] as SyncSupervisor;
+  // Dev HMR keeps the old instance (and its running child) but reloads this
+  // module: rebind the prototype so new methods exist, and backfill fields.
+  if (Object.getPrototypeOf(inst) !== SyncSupervisor.prototype) {
+    Object.setPrototypeOf(inst, SyncSupervisor.prototype);
+  }
+  inst.activity ??= { downloaded: 0, uploaded: 0, deleted: 0, startedAt: null, lastEventAt: null };
+  return inst;
+}
+
+// Kill the daemon when the server process exits — otherwise dev-server
+// restarts and container stops leave an orphaned `ob sync` running.
+const exitKey = "__obSyncExitHook";
+if (!(globalThis as any)[exitKey]) {
+  (globalThis as any)[exitKey] = true;
+  const shutdown = () => {
+    try {
+      supervisor().stop();
+    } catch {
+      // Best effort — the process is going down regardless.
+    }
+  };
+  process.on("exit", shutdown);
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => {
+      shutdown();
+      process.exit(0);
+    });
+  }
 }
 
 // Idempotent boot hook: starts the daemon if setup has completed.

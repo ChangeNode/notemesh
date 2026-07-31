@@ -1,4 +1,4 @@
-import { createSignal, createResource, Show, For, Match, Switch } from "solid-js";
+import { createSignal, createResource, createEffect, Show, For, Match, Switch } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
 import {
@@ -185,6 +185,15 @@ function VaultStep(props: { onDone: () => void }) {
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
 
+  // Once the list arrives, select the first vault so the dropdown needs no
+  // placeholder option (most accounts have exactly one vault anyway).
+  createEffect(() => {
+    const l = list();
+    if (l?.ok && l.vaults.length > 0 && !vault()) {
+      setVault(l.vaults[0].id ?? l.vaults[0].name);
+    }
+  });
+
   async function submit(e: Event) {
     e.preventDefault();
     setError(null);
@@ -254,12 +263,9 @@ function VaultStep(props: { onDone: () => void }) {
                 value={vault()}
                 onInput={(e) => setVault(e.currentTarget.value)}
               >
-                <option value="" disabled selected={vault() === ""}>
-                  Select a vault…
-                </option>
                 <For each={l.vaults}>
                   {(v) => (
-                    <option value={v.id ?? v.name}>
+                    <option value={v.id ?? v.name} selected={vault() === (v.id ?? v.name)}>
                       {v.name}
                       {v.region ? ` — ${v.region}` : ""}
                     </option>

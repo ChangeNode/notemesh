@@ -275,11 +275,12 @@ function VaultStep(props: { onDone: () => void }) {
             </Show>
           )}
         </Show>
-        <label for="vault-password">Vault encryption password</label>
-        <input id="vault-password" type="password" required value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
+        <label for="vault-password">Vault encryption password (only for end-to-end encrypted vaults)</label>
+        <input id="vault-password" type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
         <small class="muted">
-          The end-to-end encryption password for this vault (set when the vault was created in
-          Obsidian Sync). Stored encrypted on this server.
+          Leave this blank if your vault uses managed encryption (the default — no password was set
+          when the vault was created). Only end-to-end encrypted vaults have a password; if yours
+          does, it's stored encrypted on this server.
         </small>
         <Show when={error()}>
           <p class="error">{error()}</p>

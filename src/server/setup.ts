@@ -84,11 +84,11 @@ export async function setupConfigureVault(
 ): Promise<{ ok: boolean; message?: string }> {
   "use server";
   await requireAdmin();
-  const res = await obSyncSetup(vault, encryptionPassword);
+  const res = await obSyncSetup(vault, encryptionPassword || undefined);
   if (!res.ok) {
     return { ok: false, message: lastLines(res.combined) || "sync-setup failed." };
   }
-  storeVaultPassword(encryptionPassword);
+  if (encryptionPassword) storeVaultPassword(encryptionPassword);
   setSetting("vault_configured", "true");
   setSetting("vault_name", vault);
   supervisor().resetAndStart();

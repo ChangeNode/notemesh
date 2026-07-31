@@ -117,21 +117,12 @@ function parseVaultListText(stdout: string): RemoteVault[] {
   return vaults;
 }
 
-export async function obSyncSetup(vault: string, encryptionPassword: string): Promise<ObResult> {
-  return runOb(
-    [
-      "sync-setup",
-      "--vault",
-      vault,
-      "--path",
-      env.vaultDir,
-      "--password",
-      encryptionPassword,
-      "--device-name",
-      "obsidian-mcp-server",
-    ],
-    { timeoutMs: 120_000 },
-  );
+// Password applies only to end-to-end encrypted vaults; managed-encryption
+// vaults (the current default) link without one.
+export async function obSyncSetup(vault: string, encryptionPassword?: string): Promise<ObResult> {
+  const args = ["sync-setup", "--vault", vault, "--path", env.vaultDir, "--device-name", "obsidian-mcp-server"];
+  if (encryptionPassword) args.push("--password", encryptionPassword);
+  return runOb(args, { timeoutMs: 120_000 });
 }
 
 export async function obSyncStatus(): Promise<ObResult> {

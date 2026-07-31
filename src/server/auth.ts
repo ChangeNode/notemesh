@@ -99,7 +99,12 @@ export const auth = betterAuth({
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
       scopes: ["openid", "profile", "email", "offline_access", "vault:read", "vault:write"],
+      // Scopes a client GETS by default when it registers without asking.
       clientRegistrationDefaultScopes: ["openid", "offline_access", "vault:read", "vault:write"],
+      // Scopes a client MAY additionally request at registration. The allowed
+      // set is the union of these with the defaults; without this, OIDC clients
+      // like Codex that request `profile`/`email` are rejected (invalid_scope).
+      clientRegistrationAllowedScopes: ["profile", "email"],
       // MCP clients pass the endpoint URL as the RFC 8707 resource indicator.
       validAudiences: [env.baseUrl, `${env.baseUrl}/api/mcp`],
     }),

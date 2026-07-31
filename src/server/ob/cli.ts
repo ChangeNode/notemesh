@@ -104,6 +104,24 @@ export async function obLoginStatus(): Promise<ObResult> {
   return runOb(["login"], { timeoutMs: 30_000 });
 }
 
+// Reliable authentication probe. ob returns exit code 0 even when logged out,
+// so we can't trust the exit code — instead run a command that genuinely needs
+// auth (sync-list-remote) and inspect its output. Returns true only when it
+// clearly succeeds (parses to a vaults array). This is an ob-issued command, so
+// its "no account logged in" message can't be spoofed by a synced filename.
+export async function obIsAuthenticated(): Promise<boolean> {
+  const res = await runOb(["sync-list-remote", "--json"], { timeoutMs: 30_000 });
+  if (/no account logged in|not logged in|log ?in first/i.test(res.combined)) return false;
+  try {
+    const data = JSON.parse(res.stdout);
+    return Array.isArray(data.vaults);
+  } catch {
+    // Couldn't confirm a good response — treat as not authenticated so the
+    // dashboard prompts for re-auth rather than looping in backoff.
+    return false;
+  }
+}
+
 export interface RemoteVault {
   id?: string;
   name: string;

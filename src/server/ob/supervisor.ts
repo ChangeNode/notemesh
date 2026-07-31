@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
-import { looksLikeAuthFailure, obLoginStatus } from "./cli";
+import { obIsAuthenticated } from "./cli";
 
 export type SyncState =
   | "stopped"
@@ -114,13 +114,13 @@ class SyncSupervisor {
         this.log(`[supervisor] stopped`);
         return;
       }
-      // Decide "needs re-auth" from ob's own login state, not by scraping the
-      // sync log — an attacker who controls a synced filename (e.g. a file
-      // named "session expired.md") could otherwise force this latch and deny
-      // sync. `ob login` with no args reports status.
-      const status = await obLoginStatus().catch(() => null);
-      const loggedOut = status !== null && (!status.ok || looksLikeAuthFailure(status.combined));
-      if (loggedOut) {
+      // Decide "needs re-auth" from an actual auth-requiring ob command, not by
+      // scraping the sync log — an attacker who controls a synced filename
+      // (e.g. a file named "session expired.md") could otherwise force this
+      // latch and deny sync. (ob exit codes are unreliable — it returns 0 even
+      // when logged out — so obIsAuthenticated inspects command output.)
+      const authed = await obIsAuthenticated().catch(() => true);
+      if (!authed) {
         this.state = "needs-reauth";
         this.log(`[supervisor] not authenticated with Obsidian — re-authentication required`);
         return;

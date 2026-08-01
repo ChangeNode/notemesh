@@ -110,7 +110,7 @@ function safe<A extends unknown[], R>(fn: (...args: A) => R) {
 // reimplemented against the synced files (the desktop app isn't running here).
 export function createMcpServer(access: McpAccess): McpServer {
   const server = new McpServer({
-    name: "obsidian-vault",
+    name: "ob-sync",
     version: "0.1.0",
   });
 

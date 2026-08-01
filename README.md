@@ -1,13 +1,27 @@
-# Obsidian Vault MCP Server
+# ob-sync
 
-A self-hosted MCP server for your Obsidian vault, deployable to
-[Railway](https://railway.com) in one click. It keeps a live copy of your vault
-on the server using the official
-[Obsidian Headless](https://github.com/obsidianmd/obsidian-headless) sync
-client, and exposes it to MCP clients (Claude.ai, Claude Code, ChatGPT, MCP
-Inspector, …) over Streamable HTTP with OAuth 2.1 or API keys.
+**Talk to your Obsidian vault from an AI assistant.**
 
-**Requirements:** an [Obsidian Sync](https://obsidian.md/sync) subscription.
+ob-sync is a self-hosted MCP server for people who use [Obsidian
+Sync](https://obsidian.md/sync). It joins your vault as another sync client —
+using Obsidian's official [headless sync
+client](https://github.com/obsidianmd/obsidian-headless) — so the server keeps a
+live, continuously-updating copy of your notes. It then exposes that vault over
+the [Model Context Protocol](https://modelcontextprotocol.io), so MCP clients
+(Claude, Codex, ChatGPT, MCP Inspector, …) can search, read, and edit your notes.
+Anything an assistant writes syncs back to your other devices the same way an
+edit from your phone would.
+
+Deploy it to [Railway](https://railway.com) and it's a private, single-user
+server that only you can connect to.
+
+**Requirements:** an Obsidian Sync subscription (that's how the vault reaches the
+server) and a place to run it.
+
+> ob-sync is an independent, unofficial project. It is not affiliated with,
+> endorsed by, or sponsored by Obsidian. "Obsidian" and "Obsidian Sync" are
+> trademarks of their respective owners; they are used here only to describe
+> what this software interoperates with.
 
 ## What your MCP clients can do
 

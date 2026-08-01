@@ -92,7 +92,7 @@ export default function Dashboard() {
       <nav>
         <ul>
           <li>
-            <strong>Obsidian MCP</strong>
+            <strong>ob-sync</strong>
           </li>
         </ul>
         <ul>

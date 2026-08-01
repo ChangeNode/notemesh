@@ -10,7 +10,7 @@ export default function App() {
     <Router
       root={(props) => (
         <MetaProvider>
-          <Title>Obsidian MCP</Title>
+          <Title>ob-sync</Title>
           <Suspense>{props.children}</Suspense>
         </MetaProvider>
       )}

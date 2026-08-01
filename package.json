@@ -1,5 +1,5 @@
 {
-  "name": "ob-sync-mcp",
+  "name": "ob-sync",
   "version": "0.1.0",
   "description": "Personal Obsidian vault MCP server — Railway template",
   "type": "module",

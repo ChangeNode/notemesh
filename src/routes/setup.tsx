@@ -23,7 +23,7 @@ export default function Setup() {
   return (
     <main class="container">
       <hgroup>
-        <h2>Set up your Obsidian MCP server</h2>
+        <h2>Set up ob-sync</h2>
         <Show when={stage() && stage() !== "done"}>
           <p class="muted">Step {STEP_NUMBER[stage()!]} of 3</p>
         </Show>

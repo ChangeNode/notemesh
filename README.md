@@ -101,6 +101,22 @@ The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP).
   claude mcp add --transport http obsidian https://<your-app>/api/mcp
   ```
 
+- **Codex** — add to `~/.codex/config.toml`, then `codex mcp login obsidian`:
+
+  ```toml
+  [mcp_servers.obsidian]
+  url = "http://localhost:3000/api/mcp"
+  auth = "oauth"
+  default_tools_approval_mode = "approve"
+  ```
+
+  `default_tools_approval_mode = "approve"` lets the tools run without
+  approving each call. Worth setting: without it Codex prompts per call, and
+  because its reported per-call timings are wall-clock, the seconds you spend
+  approving are counted as tool latency — which reads as a slow server. A call
+  left unapproved long enough also hits Codex's own timeout and can knock the
+  whole tool schema out of its session.
+
 - **Anything with a bearer token** — create an API key on the dashboard and
   send it as `Authorization: Bearer <key>` (or `x-api-key: <key>`).
 

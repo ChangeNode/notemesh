@@ -4,7 +4,7 @@
 
 The Obsidian MCP integration became unavailable during a non-destructive smoke
 test on 2026-07-31 (America/Los_Angeles). The first six calls in a nine-call
-concurrent read batch completed, slowly, while the final three returned
+concurrent read batch completed while the final three returned
 `MCP tool ... is not available to the model`. Immediately afterward, all 24
 previously advertised Obsidian tools disappeared from the callable inventory.
 Repeated MCP discovery calls then returned:
@@ -16,10 +16,29 @@ resources/list failed: MCP server 'obsidian' was not ready for this step
 The integration did not recover after waits of 10 seconds, 30 seconds, and
 additional diagnostic time. Testing was stopped at the user's request.
 
-This is a release-blocking reliability issue for the Codex integration. The
+This is a reliability issue in the Codex approval/tool-dispatch integration,
+not currently evidence of slow Obsidian server handlers. The
 available evidence does not yet prove whether the fault is in this server, the
 MCP host/client, or their interaction under concurrency. The first diagnostic
 step must be to correlate the timestamps below with server request logs.
+
+## Critical timing correction — approval wait was included
+
+The durations originally recorded by the test harness are **not server-response
+times**. The harness started `Date.now()` before awaiting the nested MCP tool.
+Codex paused that await while waiting for the user to approve the tool call, so
+the displayed wall time includes human approval delay.
+
+The updated server wraps `transport.handleRequest()` with instrumentation that
+logs `[slow]` for any MCP handler exceeding 1,000 ms. The local development log
+contains no `[slow]` entries for calls whose client wall-clock measurements
+ranged from about 5 seconds to 135 seconds. Therefore those server handlers
+completed in **under one second**; the exact handler durations are not known.
+
+Treat every historical duration table below as approval-inclusive client wall
+time only. Do not use it as evidence of server latency, event-loop blocking, or
+a 30-second server timeout. The apparent 30-second and 141-second boundaries
+may instead be approval/dispatcher expiration in Codex.
 
 ## Environment
 
@@ -80,8 +99,9 @@ I am able to write successfully
 
 ### Passed while creating isolated fixtures
 
-Four calls were issued sequentially inside one test cell. All passed, but the
-batch took approximately **157 seconds**, which is unexpectedly slow.
+Four calls were issued sequentially inside one test cell. All passed. The cell
+reported approximately **157 seconds of approval-inclusive client wall time**;
+this is not a server-latency measurement.
 
 | Operation | Observed result |
 | --- | --- |
@@ -94,7 +114,7 @@ batch took approximately **157 seconds**, which is unexpectedly slow.
 
 Nine calls were started with `Promise.all`. Six completed and three failed.
 
-| Operation | Result | Duration |
+| Operation | Result | Approval-inclusive client wall time |
 | --- | --- | ---: |
 | `get_vault_info` | Pass | 98,248 ms |
 | `list_folders` | Pass | 101,079 ms |
@@ -113,17 +133,19 @@ MCP tool `obsidian/get_links` is not available to the model
 MCP tool `obsidian/random_note` is not available to the model
 ```
 
-The fact that exactly six concurrent calls completed is significant. It may
-indicate a six-call limit or queue in the MCP host rather than a handler defect.
+The fact that exactly six concurrent calls completed may indicate an approval
+or concurrency limit in the MCP host rather than a handler defect.
 Confirm in server logs whether requests for the two `get_links` calls and the
 `random_note` call ever reached `/api/mcp`.
 
 ## Failure progression
 
 1. The server initially advertised 24 Obsidian tools.
-2. Fixture writes succeeded, but four simple calls took about 157 seconds.
-3. In a nine-call concurrent read batch, six calls completed in 98-111 seconds.
-4. The remaining three calls failed at about 141 seconds with
+2. Fixture writes succeeded; their containing cell accumulated about 157
+   seconds of approval-inclusive wall time.
+3. In a nine-call concurrent read batch, six calls completed after 98-111
+   seconds of approval-inclusive wall time.
+4. The remaining three calls failed after about 141 seconds of wall time with
    `not available to the model`.
 5. The next attempted batch (`list_tags`, `notes_by_tag`, and two
    `read_properties` calls) failed locally and immediately because the tool
@@ -158,7 +180,7 @@ the outage:
 - Concurrent tool calls either execute concurrently or queue with a documented,
   bounded delay; they must not make tools disappear.
 - A failed or timed-out call must not unregister the entire MCP server.
-- Normal read calls against a 2,600-note vault should not take 98-141 seconds.
+- Server-handler latency must be measured independently from approval wait.
 - The server should recover cleanly from client cancellation or transport
   timeout without requiring manual reconnection or restart.
 
@@ -356,8 +378,9 @@ all **25** current Obsidian tools, including the newly added `read_attachment`.
 This proves that OAuth, initial schema discovery, and model tool injection can
 all succeed after a full client restart.
 
-An initial `get_vault_info` call passed in approximately 4.3 seconds and
-reported 2,614 notes, 940,892 words, and sync state `running`.
+An initial `get_vault_info` call passed and reported 2,614 notes, 940,892 words,
+and sync state `running`. Its approximately 4.3-second client wall time included
+approval wait and is not a server measurement.
 
 ### Sequential read-only test
 
@@ -365,7 +388,7 @@ No concurrent MCP calls and no vault mutations were used.
 
 The first sequence produced these results:
 
-| Call | Duration | Result |
+| Call | Approval-inclusive client wall time | Result |
 | --- | ---: | --- |
 | `list_folders` | 110,306 ms | Returned valid first page: 147 total, 100 items, `hasMore: true`. |
 | `list_notes` for a removed test folder | 2,210 ms | Correctly returned `Folder not found`. |
@@ -374,13 +397,13 @@ The first sequence produced these results:
 | `search_vault` for the removed fixture token | 1,869 ms | Correctly returned an empty array. |
 
 The prior smoke-test fixture had been removed, so those negative results are
-expected handler behavior, not failures. The 110-second latency on the first
-call remains abnormal.
+expected handler behavior, not failures. The 110-second figure included tool
+approval time and must not be attributed to the server.
 
 A second sequential sequence used existing vault data and the new pagination
 arguments:
 
-| Call | Duration | Result |
+| Call | Approval-inclusive client wall time | Result |
 | --- | ---: | --- |
 | `list_folders(limit=500)` | 24 ms | Pass; returned all 147 folders. |
 | `list_notes(folder="Daily", limit=500)` | 16 ms | Pass; included `Daily/2026-07-31.md`. |
@@ -404,15 +427,16 @@ count fell from 25 to zero again.
 ### Updated conclusion
 
 This failure does **not** require concurrent requests. A full client restart
-restores the schema temporarily, but a slow call near the 30-second boundary is
-followed by dispatcher rejection of all subsequent Obsidian calls and complete
-loss of the model-visible schema.
+restores the schema temporarily, but a call whose approval-inclusive wait
+approached the Codex dispatch boundary was followed by rejection of subsequent
+Obsidian calls and complete loss of the model-visible schema. Server logs do not
+show that the corresponding handler itself was slow.
 
-Correlate the 28.4-second successful `daily_note/path` call and 30.1-second
-failed `daily_note/read` call with both client and server logs. Determine:
+Correlate the successful `daily_note/path` approval/call and failed
+`daily_note/read` approval/call with both client and server logs. Determine:
 
 1. whether the failed read request reached `/api/mcp`;
-2. whether a 30-second client timeout invalidates or unregisters the server;
+2. whether an approval or dispatch timeout invalidates or unregisters the server;
 3. whether the server closes or fails to close its stateless transport near
    that timeout boundary;
 4. why one timeout changes later calls from normal MCP requests into local

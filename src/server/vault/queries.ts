@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
 import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
-import { readNote, createNote } from "./notes";
+import { readNote, readNoteRange, createNote } from "./notes";
 import { dailyNotePath } from "./daily";
 
 export interface SearchHit {
@@ -179,12 +179,13 @@ export function outline(notePath: string): { level: number; heading: string; lin
   return out;
 }
 
-export function randomNote(): { path: string; content: string } {
+export function randomNote() {
   const row = db().prepare("SELECT path FROM notes ORDER BY RANDOM() LIMIT 1").get() as
     | { path: string }
     | undefined;
   if (!row) throw new VaultPathError("The vault has no notes yet");
-  return readNote(row.path);
+  // Windowed: a random pick could land on a 465 KB note.
+  return readNoteRange(row.path);
 }
 
 // Zettelkasten-style unique note (Obsidian default format: YYYYMMDDHHmm).

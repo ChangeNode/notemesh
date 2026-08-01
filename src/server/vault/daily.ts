@@ -3,7 +3,7 @@ import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
 import { resolveNotePath, toVaultRelative, VaultPathError } from "./paths";
-import { createNote, appendToNote, prependToNote, readNote, noteExists } from "./notes";
+import { createNote, appendToNote, prependToNote, readNote, readNoteRange, noteExists } from "./notes";
 
 interface DailyConfig {
   folder: string;
@@ -81,8 +81,8 @@ function ensureDailyNote(date?: string): string {
   return rel;
 }
 
-export function dailyRead(date?: string): { path: string; content: string } {
-  return readNote(dailyNotePath(date));
+export function dailyRead(date?: string) {
+  return readNoteRange(dailyNotePath(date));
 }
 
 export function dailyAppend(content: string, date?: string): string {

@@ -22,7 +22,38 @@ export function readVaultFile(abs: string): string {
       `Note is too large to read (${Math.round(st.size / 1024 / 1024)} MB; limit ${MAX_NOTE_BYTES / 1024 / 1024} MB)`,
     );
   }
+  if (isBinaryFile(abs)) {
+    throw new VaultPathError(
+      `This is a binary attachment (${formatBytes(st.size)}), not readable as text. ` +
+        `Use read_attachment for images and other binary files.`,
+    );
+  }
   return fs.readFileSync(abs, "utf8");
+}
+
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// Sniff the head of the file for NUL bytes rather than trusting the extension:
+// reading a 4.6 MB JPEG as UTF-8 produced a 12 MB response of replacement
+// characters (JSON escaping inflates it ~2.6x), which is useless to a client
+// and can blow its entire context in one call.
+export function isBinaryFile(abs: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(abs, "r");
+    const buf = Buffer.alloc(8192);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    for (let i = 0; i < read; i++) if (buf[i] === 0) return true;
+    return false;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
 }
 
 // Reject control characters (incl. NUL) and Unicode bidi overrides in a path.

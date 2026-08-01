@@ -119,6 +119,26 @@ This matters when verifying a write. If you check a different copy of the vault
 sync delivers it, which looks exactly like a write that never flushed. Verify
 against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 
+## Size limits
+
+| Limit | Value | Applies to |
+| --- | --- | --- |
+| List results | 100 default, 500 max | `list_notes`, `list_folders`, `list_tags`, `notes_by_tag`, `list_tasks`, `list_link_issues` |
+| Search results | 20 default, 100 max | `search_vault` |
+| Note read window | 2,000 lines or 100 KB, whichever first | `read_note`, `daily_note` read, `random_note` |
+| Attachment read | 1 MB | `read_attachment` |
+| File read (internal) | 10 MiB | any text read; larger files are skipped by the indexer too |
+| Request body | 4 MiB | `/api/mcp` — the ceiling on a single `create_note`/`update_note` |
+
+`read_note` returns `{totalLines, offset, count, hasMore}` alongside `content`,
+so a long note is paged with `offset` rather than dumped in one response — a
+465 KB note would otherwise be ~121k tokens in a single tool call.
+
+Binary files are refused by the text read path (detected by content, not just
+extension) and served by `read_attachment`, which returns images as viewable
+image content and refuses anything over 1 MB with its size. Reading a JPEG as
+text previously produced a 12 MB response of replacement characters.
+
 ## Security model
 
 - Single-user: exactly one admin account, created once via the token-gated

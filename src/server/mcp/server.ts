@@ -6,6 +6,8 @@ import { VaultPathError } from "../vault/paths";
 import { reindexPath } from "../vault/indexer";
 import {
   readNote,
+  readNoteRange,
+  readAttachment,
   createNote,
   updateNote,
   appendToNote,
@@ -119,10 +121,18 @@ export function createMcpServer(access: McpAccess): McpServer {
     "read_note",
     {
       title: "Read note",
-      description: "Read the full contents of a note. Path is vault-relative; '.md' is optional.",
-      inputSchema: { path: z.string().describe("Vault-relative note path, e.g. 'Projects/Ideas.md'") },
+      description:
+        "Read a note. Returns up to 2000 lines (100KB) per call with totalLines/offset/count/hasMore — " +
+        "page through a long note with offset. Binary attachments are refused here; use read_attachment.",
+      inputSchema: {
+        path: z.string().describe("Vault-relative note path, e.g. 'Projects/Ideas.md'"),
+        offset: z.number().int().min(0).optional().describe("First line to return (0-based)"),
+        limit: z.number().int().min(1).max(20000).optional().describe("Max lines (default 2000)"),
+      },
     },
-    safe(({ path }: { path: string }) => json(readNote(path))),
+    safe(({ path, offset, limit }: { path: string; offset?: number; limit?: number }) =>
+      json(readNoteRange(path, { offset, limit })),
+    ),
   );
 
   server.registerTool(
@@ -138,6 +148,29 @@ export function createMcpServer(access: McpAccess): McpServer {
     safe(({ folder, limit, offset }: { folder?: string; limit?: number; offset?: number }) =>
       page(listNotes(folder), limit, offset),
     ),
+  );
+
+  server.registerTool(
+    "read_attachment",
+    {
+      title: "Read attachment",
+      description:
+        "Read a binary vault file (image, PDF, …) as base64; images come back as viewable image content. " +
+        "Limited to 1 MB — larger files are reported with their size instead of returned.",
+      inputSchema: { path: z.string().describe("Vault-relative attachment path, e.g. 'Attachments/Diagram.png'") },
+    },
+    safe(({ path }: { path: string }) => {
+      const a = readAttachment(path);
+      if (a.isImage) {
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ path: a.path, mimeType: a.mimeType, bytes: a.bytes }) },
+            { type: "image" as const, data: a.base64, mimeType: a.mimeType },
+          ],
+        };
+      }
+      return json({ path: a.path, mimeType: a.mimeType, bytes: a.bytes, base64: a.base64 });
+    }),
   );
 
   server.registerTool(

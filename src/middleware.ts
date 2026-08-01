@@ -10,6 +10,29 @@ function redirectTo(path: string): Response {
   return new Response(null, { status: 302, headers: { Location: path } });
 }
 
+// Routes that legitimately exist under /api. Anything else under /api — and
+// any JSON-shaped request to an unknown path — must fail loudly.
+const API_PREFIXES = ["/api/health", "/api/mcp", "/api/auth/"];
+
+function isKnownApiPath(pathname: string): boolean {
+  return API_PREFIXES.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p));
+}
+
+// SolidStart's catch-all serves the SPA shell for unmatched routes, so a client
+// that POSTs to a slightly wrong URL (/mcp instead of /api/mcp, say) previously
+// got 200 + HTML and had to guess why its JSON parse failed. Return an explicit
+// 404 JSON instead, so a misconfigured endpoint is obvious rather than
+// surfacing as mangled client-side errors.
+function notFoundJson(pathname: string): Response {
+  return new Response(
+    JSON.stringify({
+      error: "not_found",
+      message: `No API endpoint at ${pathname}. The MCP endpoint is /api/mcp.`,
+    }),
+    { status: 404, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 // Codex 0.146.0 requires the RFC 9207 `iss` authorization-response parameter
 // whenever the AS metadata advertises support for it, but then fails to read
 // the `iss` it is sent (verified: even a callback with `iss` present is
@@ -40,6 +63,20 @@ export default createMiddleware({
       ensureIndexerStarted();
 
       const url = new URL(event.request.url);
+
+      // Unknown /api/* path, or a JSON-shaped request to a non-page path.
+      if (url.pathname.startsWith("/api/") && !isKnownApiPath(url.pathname)) {
+        return notFoundJson(url.pathname);
+      }
+      if (!url.pathname.startsWith("/api/") && !url.pathname.startsWith("/.well-known/")) {
+        const accept = event.request.headers.get("accept") ?? "";
+        const ctype = event.request.headers.get("content-type") ?? "";
+        const wantsJson = ctype.includes("application/json") || accept.includes("application/json");
+        const isPageRoute = ["/", "/login", "/setup", "/oauth/consent"].includes(url.pathname);
+        if (wantsJson && !isPageRoute && event.request.method !== "GET") {
+          return notFoundJson(url.pathname);
+        }
+      }
 
       // Gate authenticated pages here rather than inside the page's data
       // loader: a redirect thrown from within createResource is swallowed by

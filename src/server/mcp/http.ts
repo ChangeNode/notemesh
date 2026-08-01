@@ -2,6 +2,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { toReqRes, toFetchResponse } from "fetch-to-node";
 import { createMcpServer, type McpAccess } from "./server";
 import { ensureIndexerStarted } from "../vault/indexer";
+import { startLoopLagMonitor, timed } from "./instrument";
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
@@ -18,6 +19,7 @@ async function readCappedJson(request: Request): Promise<unknown> {
 // Stateless Streamable HTTP: a fresh server + transport per request. All state
 // lives in the vault/database, so nothing needs to persist between calls.
 export async function serveMcp(request: Request, access: McpAccess): Promise<Response> {
+  startLoopLagMonitor();
   ensureIndexerStarted();
   const server = createMcpServer(access);
   const transport = new StreamableHTTPServerTransport({
@@ -25,7 +27,10 @@ export async function serveMcp(request: Request, access: McpAccess): Promise<Res
   });
   const { req, res } = toReqRes(request);
   await server.connect(transport);
-  await transport.handleRequest(req, res, await readCappedJson(request).catch(() => undefined));
+  const body = await readCappedJson(request).catch(() => undefined);
+  const toolName =
+    (body as any)?.params?.name ?? (body as any)?.method ?? "unknown";
+  await timed(`mcp ${toolName}`, () => transport.handleRequest(req, res, body));
   const response = await toFetchResponse(res);
   res.on("close", () => {
     void transport.close();

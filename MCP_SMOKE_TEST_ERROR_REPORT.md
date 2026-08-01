@@ -266,3 +266,156 @@ Do not “fix” the report by merely increasing client timeouts. The key failur
 loss of tool availability and failure to recover. First establish whether the
 server received the failed requests; then fix the responsible layer and add a
 regression test at that boundary.
+
+## Retest after MCP re-registration — 2026-08-01
+
+A later retest attempted to reload the schema from a clean client state.
+
+### Server health
+
+The sandbox could not reach loopback, but a host-level request succeeded:
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json
+
+{"ok":true,"configured":true}
+```
+
+The endpoint was still configured as:
+
+```text
+http://localhost:3000/api/mcp
+```
+
+### Registration refresh
+
+There is no `codex mcp reload` command, so the registration was removed and
+re-added with the same URL. The add command detected OAuth, opened the OAuth
+flow, requested `vault:read` and `vault:write`, and printed:
+
+```text
+Successfully logged in.
+```
+
+However, `codex mcp list` continued to report the Obsidian connection as:
+
+```text
+Status: enabled
+Auth: Unsupported
+```
+
+The already-running Codex session still had zero advertised Obsidian tools,
+which may be expected if active sessions cannot hot-reload schemas.
+
+### Fresh-process verification
+
+A new ephemeral, read-only `codex exec` process was started after the
+registration and OAuth refresh. It was instructed to call only
+`get_vault_info` and `daily_note(action="path", date="2026-08-01")`.
+
+The fresh process reported:
+
+```text
+Unable to perform the calls: no configured Obsidian MCP tools, including
+`get_vault_info` or `daily_note`, are available in this session.
+```
+
+Neither call reached a tool handler.
+
+During startup, that process also logged an `invalid_token` error for an
+unrelated Cloudflare MCP endpoint. Do not attribute that error to Obsidian, but
+check whether one failed MCP initialization incorrectly suppresses other MCP
+servers during global tool discovery.
+
+### Updated fault boundary
+
+The Obsidian application health endpoint is available, but a newly launched
+Codex client still cannot load its tool schema after an apparently successful
+OAuth flow. Prioritize these checks:
+
+1. Inspect server access logs to confirm whether the fresh client requested the
+   protected-resource metadata, authorization-server metadata, token endpoint,
+   and MCP `initialize` / `tools/list` methods.
+2. Confirm the access token is persisted by Codex and sent to `/api/mcp` after
+   the successful login message.
+3. Confirm the token audience/resource exactly matches
+   `http://localhost:3000/api/mcp`; look for an HTTP/HTTPS or localhost/127.0.0.1
+   mismatch.
+4. Determine why Codex reports `Auth: Unsupported` immediately after completing
+   OAuth successfully.
+5. Test with all unrelated MCP servers disabled to determine whether a failure
+   initializing one server prevents Obsidian tool discovery.
+6. Capture the raw status and response body for the fresh client's
+   `initialize` and `tools/list` requests.
+
+## Post-restart retest — schema loads, then disappears
+
+After the Codex app was restarted, the active model runtime initially exposed
+all **25** current Obsidian tools, including the newly added `read_attachment`.
+This proves that OAuth, initial schema discovery, and model tool injection can
+all succeed after a full client restart.
+
+An initial `get_vault_info` call passed in approximately 4.3 seconds and
+reported 2,614 notes, 940,892 words, and sync state `running`.
+
+### Sequential read-only test
+
+No concurrent MCP calls and no vault mutations were used.
+
+The first sequence produced these results:
+
+| Call | Duration | Result |
+| --- | ---: | --- |
+| `list_folders` | 110,306 ms | Returned valid first page: 147 total, 100 items, `hasMore: true`. |
+| `list_notes` for a removed test folder | 2,210 ms | Correctly returned `Folder not found`. |
+| `read_note` for the removed fixture | 3,183 ms | Correctly returned `Note not found`. |
+| `get_outline` for the removed fixture | 2,444 ms | Correctly returned `Note not found`. |
+| `search_vault` for the removed fixture token | 1,869 ms | Correctly returned an empty array. |
+
+The prior smoke-test fixture had been removed, so those negative results are
+expected handler behavior, not failures. The 110-second latency on the first
+call remains abnormal.
+
+A second sequential sequence used existing vault data and the new pagination
+arguments:
+
+| Call | Duration | Result |
+| --- | ---: | --- |
+| `list_folders(limit=500)` | 24 ms | Pass; returned all 147 folders. |
+| `list_notes(folder="Daily", limit=500)` | 16 ms | Pass; included `Daily/2026-07-31.md`. |
+| `daily_note(action="path", date="2026-08-01")` | 28,390 ms | Pass; returned `Daily/2026-08-01.md`. |
+| `daily_note(action="read", date="2026-07-31")` | 30,061 ms | Failed with `unsupported call`. |
+| Later `read_note`, `get_outline`, `search_vault` | 0-1 ms | Failed immediately with `unsupported call`. |
+
+The runtime rendered the failing names without the separator between server
+and tool, for example:
+
+```text
+unsupported call: mcp__obsidiandaily_note
+unsupported call: mcp__obsidianread_note
+unsupported call: mcp__obsidianget_outline
+unsupported call: mcp__obsidiansearch_vault
+```
+
+Immediately after these errors, the active runtime's advertised Obsidian tool
+count fell from 25 to zero again.
+
+### Updated conclusion
+
+This failure does **not** require concurrent requests. A full client restart
+restores the schema temporarily, but a slow call near the 30-second boundary is
+followed by dispatcher rejection of all subsequent Obsidian calls and complete
+loss of the model-visible schema.
+
+Correlate the 28.4-second successful `daily_note/path` call and 30.1-second
+failed `daily_note/read` call with both client and server logs. Determine:
+
+1. whether the failed read request reached `/api/mcp`;
+2. whether a 30-second client timeout invalidates or unregisters the server;
+3. whether the server closes or fails to close its stateless transport near
+   that timeout boundary;
+4. why one timeout changes later calls from normal MCP requests into local
+   `unsupported call` failures;
+5. why a full app restart, rather than ordinary MCP reconnection, is required
+   to restore the tool schema.

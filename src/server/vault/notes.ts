@@ -81,6 +81,9 @@ const MIME_BY_EXT: Record<string, string> = {
   webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", avif: "image/avif",
   pdf: "application/pdf", mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4",
   mp4: "video/mp4", mov: "video/quicktime", zip: "application/zip",
+  // Text-ish types that can legitimately live in a vault alongside notes.
+  md: "text/markdown", txt: "text/plain", csv: "text/csv", json: "application/json",
+  canvas: "application/json",
 };
 
 export function readAttachment(notePath: string): {
@@ -95,6 +98,14 @@ export function readAttachment(notePath: string): {
   const st = fs.lstatSync(abs);
   if (st.isSymbolicLink()) throw new VaultPathError("Symlinks are not accessible");
   if (!st.isFile()) throw new VaultPathError("Not a file");
+  // Mirror read_note's refusal in the other direction: handing a markdown note
+  // back as base64 octet-stream is never what the caller wanted, and leaving it
+  // to "work" makes the two tools quietly inconsistent.
+  if (!isBinaryFile(abs) && path.extname(abs).toLowerCase() === ".md") {
+    throw new VaultPathError(
+      `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
+    );
+  }
   if (st.size > MAX_ATTACHMENT_BYTES) {
     throw new VaultPathError(
       `Attachment is ${formatBytes(st.size)}; the limit for inline reads is ` +

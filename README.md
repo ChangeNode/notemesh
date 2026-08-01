@@ -42,12 +42,51 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
      material, not a passphrase. **Changing it later locks the stored
      credentials out.**
    - `DATA_DIR=/data`
-4. Deploy, then open the service URL and follow the setup wizard:
+4. Under **Settings → Networking**, generate a public domain, then redeploy.
+   The OAuth issuer is derived from `RAILWAY_PUBLIC_DOMAIN` when the process
+   starts, so a service that booted before it had a domain will advertise the
+   wrong issuer until it restarts. (Setting `BASE_URL` explicitly also works.)
+5. Open the service URL and follow the setup wizard:
    1. Paste the `SETUP_TOKEN` and choose your admin email/password.
    2. Sign in with your **Obsidian account** (MFA supported).
-   3. Pick the remote vault and enter its end-to-end encryption password.
-5. The server starts a continuous sync daemon and the dashboard shows its
+   3. Pick the remote vault. Leave the encryption password **blank** unless the
+      vault uses end-to-end encryption — Obsidian Sync's default is managed
+      encryption, which has no password.
+6. The server starts a continuous sync daemon and the dashboard shows its
    status, logs, connected clients, and API keys.
+
+**Sizing the volume:** the vault copy includes synced attachments (images,
+audio, PDFs, video), so size the volume for your vault plus headroom, not just
+its markdown. You can narrow what syncs later with `ob sync-config --file-types`
+inside the container.
+
+## Publish it as a Railway template
+
+To let other people deploy their own instance with one click:
+
+1. Railway dashboard → workspace **Settings → Templates → New Template**.
+2. **Add New** → source: this GitHub repo (append `/tree/<branch>` to pin a
+   branch).
+3. Right-click the service → **Attach Volume**, mount path `/data`.
+4. In **Variables**, use Railway's generator functions so every deploy gets its
+   own secrets — never ship fixed values:
+
+   | Variable | Value |
+   | --- | --- |
+   | `SETUP_TOKEN` | `${{secret(32)}}` |
+   | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
+   | `DATA_DIR` | `/data` |
+
+   The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the
+   32 bytes of key material the server requires. (A plain `${{secret()}}` would
+   be rejected: it isn't valid base64 or hex key material.)
+5. Settings tab: healthcheck path `/api/health` (also read from `railway.json`).
+6. **Create Template**, then publish it to get the shareable deploy URL and
+   button markdown.
+
+Deployers still need their own Obsidian Sync subscription, and each deployment
+is a **single-user** instance — the first person to present the `SETUP_TOKEN`
+claims it, and sign-up closes permanently after that.
 
 ## Connect MCP clients
 

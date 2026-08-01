@@ -35,6 +35,11 @@ export function audit(event: string, detail: Record<string, unknown> = {}) {
   }
 }
 
+// Ceiling on dynamically-registered OAuth clients (see the /oauth2/register
+// hook below). Well above what real use produces — testing accumulated a
+// handful — but bounded so anonymous registration can't grow the DB forever.
+const MAX_OAUTH_CLIENTS = 50;
+
 function userCount(): number {
   try {
     const row = db()
@@ -55,6 +60,34 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 10,
   },
+  // Only the anonymous entry points are throttled. Authenticated dashboard
+  // traffic keeps a high ceiling: the concern is a stranger probing, not the
+  // single operator using their own server.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 600,
+    customRules: {
+      // Password guessing. Generous enough to survive a few fat-fingered
+      // attempts, and the window is short so a mistake isn't a long lockout.
+      "/sign-in/email": { window: 60, max: 10 },
+      // Guessing SETUP_TOKEN to claim an unconfigured instance.
+      "/sign-up/email": { window: 3600, max: 10 },
+      // Unauthenticated dynamic client registration.
+      "/oauth2/register": { window: 3600, max: 20 },
+    },
+  },
+  advanced: {
+    ipAddress: {
+      // Trust forwarding headers only where a proxy actually sets them.
+      // Elsewhere a client could supply x-forwarded-for itself and get a fresh
+      // bucket per request, which would make every limit above decorative.
+      ipAddressHeaders:
+        process.env.RAILWAY_PUBLIC_DOMAIN || process.env.TRUST_PROXY_HEADERS
+          ? ["x-forwarded-for", "x-real-ip"]
+          : [],
+    },
+  },
   hooks: {
     // This instance is single-user: exactly one admin account, created by the
     // setup wizard. The first (and only) sign-up must present the SETUP_TOKEN.
@@ -74,6 +107,34 @@ export const auth = betterAuth({
           });
         }
         audit("signup.accepted", {});
+      }
+
+      // Anonymous dynamic client registration is the one open write endpoint,
+      // so bound how many rows a stranger can create. Evict clients that were
+      // registered but never used before refusing, since MCP clients routinely
+      // create throwaway registrations (a failed login leaves one behind).
+      if (ctx.path === "/oauth2/register") {
+        const d = db();
+        try {
+          d.prepare(
+            `DELETE FROM "oauthClient"
+             WHERE createdAt < ?
+               AND clientId NOT IN (SELECT clientId FROM "oauthAccessToken")
+               AND clientId NOT IN (SELECT clientId FROM "oauthRefreshToken")
+               AND clientId NOT IN (SELECT clientId FROM "oauthConsent")`,
+          ).run(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+          const { n } = d.prepare('SELECT COUNT(*) AS n FROM "oauthClient"').get() as { n: number };
+          if (n >= MAX_OAUTH_CLIENTS) {
+            audit("oauth.register.rejected", { reason: "client_cap", count: n });
+            throw new APIError("TOO_MANY_REQUESTS", {
+              message: "Too many registered OAuth clients on this instance.",
+            });
+          }
+        } catch (e) {
+          if (e instanceof APIError) throw e;
+          // A bookkeeping failure must not block legitimate registration.
+          console.error("[auth] client-cap check failed:", e);
+        }
       }
     }),
     after: createAuthMiddleware(async (ctx) => {

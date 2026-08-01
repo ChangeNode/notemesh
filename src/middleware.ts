@@ -1,6 +1,14 @@
 import { createMiddleware } from "@solidjs/start/middleware";
 import { ensureSyncStarted } from "./server/ob/supervisor";
 
+// Pages that require a signed-in admin. Everything else (login, setup, the
+// OAuth consent page, API routes) handles its own access rules.
+const PROTECTED_PAGES = new Set(["/"]);
+
+function redirectTo(path: string): Response {
+  return new Response(null, { status: 302, headers: { Location: path } });
+}
+
 // Codex 0.146.0 requires the RFC 9207 `iss` authorization-response parameter
 // whenever the AS metadata advertises support for it, but then fails to read
 // the `iss` it is sent (verified: even a callback with `iss` present is
@@ -27,9 +35,23 @@ export default createMiddleware({
       // Idempotent: restarts the sync daemon after a server (re)boot.
       ensureSyncStarted();
 
+      const url = new URL(event.request.url);
+
+      // Gate authenticated pages here rather than inside the page's data
+      // loader: a redirect thrown from within createResource is swallowed by
+      // Solid and surfaces as a 500 instead of a redirect. The server
+      // functions still call requireAdmin() themselves — this is the
+      // navigation-level guard, not the security boundary.
+      if (PROTECTED_PAGES.has(url.pathname)) {
+        const { auth, isSetupComplete, runAuthMigrations } = await import("./server/auth");
+        await runAuthMigrations();
+        if (!(await isSetupComplete())) return redirectTo("/setup");
+        const session = await auth.api.getSession({ headers: event.request.headers });
+        if (!session) return redirectTo("/login");
+      }
+
       // OAuth discovery endpoints live under /.well-known/, which the file
       // router doesn't serve — handle them here.
-      const url = new URL(event.request.url);
       // RFC 8414 path-inserted variants: issuer is <base>/api/auth, so clients
       // may request /.well-known/oauth-authorization-server/api/auth.
       if (

@@ -145,6 +145,55 @@ function indexFile(relPath: string, absPath: string) {
   tx();
 }
 
+// Index a single path synchronously. Called right after a tool writes a note
+// so index-backed tools (search, tasks, tags, links) see the change on the very
+// next call instead of waiting for the watcher's debounce (~1s). The watcher
+// still fires afterwards and is idempotent.
+export function reindexPath(relPath: string) {
+  try {
+    const abs = path.join(env.vaultDir, relPath);
+    if (!isSafeVaultPath(abs)) return;
+    if (fs.existsSync(abs)) indexFile(relPath, abs);
+    else removeFile(relPath);
+    resolveLinksFor(relPath);
+  } catch (e) {
+    console.error("[indexer] reindexPath failed:", e);
+  }
+}
+
+// Targeted link resolution for a single changed note: its own outgoing links,
+// plus any currently-unresolved links vault-wide (a new note may resolve them).
+// Whole-vault re-resolution is left to the debounced watcher path — doing it on
+// every write would rescan every link row in the vault.
+function resolveLinksFor(relPath: string) {
+  const d = db();
+  const { byPathLower, byBasename } = buildPathMaps(d);
+  const rows = d
+    .prepare("SELECT source_path, target FROM links WHERE source_path = ? OR resolved_path IS NULL")
+    .all(relPath) as { source_path: string; target: string }[];
+  const upd = d.prepare("UPDATE links SET resolved_path = ? WHERE source_path = ? AND target = ?");
+  const tx = d.transaction(() => {
+    for (const row of rows) {
+      upd.run(resolveLink(row.target, byBasename, byPathLower), row.source_path, row.target);
+    }
+  });
+  tx();
+}
+
+function buildPathMaps(d: ReturnType<typeof db>) {
+  const paths = (d.prepare("SELECT path FROM notes").all() as { path: string }[]).map((r) => r.path);
+  const byPathLower = new Map<string, string>();
+  const byBasename = new Map<string, string[]>();
+  for (const p of paths) {
+    byPathLower.set(p.toLowerCase(), p);
+    const base = path.basename(p).toLowerCase();
+    const arr = byBasename.get(base) ?? [];
+    arr.push(p);
+    byBasename.set(base, arr);
+  }
+  return { byPathLower, byBasename };
+}
+
 function removeFile(relPath: string) {
   const d = db();
   const tx = d.transaction(() => {

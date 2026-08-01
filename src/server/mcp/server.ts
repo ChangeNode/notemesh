@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSetting } from "../db";
 import { supervisor } from "../ob/supervisor";
 import { VaultPathError } from "../vault/paths";
+import { reindexPath } from "../vault/indexer";
 import {
   readNote,
   createNote,
@@ -46,6 +47,14 @@ function json(data: unknown) {
 
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
+}
+
+// Index a just-written note immediately so index-backed tools (search,
+// list_tasks, tags, links) reflect the change on the very next call rather
+// than after the watcher's debounce.
+function w(relPath: string): string {
+  reindexPath(relPath);
+  return relPath;
 }
 
 function err(message: string) {
@@ -121,7 +130,7 @@ export function createMcpServer(access: McpAccess): McpServer {
         },
       },
       safe(({ path, content }: { path: string; content: string }) =>
-        text(`Created ${createNote(path, content)}`),
+        text(`Created ${w(createNote(path, content))}`),
       ),
     );
 
@@ -136,7 +145,7 @@ export function createMcpServer(access: McpAccess): McpServer {
         },
       },
       safe(({ path, content }: { path: string; content: string }) =>
-        text(`Updated ${updateNote(path, content)}`),
+        text(`Updated ${w(updateNote(path, content))}`),
       ),
     );
 
@@ -148,7 +157,7 @@ export function createMcpServer(access: McpAccess): McpServer {
         inputSchema: { path: z.string(), content: z.string() },
       },
       safe(({ path, content }: { path: string; content: string }) =>
-        text(`Appended to ${appendToNote(path, content)}`),
+        text(`Appended to ${w(appendToNote(path, content))}`),
       ),
     );
 
@@ -160,7 +169,7 @@ export function createMcpServer(access: McpAccess): McpServer {
         inputSchema: { path: z.string(), content: z.string() },
       },
       safe(({ path, content }: { path: string; content: string }) =>
-        text(`Prepended to ${prependToNote(path, content)}`),
+        text(`Prepended to ${w(prependToNote(path, content))}`),
       ),
     );
 
@@ -176,6 +185,8 @@ export function createMcpServer(access: McpAccess): McpServer {
       },
       safe(({ path, newPath }: { path: string; newPath: string }) => {
         const res = moveNote(path, newPath);
+        w(res.from);
+        w(res.to);
         return text(`Moved ${res.from} → ${res.to}`);
       }),
     );
@@ -188,7 +199,7 @@ export function createMcpServer(access: McpAccess): McpServer {
           description: "Permanently delete a note. The deletion syncs to all devices.",
           inputSchema: { path: z.string() },
         },
-        safe(({ path }: { path: string }) => text(`Deleted ${deleteNote(path)}`)),
+        safe(({ path }: { path: string }) => text(`Deleted ${w(deleteNote(path))}`)),
       );
     }
   }
@@ -214,10 +225,10 @@ export function createMcpServer(access: McpAccess): McpServer {
           return text(dailyNotePath(date));
         case "append":
           if (!content) return err("content is required for append");
-          return text(`Appended to ${dailyAppend(content, date)}`);
+          return text(`Appended to ${w(dailyAppend(content, date))}`);
         case "prepend":
           if (!content) return err("content is required for prepend");
-          return text(`Prepended to ${dailyPrepend(content, date)}`);
+          return text(`Prepended to ${w(dailyPrepend(content, date))}`);
         default:
           return err(`Unknown action: ${action}`);
       }
@@ -265,9 +276,11 @@ export function createMcpServer(access: McpAccess): McpServer {
           value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
         },
       },
-      safe(({ path, name, value }: { path: string; name: string; value: unknown }) =>
-        json(setProperty(path, name, value)),
-      ),
+      safe(({ path, name, value }: { path: string; name: string; value: unknown }) => {
+        const data = setProperty(path, name, value);
+        w(path);
+        return json(data);
+      }),
     );
 
     server.registerTool(
@@ -277,7 +290,11 @@ export function createMcpServer(access: McpAccess): McpServer {
         description: "Remove a frontmatter property from a note.",
         inputSchema: { path: z.string(), name: z.string() },
       },
-      safe(({ path, name }: { path: string; name: string }) => json(removeProperty(path, name))),
+      safe(({ path, name }: { path: string; name: string }) => {
+        const data = removeProperty(path, name);
+        w(path);
+        return json(data);
+      }),
     );
   }
 
@@ -300,7 +317,11 @@ export function createMcpServer(access: McpAccess): McpServer {
         description: "Toggle a task's completion state, identified by note path and line number (from list_tasks).",
         inputSchema: { path: z.string(), line: z.number().int().min(1) },
       },
-      safe(({ path, line }: { path: string; line: number }) => json(toggleTask(path, line))),
+      safe(({ path, line }: { path: string; line: number }) => {
+        const res = toggleTask(path, line);
+        w(path);
+        return json(res);
+      }),
     );
   }
 
@@ -402,7 +423,7 @@ export function createMcpServer(access: McpAccess): McpServer {
         description: "Create a Zettelkasten-style timestamped note (YYYYMMDDHHmm) with optional content.",
         inputSchema: { content: z.string().optional() },
       },
-      safe(({ content }: { content?: string }) => text(`Created ${uniqueNote(content)}`)),
+      safe(({ content }: { content?: string }) => text(`Created ${w(uniqueNote(content))}`)),
     );
   }
 

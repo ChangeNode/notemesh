@@ -136,6 +136,14 @@ export function vaultInfo() {
   const totalWords = (db().prepare("SELECT COALESCE(SUM(word_count),0) AS n FROM notes").get() as { n: number }).n;
   return {
     vaultName: getSetting("vault_name") ?? null,
+    // The server owns its own replica of the vault. Writes are durable here
+    // immediately; they reach your other devices only after Obsidian Sync
+    // round-trips (seconds to minutes). Surfacing the path stops anyone
+    // verifying a write against a *different* vault copy and concluding the
+    // write was lost.
+    vaultPath: env.vaultDir,
+    syncNote:
+      "Writes land in this server's vault immediately; propagation to other devices is via Obsidian Sync and is not instant.",
     noteCount,
     totalWords,
   };

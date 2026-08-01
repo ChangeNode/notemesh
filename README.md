@@ -104,6 +104,21 @@ The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP).
 - **Anything with a bearer token** — create an API key on the dashboard and
   send it as `Authorization: Bearer <key>` (or `x-api-key: <key>`).
 
+## How writes propagate (read this before testing)
+
+The server keeps **its own replica** of your vault at `$DATA_DIR/vault`. MCP
+write tools use synchronous filesystem writes, so a change is on the server's
+disk before the tool returns — measured at ≤0.2 ms over 40 consecutive writes.
+
+Reaching your *other* devices is a separate step: the `ob sync` daemon uploads
+the change and each device downloads it. That round-trip is **seconds to
+minutes** and batches multiple edits together.
+
+This matters when verifying a write. If you check a different copy of the vault
+— your desktop Obsidian vault, say — the change is legitimately absent until
+sync delivers it, which looks exactly like a write that never flushed. Verify
+against the path reported by `get_vault_info` (`vaultPath`), not another copy.
+
 ## Security model
 
 - Single-user: exactly one admin account, created once via the token-gated

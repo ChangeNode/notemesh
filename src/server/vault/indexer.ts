@@ -84,12 +84,18 @@ function resolveLink(
   // NFC-normalize so an NFC wikilink matches an NFD on-disk name, and compare
   // case-insensitively on both branches for consistency.
   const t = target.replace(/\\/g, "/").normalize("NFC");
-  const withExt = t.toLowerCase().endsWith(".md") ? t : `${t}.md`;
-  const exact = byPathLower.get(withExt.toLowerCase());
-  if (exact) return exact;
-  const base = path.basename(withExt).toLowerCase();
-  const candidates = byBasename.get(base);
-  return candidates && candidates.length > 0 ? candidates[0] : null;
+  const pick = (candidate: string): string | null => {
+    const exact = byPathLower.get(candidate.toLowerCase());
+    if (exact) return exact;
+    const byBase = byBasename.get(path.basename(candidate).toLowerCase());
+    return byBase && byBase.length > 0 ? byBase[0] : null;
+  };
+  // Try the target verbatim first: that is how embeds of attachments are
+  // written (![[Diagram.png]]), and how fully-qualified note paths are written.
+  const literal = pick(t);
+  if (literal) return literal;
+  // Markdown links are conventionally written without the .md extension.
+  return t.toLowerCase().endsWith(".md") ? null : pick(`${t}.md`);
 }
 
 function indexFile(relPath: string, absPath: string) {
@@ -181,7 +187,11 @@ function resolveLinksFor(relPath: string) {
 }
 
 function buildPathMaps(d: ReturnType<typeof db>) {
-  const paths = (d.prepare("SELECT path FROM notes").all() as { path: string }[]).map((r) => r.path);
+  const paths = (
+    d
+      .prepare("SELECT path FROM notes UNION ALL SELECT path FROM attachments")
+      .all() as { path: string }[]
+  ).map((r) => r.path);
   const byPathLower = new Map<string, string>();
   const byBasename = new Map<string, string[]>();
   for (const p of paths) {
@@ -202,6 +212,7 @@ function removeFile(relPath: string) {
     d.prepare("DELETE FROM links WHERE source_path = ?").run(relPath);
     d.prepare("DELETE FROM tags WHERE path = ?").run(relPath);
     d.prepare("DELETE FROM tasks WHERE path = ?").run(relPath);
+    d.prepare("DELETE FROM attachments WHERE path = ?").run(relPath);
   });
   tx();
 }
@@ -210,16 +221,7 @@ function removeFile(relPath: string) {
 // run after any batch of changes (debounced).
 function resolveAllLinks() {
   const d = db();
-  const paths = (d.prepare("SELECT path FROM notes").all() as { path: string }[]).map((r) => r.path);
-  const byPathLower = new Map<string, string>();
-  const byBasename = new Map<string, string[]>();
-  for (const p of paths) {
-    byPathLower.set(p.toLowerCase(), p);
-    const base = path.basename(p).toLowerCase();
-    const arr = byBasename.get(base) ?? [];
-    arr.push(p);
-    byBasename.set(base, arr);
-  }
+  const { byPathLower, byBasename } = buildPathMaps(d);
   const rows = d.prepare("SELECT source_path, target FROM links").all() as {
     source_path: string;
     target: string;
@@ -233,45 +235,91 @@ function resolveAllLinks() {
   tx();
 }
 
+// Attachments are tracked by path only — enough to resolve embeds.
+function indexAttachment(relPath: string, absPath: string) {
+  try {
+    const st = fs.lstatSync(absPath);
+    if (st.isSymbolicLink() || !st.isFile()) return;
+    if (!isSafeVaultPath(absPath)) return;
+    db()
+      .prepare(
+        `INSERT INTO attachments (path, mtime, size) VALUES (?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime, size=excluded.size`,
+      )
+      .run(relPath, Math.round(st.mtimeMs), st.size);
+  } catch {
+    // vanished between event and stat
+  }
+}
+
 class VaultIndexer {
   private watcher: FSWatcher | null = null;
   private resolveTimer: ReturnType<typeof setTimeout> | null = null;
+  private building: Promise<void> | null = null;
   lastFullIndexAt: number | null = null;
+  // False until the first full rebuild finishes. Index-backed tools still
+  // answer while warming; they just may see a partial vault.
+  ready = false;
 
   private scheduleLinkResolve() {
     if (this.resolveTimer) clearTimeout(this.resolveTimer);
     this.resolveTimer = setTimeout(() => resolveAllLinks(), 1_000);
   }
 
-  rebuild() {
-    const d = db();
-    d.exec("DELETE FROM notes; DELETE FROM notes_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM tasks;");
-    const walk = (dir: string) => {
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (entry.name.startsWith(".")) continue;
-        const abs = path.join(dir, entry.name);
-        if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) walk(abs);
-        else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-          indexFile(toVaultRelative(abs), abs);
+  // Full rebuild, yielding to the event loop between batches. This used to be
+  // one synchronous pass over every note: on a 2,600-note vault it blocked Node
+  // for ~100s, so concurrent MCP requests hung and clients declared the server
+  // dead. Callers can await it; readiness is exposed via `ready`.
+  async rebuild(): Promise<void> {
+    if (this.building) return this.building;
+    this.building = (async () => {
+      const d = db();
+      d.exec(
+        "DELETE FROM notes; DELETE FROM notes_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM tasks; DELETE FROM attachments;",
+      );
+      const notes: string[] = [];
+      const attachments: string[] = [];
+      const walk = (dir: string, depth = 0) => {
+        if (depth > 32) return;
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
         }
+        for (const entry of entries) {
+          if (entry.name.startsWith(".")) continue;
+          const abs = path.join(dir, entry.name);
+          if (entry.isSymbolicLink()) continue;
+          if (entry.isDirectory()) walk(abs, depth + 1);
+          else if (entry.isFile()) {
+            (entry.name.toLowerCase().endsWith(".md") ? notes : attachments).push(abs);
+          }
+        }
+      };
+      walk(env.vaultDir);
+
+      const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
+      for (let i = 0; i < notes.length; i++) {
+        indexFile(toVaultRelative(notes[i]), notes[i]);
+        if (i % 50 === 49) await yieldToLoop();
       }
-    };
-    walk(env.vaultDir);
-    resolveAllLinks();
-    this.lastFullIndexAt = Date.now();
+      for (let i = 0; i < attachments.length; i++) {
+        indexAttachment(toVaultRelative(attachments[i]), attachments[i]);
+        if (i % 200 === 199) await yieldToLoop();
+      }
+      resolveAllLinks();
+      this.lastFullIndexAt = Date.now();
+      this.ready = true;
+    })().finally(() => {
+      this.building = null;
+    });
+    return this.building;
   }
 
-  start() {
+  async start(): Promise<void> {
     if (this.watcher) return;
     if (!fs.existsSync(env.vaultDir)) fs.mkdirSync(env.vaultDir, { recursive: true });
-    this.rebuild();
     this.watcher = chokidar.watch(env.vaultDir, {
       // Do NOT follow symlinks — the rebuild walk skips them too, and following
       // them here would let a synced symlink expose out-of-vault file contents
@@ -285,22 +333,23 @@ class VaultIndexer {
       awaitWriteFinish: { stabilityThreshold: 400, pollInterval: 100 },
     });
     const onChange = (absPath: string) => {
-      if (!absPath.toLowerCase().endsWith(".md")) return;
       // Defense in depth: only index paths that are genuinely inside the vault
       // with no symlinked component (indexFile re-checks, but reject early).
       if (!isSafeVaultPath(absPath)) return;
-      indexFile(toVaultRelative(absPath), absPath);
+      const rel = toVaultRelative(absPath);
+      if (absPath.toLowerCase().endsWith(".md")) indexFile(rel, absPath);
+      else indexAttachment(rel, absPath);
       this.scheduleLinkResolve();
     };
     this.watcher.on("add", onChange);
     this.watcher.on("change", onChange);
     this.watcher.on("unlink", (absPath: string) => {
-      if (!absPath.toLowerCase().endsWith(".md")) return;
       const rel = toVaultRelative(absPath);
       if (rel.startsWith("..") || path.isAbsolute(rel)) return;
       removeFile(rel);
       this.scheduleLinkResolve();
     });
+    await this.rebuild();
   }
 
   async stop() {
@@ -317,12 +366,18 @@ export function indexer(): VaultIndexer {
 }
 
 let indexBootChecked = false;
+// Fire-and-forget: kick the watcher + first rebuild off in the background so a
+// request never waits on a full-vault scan. The rebuild yields to the event
+// loop, so requests are served (against a partial index) while it warms.
 export function ensureIndexerStarted() {
   if (indexBootChecked) return;
   indexBootChecked = true;
-  try {
-    indexer().start();
-  } catch (e) {
-    console.error("[indexer] failed to start:", e);
-  }
+  void indexer()
+    .start()
+    .catch((e) => console.error("[indexer] failed to start:", e));
+}
+
+export function indexerStatus() {
+  const i = indexer();
+  return { ready: i.ready, lastFullIndexAt: i.lastFullIndexAt };
 }

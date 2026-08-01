@@ -49,6 +49,14 @@ function migrate(d: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_links_resolved ON links(resolved_path);
 
+    -- Non-markdown vault files (images, PDFs, audio…). Tracked so that embeds
+    -- like ![[Diagram.png]] resolve instead of being reported as broken links.
+    CREATE TABLE IF NOT EXISTS attachments (
+      path TEXT PRIMARY KEY,
+      mtime INTEGER NOT NULL,
+      size INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS tags (
       path TEXT NOT NULL,
       tag TEXT NOT NULL,

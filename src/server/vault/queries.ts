@@ -58,28 +58,25 @@ export function unresolvedLinks(): { source: string; target: string }[] {
     .all() as { source: string; target: string }[];
 }
 
-// Notes with no incoming resolved links.
-export function orphanNotes(): string[] {
-  return (
-    db()
-      .prepare(
-        `SELECT path FROM notes WHERE path NOT IN
-         (SELECT resolved_path FROM links WHERE resolved_path IS NOT NULL) ORDER BY path`,
-      )
-      .all() as { path: string }[]
-  ).map((r) => r.path);
+// Notes with no incoming resolved links. Returns objects (not bare strings) so
+// every list_link_issues variant has a consistent shape.
+export function orphanNotes(): { path: string }[] {
+  return db()
+    .prepare(
+      `SELECT path FROM notes WHERE path NOT IN
+       (SELECT resolved_path FROM links WHERE resolved_path IS NOT NULL) ORDER BY path`,
+    )
+    .all() as { path: string }[];
 }
 
 // Notes with no outgoing links.
-export function deadEndNotes(): string[] {
-  return (
-    db()
-      .prepare(
-        `SELECT path FROM notes WHERE path NOT IN
-         (SELECT DISTINCT source_path FROM links) ORDER BY path`,
-      )
-      .all() as { path: string }[]
-  ).map((r) => r.path);
+export function deadEndNotes(): { path: string }[] {
+  return db()
+    .prepare(
+      `SELECT path FROM notes WHERE path NOT IN
+       (SELECT DISTINCT source_path FROM links) ORDER BY path`,
+    )
+    .all() as { path: string }[];
 }
 
 export function listTags(): { tag: string; count: number }[] {

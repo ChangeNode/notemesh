@@ -139,7 +139,7 @@ export async function restartSync() {
 export async function rebuildIndex() {
   "use server";
   await requireAdmin();
-  indexer().rebuild();
+  await indexer().rebuild();
   return { ok: true };
 }
 

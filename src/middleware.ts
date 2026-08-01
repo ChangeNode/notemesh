@@ -1,5 +1,6 @@
 import { createMiddleware } from "@solidjs/start/middleware";
 import { ensureSyncStarted } from "./server/ob/supervisor";
+import { ensureIndexerStarted } from "./server/vault/indexer";
 
 // Pages that require a signed-in admin. Everything else (login, setup, the
 // OAuth consent page, API routes) handles its own access rules.
@@ -32,8 +33,11 @@ async function stripIssParamSupport(res: Response): Promise<Response> {
 export default createMiddleware({
   onRequest: [
     async (event) => {
-      // Idempotent: restarts the sync daemon after a server (re)boot.
+      // Idempotent: restarts the sync daemon after a server (re)boot, and warms
+      // the vault index in the background so the first MCP call doesn't pay for
+      // a full-vault scan.
       ensureSyncStarted();
+      ensureIndexerStarted();
 
       const url = new URL(event.request.url);
 

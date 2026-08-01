@@ -41,9 +41,36 @@ export interface McpAccess {
   label: string; // e.g. "api-key:xyz" or "oauth:<client name>"
 }
 
+// Compact, not pretty-printed: indentation cost ~35% of every response and
+// these payloads are consumed by models, not humans.
 function json(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
 }
+
+// Default/max page sizes for list tools. Without these, list_notes on a
+// 2,600-note vault returned ~366KB and blew past the client token limit, so
+// the tool hard-failed instead of returning anything usable.
+const DEFAULT_PAGE = 100;
+const MAX_PAGE = 500;
+
+function page<T>(items: T[], limit?: number, offset?: number) {
+  const off = Math.max(offset ?? 0, 0);
+  const lim = Math.min(Math.max(limit ?? DEFAULT_PAGE, 1), MAX_PAGE);
+  const slice = items.slice(off, off + lim);
+  return json({
+    total: items.length,
+    offset: off,
+    count: slice.length,
+    hasMore: off + slice.length < items.length,
+    items: slice,
+  });
+}
+
+const PAGE_ARGS = {
+  limit: z.number().int().min(1).max(MAX_PAGE).optional()
+    .describe(`Max items to return (default ${DEFAULT_PAGE}, max ${MAX_PAGE})`),
+  offset: z.number().int().min(0).optional().describe("Items to skip, for paging"),
+};
 
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
@@ -103,9 +130,14 @@ export function createMcpServer(access: McpAccess): McpServer {
     {
       title: "List notes",
       description: "List markdown notes in the vault (optionally within a folder), with modified time and size.",
-      inputSchema: { folder: z.string().optional().describe("Folder to list; omit for the whole vault") },
+      inputSchema: {
+        folder: z.string().optional().describe("Folder to list; omit for the whole vault"),
+        ...PAGE_ARGS,
+      },
     },
-    safe(({ folder }: { folder?: string }) => json(listNotes(folder))),
+    safe(({ folder, limit, offset }: { folder?: string; limit?: number; offset?: number }) =>
+      page(listNotes(folder), limit, offset),
+    ),
   );
 
   server.registerTool(
@@ -113,9 +145,11 @@ export function createMcpServer(access: McpAccess): McpServer {
     {
       title: "List folders",
       description: "List every folder in the vault.",
-      inputSchema: {},
+      inputSchema: { ...PAGE_ARGS },
     },
-    safe(() => json(listFolders())),
+    safe(({ limit, offset }: { limit?: number; offset?: number }) =>
+      page(listFolders(), limit, offset),
+    ),
   );
 
   if (writable) {
@@ -304,9 +338,11 @@ export function createMcpServer(access: McpAccess): McpServer {
     {
       title: "List tasks",
       description: "List markdown tasks (- [ ] / - [x]) across the vault. Filter: all, todo, or daily (today's note).",
-      inputSchema: { filter: z.enum(["all", "todo", "daily"]).optional() },
+      inputSchema: { filter: z.enum(["all", "todo", "daily"]).optional(), ...PAGE_ARGS },
     },
-    safe(({ filter }: { filter?: "all" | "todo" | "daily" }) => json(listTasks(filter ?? "all"))),
+    safe(({ filter, limit, offset }: { filter?: "all" | "todo" | "daily"; limit?: number; offset?: number }) =>
+      page(listTasks(filter ?? "all"), limit, offset),
+    ),
   );
 
   if (writable) {
@@ -347,10 +383,14 @@ export function createMcpServer(access: McpAccess): McpServer {
       title: "Link issues",
       description:
         "Vault link health: unresolved (broken wikilinks), orphans (notes nothing links to), or deadends (notes with no outgoing links).",
-      inputSchema: { type: z.enum(["unresolved", "orphans", "deadends"]) },
+      inputSchema: { type: z.enum(["unresolved", "orphans", "deadends"]), ...PAGE_ARGS },
     },
-    safe(({ type }: { type: string }) =>
-      json(type === "unresolved" ? unresolvedLinks() : type === "orphans" ? orphanNotes() : deadEndNotes()),
+    safe(({ type, limit, offset }: { type: string; limit?: number; offset?: number }) =>
+      page<{ source: string; target: string } | { path: string }>(
+        type === "unresolved" ? unresolvedLinks() : type === "orphans" ? orphanNotes() : deadEndNotes(),
+        limit,
+        offset,
+      ),
     ),
   );
 
@@ -359,9 +399,9 @@ export function createMcpServer(access: McpAccess): McpServer {
     {
       title: "List tags",
       description: "All tags in the vault with usage counts (frontmatter and inline #tags).",
-      inputSchema: {},
+      inputSchema: { ...PAGE_ARGS },
     },
-    safe(() => json(listTags())),
+    safe(({ limit, offset }: { limit?: number; offset?: number }) => page(listTags(), limit, offset)),
   );
 
   server.registerTool(
@@ -369,9 +409,11 @@ export function createMcpServer(access: McpAccess): McpServer {
     {
       title: "Notes by tag",
       description: "List the notes carrying a given tag.",
-      inputSchema: { tag: z.string().describe("Tag name, with or without leading #") },
+      inputSchema: { tag: z.string().describe("Tag name, with or without leading #"), ...PAGE_ARGS },
     },
-    safe(({ tag }: { tag: string }) => json(notesByTag(tag))),
+    safe(({ tag, limit, offset }: { tag: string; limit?: number; offset?: number }) =>
+      page(notesByTag(tag), limit, offset),
+    ),
   );
 
   // ---- Vault ----

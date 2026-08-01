@@ -52,7 +52,16 @@ export function appendToNote(notePath: string, content: string): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const existing = readVaultFile(abs);
-  const sep = existing.endsWith("\n") || existing === "" ? "" : "\n";
+  // Separate with a blank line so appended text becomes its own block. A single
+  // newline would render as a soft break inside the preceding paragraph, which
+  // silently mangles the note for a tool documented as the safest way to add
+  // content. Skip the separator when the file is empty or already ends blank.
+  let sep = "";
+  if (existing !== "") {
+    if (existing.endsWith("\n\n")) sep = "";
+    else if (existing.endsWith("\n")) sep = "\n";
+    else sep = "\n\n";
+  }
   fs.writeFileSync(abs, existing + sep + content + (content.endsWith("\n") ? "" : "\n"), "utf8");
   return toVaultRelative(abs);
 }
@@ -62,7 +71,10 @@ export function prependToNote(notePath: string, content: string): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const existing = readVaultFile(abs);
-  const block = content.endsWith("\n") ? content : content + "\n";
+  // Trailing blank line for the same reason as append: keep the inserted text
+  // a distinct block rather than merging into what follows.
+  let block = content.endsWith("\n") ? content : content + "\n";
+  if (!block.endsWith("\n\n")) block += "\n";
   const fmMatch = existing.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
   const next = fmMatch
     ? existing.slice(0, fmMatch[0].length) + block + existing.slice(fmMatch[0].length)

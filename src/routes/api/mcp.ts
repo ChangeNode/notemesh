@@ -1,6 +1,6 @@
 import type { APIEvent } from "@solidjs/start/server";
 import { serveMcp } from "~/server/mcp/http";
-import { accessFromApiKey } from "~/server/mcp/auth";
+import { accessFromApiKey, accessFromOpaqueOAuth, bearerToken, looksLikeJwt } from "~/server/mcp/auth";
 import { getSetting } from "~/server/db";
 import { runAuthMigrations } from "~/server/auth";
 import { env } from "~/server/env";
@@ -52,13 +52,28 @@ export async function POST(event: APIEvent) {
     );
   }
 
-  // 1) API key (simple bearer or x-api-key)
+  // Dispatch on credential shape so each token type takes exactly one path
+  // (and an OAuth token is never run through API-key validation, which logs
+  // a spurious error for every request).
+  const bearer = bearerToken(event.request);
+
+  // 1) OAuth JWT (clients that send an RFC 8707 `resource`): verify via JWKS.
+  if (bearer && looksLikeJwt(bearer)) {
+    const oauthResponse = await handleMcpWithOAuth(event.request);
+    if (oauthResponse) return oauthResponse;
+    return unauthorized();
+  }
+
+  // 2) OAuth opaque token (clients that omit `resource`, e.g. Claude Code):
+  // validate locally against our own token table.
+  if (bearer) {
+    const opaque = accessFromOpaqueOAuth(bearer);
+    if (opaque) return serveMcp(event.request, opaque);
+  }
+
+  // 3) API key (Authorization: Bearer <key> or x-api-key).
   const keyAccess = await accessFromApiKey(event.request);
   if (keyAccess) return serveMcp(event.request, keyAccess);
-
-  // 2) OAuth access token (JWT issued by the built-in OAuth provider)
-  const oauthResponse = await handleMcpWithOAuth(event.request);
-  if (oauthResponse) return oauthResponse;
 
   return unauthorized();
 }

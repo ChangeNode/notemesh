@@ -61,7 +61,15 @@ export default function Settings() {
                 <small class="muted">
                   Used by the <code>daily_note</code> tool. The sync daemon doesn't sync your vault's{" "}
                   <code>.obsidian</code> settings, so set this to match your Daily Notes plugin
-                  config (format uses moment tokens like YYYY-MM-DD).
+                  config (format uses{" "}
+                  <a
+                    href="https://momentjscom.readthedocs.io/en/latest/moment/04-displaying/01-format/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    moment tokens
+                  </a>{" "}
+                  like YYYY-MM-DD).
                 </small>
                 <button type="submit">Save daily note settings</button>
               </form>

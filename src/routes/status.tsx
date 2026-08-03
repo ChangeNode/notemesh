@@ -22,10 +22,28 @@ const STATE_LABEL: Record<string, { cls: string; label: string }> = {
 export default function Status() {
   const [data, { refetch }] = createResource(() => getStatusPage());
 
-  const [showLogs, setShowLogs] = createSignal(false);
   const [reauthMsg, setReauthMsg] = createSignal<string | null>(null);
   const [mfa, setMfa] = createSignal("");
   const [busy, setBusy] = createSignal(false);
+
+  // Which daemon action is in flight, if any. All three act on the same sync
+  // daemon, so running one disables the lot rather than just the button that
+  // was clicked.
+  type Action = "sync" | "restart" | "rebuild";
+  const [running, setRunning] = createSignal<Action | null>(null);
+
+  async function run(kind: Action, fn: () => Promise<unknown>) {
+    if (running()) return;
+    setRunning(kind);
+    try {
+      await fn();
+      refetch();
+    } finally {
+      // finally, not after await: a rejected call must still re-enable the
+      // buttons rather than leaving the page permanently stuck.
+      setRunning(null);
+    }
+  }
 
   // Live status/log poll — cheap in-memory read on the server every 2s.
   const [live, setLive] = createSignal<LiveStatus | null>(null);
@@ -51,7 +69,7 @@ export default function Status() {
   // Follow the log tail unless the user has scrolled up to read.
   createEffect(() => {
     live();
-    if (!logsEl || !showLogs()) return;
+    if (!logsEl) return;
     const nearBottom = logsEl.scrollHeight - logsEl.scrollTop - logsEl.clientHeight < 60;
     if (nearBottom) logsEl.scrollTop = logsEl.scrollHeight;
   });
@@ -114,16 +132,29 @@ export default function Status() {
                   </>
                 );
               })()}
-              <div role="group">
-                <button onClick={() => syncNow().then(() => refetch())}>Sync now</button>
-                <button class="secondary" onClick={() => restartSync().then(() => refetch())}>
-                  Restart daemon
+              <div class="actions">
+                <button
+                  disabled={running() !== null}
+                  aria-busy={running() === "sync"}
+                  onClick={() => run("sync", syncNow)}
+                >
+                  {running() === "sync" ? "Syncing…" : "Sync now"}
                 </button>
-                <button class="secondary" onClick={() => rebuildIndex().then(() => refetch())}>
-                  Rebuild index
+                <button
+                  class="secondary"
+                  disabled={running() !== null}
+                  aria-busy={running() === "restart"}
+                  onClick={() => run("restart", restartSync)}
+                >
+                  {running() === "restart" ? "Restarting…" : "Restart daemon"}
                 </button>
-                <button class="secondary" onClick={() => setShowLogs(!showLogs())}>
-                  {showLogs() ? "Hide logs" : "Logs"}
+                <button
+                  class="secondary"
+                  disabled={running() !== null}
+                  aria-busy={running() === "rebuild"}
+                  onClick={() => run("rebuild", rebuildIndex)}
+                >
+                  {running() === "rebuild" ? "Rebuilding…" : "Rebuild index"}
                 </button>
               </div>
               <Show when={d.sync.state === "needs-reauth"}>
@@ -144,13 +175,21 @@ export default function Status() {
                   <p class="muted">{reauthMsg()}</p>
                 </Show>
               </Show>
-              <Show when={showLogs()}>
-                <pre class="logs" ref={logsEl}>
-                  {(live()?.logs ?? d.logs)
-                    .map((l) => `${new Date(l.ts).toLocaleTimeString()}  ${l.line}`)
-                    .join("\n") || "(no log output yet)"}
-                </pre>
-              </Show>
+            </article>
+
+            <article>
+              <header>
+                <strong>Sync log</strong>
+              </header>
+              <pre class="logs" ref={logsEl}>
+                {(live()?.logs ?? d.logs)
+                  .map((l) => `${new Date(l.ts).toLocaleTimeString()}  ${l.line}`)
+                  .join("\n") || "(no log output yet)"}
+              </pre>
+              <small class="muted">
+                Live tail of the sync daemon, following new output unless you scroll up to read.
+                Held in memory only — see Settings for everything written to disk.
+              </small>
             </article>
 
             <article>

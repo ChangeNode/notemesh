@@ -146,6 +146,21 @@ nav.tabs ul li a.active {
   color: var(--pico-primary);
 }
 
+/* Row of independent action buttons. Pico stretches a bare <button> to full
+   width and joins anything in a role=group into a segmented control, which
+   read as tabs here — these are three separate, unrelated actions. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: var(--pico-spacing);
+}
+
+.actions button {
+  width: auto;
+  margin-bottom: 0;
+}
+
 /* Log tail viewer. */
 pre.logs {
   max-height: 300px;

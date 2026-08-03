@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # The suite shells out to real git rather than mocking it, so it needs a
+      # git identity to make commits with.
+      - name: Configure git for the test suite
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+          git --version
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Advisory, not blocking: a new advisory in a transitive dependency
+      # shouldn't wedge unrelated pull requests, but it should be visible.
+      - name: Audit production dependencies
+        run: pnpm audit --prod || true

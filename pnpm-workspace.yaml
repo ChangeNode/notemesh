@@ -4,3 +4,13 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - better-sqlite3@13.0.2
+  - hono@4.12.34
+
+# Security patches for transitive dependencies. Each is the lowest version that
+# clears an advisory reported by `pnpm audit`, pinned within the major line the
+# framework targets rather than jumping to an RC.
+overrides:
+  h3: ^1.15.11 # path traversal, SSE injection, request smuggling
+  hono: ^4.12.34 # ReDoS in CORS middleware
+  fast-uri: ^3.1.5 # host confusion via backslash
+  brace-expansion: ^2.1.4 # DoS via unbounded intermediate arrays

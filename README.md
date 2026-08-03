@@ -79,7 +79,9 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
 **Sizing the volume:** the vault copy includes synced attachments (images,
 audio, PDFs, video), so size the volume for your vault plus headroom, not just
 its markdown. You can narrow what syncs later with `ob sync-config --file-types`
-inside the container.
+inside the container. The sync client also keeps its own append-only log on the
+volume, which grows without bound — the **Security** tab shows its path and
+current size.
 
 ## Publish it as a Railway template
 
@@ -175,8 +177,8 @@ against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 | Search results | 20 default, 100 max | `search_vault` |
 | Note read window | 2,000 lines or 100 KB, whichever first | `read_note`, `daily_note` read, `random_note` |
 | Attachment read | 1 MB | `read_attachment` |
-| File read (internal) | 10 MiB | any text read; larger files are skipped by the indexer too |
-| Request body | 4 MiB | `/api/mcp` — the ceiling on a single `create_note`/`update_note` |
+| File read (internal) | 10 MB | any text read; larger files are skipped by the indexer too |
+| Request body | 4 MB | `/api/mcp` — the ceiling on a single `create_note`/`update_note` |
 
 `read_note` returns `{totalLines, offset, count, hasMore}` alongside `content`,
 so a long note is paged with `offset` rather than dumped in one response — a

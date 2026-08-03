@@ -24,7 +24,7 @@ export interface SyncActivity {
   lastEventAt: number | null;
 }
 
-const MAX_LOG_LINES = 500;
+export const MAX_LOG_LINES = 500;
 // A new file event after this much quiet starts a fresh activity burst.
 const BURST_GAP_MS = 15_000;
 // Activity counts as "in progress" if an event landed this recently.

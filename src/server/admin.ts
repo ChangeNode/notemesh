@@ -1,11 +1,14 @@
+import fs from "node:fs";
+import path from "node:path";
 import { getRequestEvent } from "solid-js/web";
 import { auth, audit, MAX_OAUTH_CLIENTS } from "./auth";
 import { authFailureSnapshot } from "./mcp/ratelimit";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
 import { env } from "./env";
-import { supervisor } from "./ob/supervisor";
+import { supervisor, MAX_LOG_LINES } from "./ob/supervisor";
 import { vaultInfo } from "./vault/queries";
+import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
 import { obLogin, obSyncOnce, looksLikeMfaRequired } from "./ob/cli";
 import { storeObsidianAccount, getObsidianAccount } from "./ob/credentials";
@@ -29,6 +32,34 @@ function oauthClientRows() {
   return db()
     .prepare('SELECT clientId, name, createdAt FROM "oauthClient" ORDER BY createdAt DESC')
     .all() as { clientId: string; name: string | null; createdAt: string | number }[];
+}
+
+// The ob CLI writes its own per-vault sync log under its HOME, which is the
+// only log this app puts on disk — everything we emit ourselves goes to
+// stdout. Discovered rather than hardcoded: the directory is keyed by remote
+// vault id, and there can be more than one if the vault was re-linked.
+function syncLogFiles(): { path: string; size: string; modified: number | null }[] {
+  const base = path.join(env.obHomeDir, ".obsidian-headless", "sync");
+  let entries: string[];
+  try {
+    entries = fs
+      .readdirSync(base, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch {
+    return []; // nothing synced yet
+  }
+  const found: { path: string; size: string; modified: number | null }[] = [];
+  for (const dir of entries) {
+    const file = path.join(base, dir, "sync.log");
+    try {
+      const st = fs.statSync(file);
+      found.push({ path: file, size: formatBytes(st.size), modified: st.mtimeMs });
+    } catch {
+      // no log in this vault dir
+    }
+  }
+  return found;
 }
 
 // Setup tab: how to point an MCP client at this server, plus API keys.
@@ -101,6 +132,8 @@ export async function getSecurityPage() {
     consentCount: count('SELECT COUNT(*) AS n FROM "oauthConsent"'),
     accessTokenCount: count('SELECT COUNT(*) AS n FROM "oauthAccessToken"'),
     throttle: authFailureSnapshot(),
+    syncLogs: syncLogFiles(),
+    logTailLines: MAX_LOG_LINES,
   };
 }
 

@@ -6,8 +6,9 @@ export class VaultPathError extends Error {}
 
 // Largest note we will read into memory. Vault content is synced from other
 // devices and must be treated as untrusted; an oversized file would otherwise
-// OOM the process (OWASP A10). 10 MiB is far above any real markdown note.
-export const MAX_NOTE_BYTES = 10 * 1024 * 1024;
+// OOM the process (OWASP A10). 10 MB is far above any real markdown note.
+// Sizes are decimal (1 MB = 1,000,000 bytes) so they match the labels shown.
+export const MAX_NOTE_BYTES = 10 * 1000 * 1000;
 
 // Read a vault file with a hard size cap. The path must already be resolved
 // via resolveNotePath (which rejects symlinks and traversal). We re-lstat here
@@ -19,7 +20,7 @@ export function readVaultFile(abs: string): string {
   if (!st.isFile()) throw new VaultPathError("Not a file");
   if (st.size > MAX_NOTE_BYTES) {
     throw new VaultPathError(
-      `Note is too large to read (${Math.round(st.size / 1024 / 1024)} MB; limit ${MAX_NOTE_BYTES / 1024 / 1024} MB)`,
+      `Note is too large to read (${Math.round(st.size / 1000 / 1000)} MB; limit ${MAX_NOTE_BYTES / 1000 / 1000} MB)`,
     );
   }
   if (isBinaryFile(abs)) {
@@ -32,9 +33,9 @@ export function readVaultFile(abs: string): string {
 }
 
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n < 1000) return `${n} B`;
+  if (n < 1000 * 1000) return `${(n / 1000).toFixed(1)} KB`;
+  return `${(n / 1000 / 1000).toFixed(1)} MB`;
 }
 
 // Sniff the head of the file for NUL bytes rather than trusting the extension:

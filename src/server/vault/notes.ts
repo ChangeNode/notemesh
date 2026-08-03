@@ -29,7 +29,7 @@ export function readNote(notePath: string): { path: string; content: string } {
 // Default window for client-facing reads: whichever of these is hit first.
 export const DEFAULT_READ_LINES = 2000;
 export const MAX_READ_LINES = 20000;
-export const MAX_READ_BYTES = 100 * 1024;
+export const MAX_READ_BYTES = 100 * 1000;
 
 export interface NoteChunk {
   path: string;
@@ -74,7 +74,7 @@ export function readNoteRange(
 // Binary attachments are refused by the text read path; this returns small ones
 // as base64 so a model can actually look at an image. Large files stay refused —
 // base64 inflates ~1.37x and a 4.6 MB photo would swamp any client.
-export const MAX_ATTACHMENT_BYTES = 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 1000 * 1000;
 
 const MIME_BY_EXT: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",

@@ -66,10 +66,14 @@ or as a commit pushed to your git remote.
      material, not a passphrase. **Changing it later locks the stored
      credentials out.**
    - `DATA_DIR=/data`
-4. Under **Settings → Networking**, generate a public domain, then redeploy.
-   The OAuth issuer is derived from `RAILWAY_PUBLIC_DOMAIN` when the process
-   starts, so a service that booted before it had a domain will advertise the
-   wrong issuer until it restarts. (Setting `BASE_URL` explicitly also works.)
+4. Under **Settings → Networking**, generate a public domain.
+
+   The OAuth issuer is read from `RAILWAY_PUBLIC_DOMAIN` when the process
+   starts, so a service that booted *before* it had a domain advertises the
+   wrong one until it restarts. If that happens the dashboard says so on the
+   Setup and Security tabs and tells you to restart — you don't have to know
+   this in advance, and nothing is lost. (Setting `BASE_URL` explicitly also
+   works.)
 5. Open the service URL **within 30 minutes of the deploy** and follow the
    setup wizard:
    1. Choose your admin email/password — no token to look up.

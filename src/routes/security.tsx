@@ -30,6 +30,20 @@ export default function Security() {
                 }
               />
 
+              <Show when={d.originMismatch}>
+                <Check
+                  state="err"
+                  label="Configured origin doesn't match how you reached it"
+                  detail={
+                    <>
+                      Configured as <code>{d.originMismatch!.configured}</code> but reached at{" "}
+                      <code>{d.originMismatch!.reachedAt}</code>. The server booted before it had a
+                      public domain, so every OAuth URL it advertises is wrong. Restart it.
+                    </>
+                  }
+                />
+              </Show>
+
               <Check
                 state={d.trustsProxyHeaders ? "ok" : "warn"}
                 label={

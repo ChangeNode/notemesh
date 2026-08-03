@@ -290,11 +290,12 @@ of its own stored credentials.
 
 ## 2. Give it a domain
 
-**Settings → Networking → Generate Domain**, then redeploy.
+**Settings → Networking → Generate Domain**.
 
-The server works out its public address at startup, so a service that booted
-before it had a domain will advertise the wrong one until it restarts. If you
-generated the domain after the first deploy, redeploy before continuing.
+The server reads its public address at startup, so if it booted before the
+domain existed it is still configured for the old one. You don't need to track
+this: the dashboard detects it and tells you to restart, on both the Setup and
+Security tabs. Restarting loses nothing.
 
 ## 3. Claim it and run the wizard
 

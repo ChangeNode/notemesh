@@ -47,6 +47,21 @@ export default function Setup() {
                   <strong>Set up your client</strong>
                 </header>
 
+                <Show when={d.originMismatch}>
+                  <div class="callout warn">
+                    <p>
+                      <b>This server needs a restart.</b> It booted before it had a public domain,
+                      so it is still configured as <code>{d.originMismatch!.configured}</code> even
+                      though you reached it at <code>{d.originMismatch!.reachedAt}</code>. The
+                      endpoint URL below and the OAuth issuer are both wrong until you restart it.
+                    </p>
+                    <p class="muted">
+                      On Railway: your service → <b>Deployments</b> → <b>Restart</b>. Nothing is
+                      lost; the domain is picked up on the next boot.
+                    </p>
+                  </div>
+                </Show>
+
                 <Show when={localOnly}>
                   <div class="callout warn">
                     <p>

@@ -6,7 +6,7 @@ import { authFailureSnapshot } from "./mcp/ratelimit";
 import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
-import { env } from "./env";
+import { env, detectOriginMismatch } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
@@ -17,6 +17,12 @@ import { storeObsidianAccount, getObsidianAccount } from "./ob/credentials";
 
 function headers(): Headers {
   return getRequestEvent()!.request.headers;
+}
+
+// Diagnose a server that booted before it had a public domain. The comparison
+// itself lives in env.ts so it can be tested without a request context.
+function originMismatch() {
+  return detectOriginMismatch(env.baseUrl, getRequestEvent()?.request.headers.get("host"));
 }
 
 // Plain server functions (no solid-router query()/action() wrappers): each tab
@@ -72,6 +78,7 @@ export async function getSetupPage() {
   const keys = await auth.api.listApiKeys({ headers: headers() }).catch(() => []);
   return {
     baseUrl: env.baseUrl,
+    originMismatch: originMismatch(),
     apiKeys: (Array.isArray(keys) ? keys : ((keys as any)?.apiKeys ?? [])).map((k: any) => ({
       id: k.id,
       name: k.name ?? "(unnamed)",
@@ -143,6 +150,7 @@ export async function getSecurityPage() {
     accessTokenCount: count('SELECT COUNT(*) AS n FROM "oauthAccessToken"'),
     throttle: authFailureSnapshot(),
     claimWindowMinutes: CLAIM_WINDOW_MINUTES,
+    originMismatch: originMismatch(),
     backend: syncKind(),
   };
 }

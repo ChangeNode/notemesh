@@ -52,3 +52,36 @@ export function ensureDataDirs() {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
+
+export interface OriginMismatch {
+  configured: string;
+  reachedAt: string;
+}
+
+// Did this instance boot before it had a public domain?
+//
+// better-auth freezes its issuer at module init from env.baseUrl, and process
+// env vars never change for the life of a process — so a domain generated after
+// the container started is invisible to the running server, and every OAuth URL
+// it advertises points somewhere wrong. The symptom is an opaque client-side
+// "issuer mismatch", so detect it and say so plainly instead.
+//
+// `host` is used only to *diagnose* the mismatch, never to mint or validate
+// anything. A Host header is caller-controlled; trusting one for an issuer
+// would be the actual vulnerability.
+export function detectOriginMismatch(
+  configuredBaseUrl: string,
+  host: string | null | undefined,
+): OriginMismatch | null {
+  if (!host) return null;
+  // Loopback hits on a deployed instance are health checks, not the operator.
+  if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host)) return null;
+  let configuredHost: string;
+  try {
+    configuredHost = new URL(configuredBaseUrl).host;
+  } catch {
+    return null;
+  }
+  if (host.toLowerCase() === configuredHost.toLowerCase()) return null;
+  return { configured: configuredBaseUrl, reachedAt: host };
+}

@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
+import { getSetupStage } from "~/server/setup";
 import { RepoFooter } from "~/components/AdminShell";
 
 export default function Login() {
@@ -29,6 +30,13 @@ export default function Login() {
     const oauthUrl = (data as any)?.url;
     if ((data as any)?.redirect && typeof oauthUrl === "string") {
       window.location.href = oauthUrl;
+      return;
+    }
+    // Send an unfinished instance to the wizard rather than to a dashboard
+    // that has no vault behind it yet.
+    const stage = await getSetupStage().catch(() => "done" as const);
+    if (stage !== "done") {
+      navigate("/setup", { replace: true });
       return;
     }
     const dest = typeof params.redirect === "string" ? params.redirect : "/";

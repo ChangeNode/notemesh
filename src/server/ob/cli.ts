@@ -23,7 +23,7 @@ export interface ObResult {
 // that carry control characters. Used for the untrusted vault identifier and
 // for credential values that are passed as flags.
 export class ObArgError extends Error {}
-function assertSafeArg(value: string, label: string) {
+export function assertSafeArg(value: string, label: string) {
   if (value.startsWith("-")) throw new ObArgError(`${label} may not start with "-"`);
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) throw new ObArgError(`${label} contains control characters`);
@@ -32,7 +32,7 @@ function assertSafeArg(value: string, label: string) {
 // Redact known secret substrings from CLI output before it is logged or shown.
 // execa never passes these through a shell, but ob could echo an argument on an
 // error path; scrub defensively.
-function redact(text: string, secrets: (string | undefined)[]): string {
+export function redact(text: string, secrets: (string | undefined)[]): string {
   let out = text;
   for (const s of secrets) {
     if (s && s.length >= 3) out = out.split(s).join("«redacted»");
@@ -152,7 +152,7 @@ export async function obListRemoteVaults(): Promise<{ result: ObResult; vaults: 
 }
 
 // Fallback for pre-JSON output: status lines then '"Name" (Region)' entries.
-function parseVaultListText(stdout: string): RemoteVault[] {
+export function parseVaultListText(stdout: string): RemoteVault[] {
   const vaults: RemoteVault[] = [];
   for (const line of stdout.split("\n")) {
     const trimmed = line.trim();

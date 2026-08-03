@@ -13,6 +13,32 @@ const BURST_GAP_MS = 15_000;
 // Activity counts as "in progress" if an event landed this recently.
 const ACTIVE_WINDOW_MS = 5_000;
 
+// Fold one line of daemon output into the running activity tally. Pulled out of
+// the class so it can be tested directly — the parsing is the part that breaks
+// when ob changes its wording, and it is otherwise only reachable by spawning a
+// child process and waiting on timers.
+export function applyActivityLine(a: SyncActivity, rawLine: string, now: number): void {
+  // Drop a leading "[2026-08-03T…]" timestamp if ob prefixed one.
+  const line = rawLine.replace(/^\[[^\]]*\]\s*/, "");
+  const isEvent =
+    /^(Starting sync|Download(ing|ed)|Upload(ing|ed)|Accepted|Merging|Merged|Delet(ing|ed)|Remov(ing|ed))\b/.test(
+      line,
+    );
+  if (!isEvent) return;
+  // A fresh burst either announces itself or follows a long enough silence.
+  if (/^Starting sync/.test(line) || (a.lastEventAt && now - a.lastEventAt > BURST_GAP_MS)) {
+    a.downloaded = 0;
+    a.uploaded = 0;
+    a.deleted = 0;
+    a.startedAt = now;
+  }
+  if (a.startedAt === null) a.startedAt = now;
+  if (/^Downloaded\b/.test(line)) a.downloaded += 1;
+  else if (/^Uploaded\b/.test(line)) a.uploaded += 1;
+  else if (/^(Deleted|Removed)\b/.test(line)) a.deleted += 1;
+  a.lastEventAt = now;
+}
+
 class SyncSupervisor implements SyncBackend {
   readonly kind = "obsidian" as const;
 
@@ -29,22 +55,7 @@ class SyncSupervisor implements SyncBackend {
 
   // Parse daemon output lines into a running tally of the current sync burst.
   private trackActivity(rawLine: string) {
-    const line = rawLine.replace(/^\[[^\]]*\]\s*/, "");
-    const now = Date.now();
-    const isEvent = /^(Starting sync|Download(ing|ed)|Upload(ing|ed)|Accepted|Merging|Merged|Delet(ing|ed)|Remov(ing|ed))\b/.test(line);
-    if (!isEvent) return;
-    const a = this.activity;
-    if (/^Starting sync/.test(line) || (a.lastEventAt && now - a.lastEventAt > BURST_GAP_MS)) {
-      a.downloaded = 0;
-      a.uploaded = 0;
-      a.deleted = 0;
-      a.startedAt = now;
-    }
-    if (a.startedAt === null) a.startedAt = now;
-    if (/^Downloaded\b/.test(line)) a.downloaded += 1;
-    else if (/^Uploaded\b/.test(line)) a.uploaded += 1;
-    else if (/^(Deleted|Removed)\b/.test(line)) a.deleted += 1;
-    a.lastEventAt = now;
+    applyActivityLine(this.activity, rawLine, Date.now());
   }
 
   private obBin(): string {

@@ -143,7 +143,7 @@ supported yet.
 pnpm test
 ```
 
-175 tests across seven files. Anything touching git runs against the real git
+243 tests across nine files. Anything touching git runs against the real git
 binary in throwaway repositories rather than mocks — the behaviour under test
 *is* git's merge behaviour, so stubbing it would prove nothing.
 
@@ -155,6 +155,7 @@ binary in throwaway repositories rather than mocks — the behaviour under test
 | Abuse throttle | Blocks probing at the threshold; never counts authorised traffic; ignores forwarding headers unless a proxy is known to be in front |
 | Git sync | Version floor, remote probing, clone into empty/existing/foreign directories, auth-failure classification, binary-safe reads |
 | Conflicts | Clean merges keeping both sides, all three strategies, byte-exact binary conflict copies, Obsidian naming |
+| Obsidian sync | CLI argument-injection guards, secret redaction from captured output, MFA/auth detection, and ob's unreliable exit codes — driven through a stand-in binary on `OB_BIN` |
 
 The security tests are mutation-checked: deleting a guard has to make specific
 tests fail, or the test wasn't testing it.

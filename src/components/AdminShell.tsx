@@ -1,6 +1,7 @@
-import { createSignal, type JSX } from "solid-js";
-import { A } from "@solidjs/router";
+import { createEffect, createResource, createSignal, Show, type JSX } from "solid-js";
+import { A, useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
+import { getSetupStage } from "~/server/setup";
 
 const TABS = [
   { href: "/", label: "Setup" },
@@ -30,6 +31,16 @@ export function RepoFooter() {
 // inside this so the nav stays identical and client-side navigation between
 // tabs doesn't remount the whole document.
 export function AdminShell(props: { children: JSX.Element }) {
+  const navigate = useNavigate();
+  // The middleware bounces an unfinished instance back to the wizard, but it
+  // only runs on full page loads — a client-side navigation (signing in, or
+  // any in-app link) skips it and would render admin tabs with no vault behind
+  // them. Re-check here so every route into the dashboard is covered.
+  const [stage] = createResource(() => getSetupStage());
+  createEffect(() => {
+    if (stage() && stage() !== "done") navigate("/setup", { replace: true });
+  });
+
   return (
     <main class="container">
       <nav>
@@ -66,7 +77,9 @@ export function AdminShell(props: { children: JSX.Element }) {
           ))}
         </ul>
       </nav>
-      {props.children}
+      {/* Render nothing until setup is known to be finished, so an incomplete
+          instance never flashes a broken dashboard before redirecting. */}
+      <Show when={stage() === "done"}>{props.children}</Show>
       <RepoFooter />
     </main>
   );

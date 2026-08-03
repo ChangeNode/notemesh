@@ -14,11 +14,53 @@ Two guides in one file.
 
 ## Before you start
 
-**The source repo has to be public.** Railway does let you point a template at a
-private repo, but that path is meant for sharing inside your own Workspace or
-Organization — a template published to the public marketplace has to be
-deployable by strangers, and that means the repo has to be readable by them.
-`ChangeNode/ob-sync` is private today, so this is the first thing to change.
+### Decide whether the source is public
+
+Publishing to the marketplace does **not** require open-sourcing this. Railway
+supports closed-source templates deliberately, and they earn the same kickbacks.
+Three workable shapes:
+
+| | Source | Publishable | Kickbacks | Deployers can read the code |
+| --- | --- | --- | --- | --- |
+| **A. Open** | Public GitHub repo | Yes | Yes | Yes |
+| **B. Private image** | Private Docker image | Yes | Yes | No |
+| **C. Private repo** | Private GitHub repo | For your own Workspace/Org | — | No |
+
+**A — public repo.** The conventional marketplace shape. Simplest to operate:
+no registry, no build pipeline, Railway builds from the Dockerfile already in
+this repo on every deploy.
+
+**B — private Docker image.** This is Railway's sanctioned route for shipping
+proprietary code. You publish a template whose service source is a private
+image; Railway encrypts and stores the registry credentials, and for services
+with hidden credentials *"SSH access is disabled and users cannot modify the
+Docker image source."* Deployers can see that protected credentials are in use
+but cannot read them or pull the image. Docker Hub and GitHub Container
+Registry are both supported. See
+[Going closed-source](#going-closed-source-the-private-image-route) for what it
+costs you.
+
+**C — private repo.** Railway does let a template point at a private GitHub
+repo, but it is scoped to sharing inside your own Workspace or Organization
+rather than to the public marketplace. If you want a public listing with a
+private source, take route B.
+
+`ChangeNode/ob-sync` is private today, so this is a real decision rather than a
+formality — routes A and B both require action.
+
+Two things worth weighing beyond mechanics:
+
+- **This app holds the user's Obsidian account password.** It stores those
+  credentials encrypted, runs with full read/write access to their vault, and
+  asks them to trust a server they did not build. Being able to read the source
+  is a large part of what makes that trade acceptable to a careful user. A
+  closed-source credential-holding server is a harder sell, independent of
+  whether it is technically allowed.
+- **A private image is not a hard IP boundary.** The build output is JavaScript.
+  Railway's protections are real *on Railway* — hidden credentials, no SSH, no
+  swapping the image source — but anyone who obtains the image by other means
+  reads a minified bundle, not machine code. Treat route B as "not casually
+  readable", not as "secret".
 
 Also worth settling before you publish, because they are awkward to change
 afterwards:
@@ -33,10 +75,13 @@ afterwards:
 
 Railway workspace → **Settings → Templates → New Template**.
 
-1. **Add a service** — press <kbd>⌘</kbd>+<kbd>K</kbd> or click **Add New**, and
-   choose **GitHub Repo** as the source. Point it at `ChangeNode/ob-sync`.
-   Append `/tree/<branch>` if you want to pin a branch rather than track the
-   default one.
+1. **Add a service** — press <kbd>⌘</kbd>+<kbd>K</kbd> or click **Add New**, then
+   pick the source that matches the route you chose above:
+   - *Route A* — **GitHub Repo**, pointed at `ChangeNode/ob-sync`. Append
+     `/tree/<branch>` to pin a branch rather than track the default one.
+   - *Route B* — **Docker Image**, pointed at your published image (e.g.
+     `ghcr.io/changenode/ob-sync:0.1.0`), with the registry credentials filled
+     in under the service settings so Railway stores them hidden.
 2. **Attach a volume** — right-click the service → **Attach Volume**, mount path
    `/data`. This holds the vault copy, the SQLite database, and the sync
    client's state. Without it, every redeploy wipes the instance and the user
@@ -166,6 +211,37 @@ Practical notes for answering ob-sync questions specifically:
 - **Disk pressure** — the vault copy includes attachments, and the sync client
   keeps an append-only log that grows without bound. The Settings tab shows its
   path and size.
+
+## Going closed-source: the private image route
+
+Only relevant if you picked route B. What changes:
+
+**You take on the build.** With a public repo Railway builds from the Dockerfile
+on every deploy and you never think about it. With an image source, nothing
+gets built unless you build and push it. That means CI — a workflow that builds
+this repo's Dockerfile and pushes to GitHub Container Registry on each release.
+
+**Tag deliberately.** Pointing the template at `:latest` means every existing
+deployment picks up your next push, including a broken one, with no staging and
+no rollback story. Point it at an explicit version (`:0.1.0`) and bump the
+template when you have verified a release. Slower, and much easier to undo.
+
+**Credentials.** For GHCR that is your GitHub username plus a personal access
+token with `read:packages`. Enter it in the service settings so Railway encrypts
+and hides it. Make it a token scoped to nothing else, because it lives in
+Railway's hands for as long as the template does.
+
+**Support gets harder, both ways.** Nobody can read the code to diagnose their
+own problem, so more questions land in your queue. And you cannot ask a
+deployer to check a line number or send a stack trace they can interpret — the
+[Status tab log](#5-living-with-it) and the Security tab become the whole
+diagnostic surface. Weigh that against the 10% support bonus being the part of
+the kickback you have to work for.
+
+**Version visibility.** With a public repo a user can tell what they are running
+and when it changed. With an image they cannot, so put the version somewhere in
+the UI or the logs, or you will get "is this the latest?" questions you have no
+good way to answer.
 
 ## Keeping the template current
 

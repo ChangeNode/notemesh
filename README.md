@@ -44,6 +44,11 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
 
 ## Deploy on Railway
 
+> Deploying the published template rather than this repo? **[TEMPLATE.md, Part
+> B](TEMPLATE.md#part-b--deploying-and-using-it)** is the end-to-end version
+> with troubleshooting.
+
+
 1. Create a new Railway service from this repo (or the template).
 2. Attach a **volume** mounted at `/data` — this holds your vault copy,
    database, and sync state.
@@ -84,30 +89,25 @@ current size.
 
 ## Publish it as a Railway template
 
-To let other people deploy their own instance with one click:
+Full walkthrough — building the template, the deploy button, how kickbacks and
+attribution work, and the support commitment — is in **[TEMPLATE.md](TEMPLATE.md)**.
 
-1. Railway dashboard → workspace **Settings → Templates → New Template**.
-2. **Add New** → source: this GitHub repo (append `/tree/<branch>` to pin a
-   branch).
-3. Right-click the service → **Attach Volume**, mount path `/data`.
-4. In **Variables**, use Railway's generator functions so every deploy gets its
-   own secrets — never ship fixed values:
+The short version: a service from this repo, a volume at `/data`, and two
+variables set with Railway's generator functions so every deployment gets its
+own secrets.
 
-   | Variable | Value |
-   | --- | --- |
-   | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
-   | `DATA_DIR` | `/data` |
+| Variable | Value |
+| --- | --- |
+| `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
+| `DATA_DIR` | `/data` |
 
-   The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the
-   32 bytes of key material the server requires. (A plain `${{secret()}}` would
-   be rejected: it isn't valid base64 or hex key material.)
-5. Settings tab: healthcheck path `/api/health` (also read from `railway.json`).
-6. **Create Template**, then publish it to get the shareable deploy URL and
-   button markdown.
+The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the 32 bytes
+of key material the server requires. A plain `${{secret()}}` is rejected at boot:
+it isn't valid base64 or hex.
 
 Deployers still need their own Obsidian Sync subscription, and each deployment
-is a **single-user** instance — the first person to create an account claims
-it, and sign-up closes permanently after that.
+is a **single-user** instance — the first person to create an account claims it,
+and sign-up closes permanently after that.
 
 ## Connect MCP clients
 

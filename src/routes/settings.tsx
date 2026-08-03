@@ -1,6 +1,6 @@
-import { createResource, Show } from "solid-js";
+import { createResource, For, Show } from "solid-js";
 import { getSettingsPage, setDeleteEnabled, setDailyConfig } from "~/server/admin";
-import { AdminShell } from "~/components/AdminShell";
+import { AdminShell, Check } from "~/components/AdminShell";
 
 export default function Settings() {
   const [data, { refetch }] = createResource(() => getSettingsPage());
@@ -73,6 +73,74 @@ export default function Settings() {
                 </small>
                 <button type="submit">Save daily note settings</button>
               </form>
+            </article>
+
+            <article>
+              <header>
+                <strong>Where logs go</strong>
+              </header>
+              <p class="muted">
+                Three separate destinations, only one of which is a file on disk.
+              </p>
+
+              <Check
+                state="ok"
+                label="This app → standard output"
+                detail={
+                  <>
+                    Admin actions, authentication failures, and errors are written to stdout as
+                    JSON. Nothing from the app itself is written to a log file. On Railway these
+                    are the service's <b>Deploy Logs</b>; locally they're your terminal.
+                  </>
+                }
+              />
+
+              <Check
+                state="ok"
+                label="Sync daemon tail → memory only"
+                detail={
+                  <>
+                    The last {d.logTailLines} lines shown on the Status tab are held in memory and
+                    lost on restart. They are never persisted by this app.
+                  </>
+                }
+              />
+
+              <Show
+                when={d.syncLogs.length > 0}
+                fallback={
+                  <Check
+                    state="ok"
+                    label="Sync client → no log file yet"
+                    detail="The sync client writes its own log once a vault is linked and syncing."
+                  />
+                }
+              >
+                <Check
+                  state="warn"
+                  label="Sync client → file on the data volume"
+                  detail={
+                    <>
+                      The Obsidian headless sync client keeps its own log, outside this app's
+                      control. It grows without bound and counts against your volume, so check it
+                      if space gets tight — deleting it is safe while the daemon is stopped.
+                      <For each={d.syncLogs}>
+                        {(l) => (
+                          <div class="logfile">
+                            <code>{l.path}</code>
+                            <span>
+                              {l.size}
+                              {l.modified
+                                ? ` · last written ${new Date(l.modified).toLocaleString()}`
+                                : ""}
+                            </span>
+                          </div>
+                        )}
+                      </For>
+                    </>
+                  }
+                />
+              </Show>
             </article>
           </>
         )}

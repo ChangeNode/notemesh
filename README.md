@@ -73,14 +73,14 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
    | --- | --- |
    | **Setup** | The MCP endpoint URL, copy-paste setup for each client, and API keys |
    | **Status** | Sync health, vault stats, live log tail, connected OAuth clients |
-   | **Settings** | The `delete_note` toggle and your daily-note folder/format |
+   | **Settings** | The `delete_note` toggle, daily-note folder/format, and where logs are written |
    | **Security** | Live posture of this instance — see [Security model](#security-model) |
 
 **Sizing the volume:** the vault copy includes synced attachments (images,
 audio, PDFs, video), so size the volume for your vault plus headroom, not just
 its markdown. You can narrow what syncs later with `ob sync-config --file-types`
 inside the container. The sync client also keeps its own append-only log on the
-volume, which grows without bound — the **Security** tab shows its path and
+volume, which grows without bound — the **Settings** tab shows its path and
 current size.
 
 ## Publish it as a Railway template

@@ -1,4 +1,4 @@
-import { createResource, For, Show } from "solid-js";
+import { createResource, Show } from "solid-js";
 import { getSecurityPage } from "~/server/admin";
 import { AdminShell, Check } from "~/components/AdminShell";
 
@@ -124,74 +124,6 @@ export default function Security() {
 
             <article>
               <header>
-                <strong>Where logs go</strong>
-              </header>
-              <p class="muted">
-                Three separate destinations, only one of which is a file on disk.
-              </p>
-
-              <Check
-                state="ok"
-                label="This app → standard output"
-                detail={
-                  <>
-                    Admin actions, authentication failures, and errors are written to stdout as
-                    JSON. Nothing from the app itself is written to a log file. On Railway these
-                    are the service's <b>Deploy Logs</b>; locally they're your terminal.
-                  </>
-                }
-              />
-
-              <Check
-                state="ok"
-                label="Sync daemon tail → memory only"
-                detail={
-                  <>
-                    The last {d.logTailLines} lines shown on the Status tab are held in memory and
-                    lost on restart. They are never persisted by this app.
-                  </>
-                }
-              />
-
-              <Show
-                when={d.syncLogs.length > 0}
-                fallback={
-                  <Check
-                    state="ok"
-                    label="Sync client → no log file yet"
-                    detail="The sync client writes its own log once a vault is linked and syncing."
-                  />
-                }
-              >
-                <Check
-                  state="warn"
-                  label="Sync client → file on the data volume"
-                  detail={
-                    <>
-                      The Obsidian headless sync client keeps its own log, outside this app's
-                      control. It grows without bound and counts against your volume, so check it
-                      if space gets tight — deleting it is safe while the daemon is stopped.
-                      <For each={d.syncLogs}>
-                        {(l) => (
-                          <div class="logfile">
-                            <code>{l.path}</code>
-                            <span>
-                              {l.size}
-                              {l.modified
-                                ? ` · last written ${new Date(l.modified).toLocaleString()}`
-                                : ""}
-                            </span>
-                          </div>
-                        )}
-                      </For>
-                    </>
-                  }
-                />
-              </Show>
-            </article>
-
-            <article>
-              <header>
                 <strong>Network-exposed endpoints</strong>
               </header>
               <table>
@@ -276,7 +208,11 @@ export default function Security() {
                   <code>ENCRYPTION_KEY</code>, passed to the sync CLI over stdin rather than the
                   command line, and scrubbed from captured output.
                 </li>
-                <li>Admin actions and authentication failures are written to the server log.</li>
+                <li>
+                  Admin actions and authentication failures are written to the server log.
+                  Settings lists every place logs are written, including the one file the
+                  sync client keeps on the data volume.
+                </li>
               </ul>
             </article>
           </>

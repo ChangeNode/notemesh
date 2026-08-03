@@ -104,6 +104,8 @@ export async function getSettingsPage() {
     deleteEnabled: getSetting("delete_enabled") === "true",
     dailyFolder: getSetting("daily_folder") ?? "",
     dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
+    syncLogs: syncLogFiles(),
+    logTailLines: MAX_LOG_LINES,
   };
 }
 
@@ -132,8 +134,6 @@ export async function getSecurityPage() {
     consentCount: count('SELECT COUNT(*) AS n FROM "oauthConsent"'),
     accessTokenCount: count('SELECT COUNT(*) AS n FROM "oauthAccessToken"'),
     throttle: authFailureSnapshot(),
-    syncLogs: syncLogFiles(),
-    logTailLines: MAX_LOG_LINES,
   };
 }
 

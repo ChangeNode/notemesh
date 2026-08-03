@@ -1,4 +1,5 @@
 node_modules/
+.pnpm-store/
 .vinxi/
 .output/
 dist/
@@ -7,4 +8,6 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+.idea/
+.vscode/
 /data/

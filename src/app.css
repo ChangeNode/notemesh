@@ -35,6 +35,21 @@ button.danger {
 .status-dot.warn { background: #ed6c02; }
 .status-dot.err { background: #c0392b; }
 
+/* Wordmark linking to the repo. Selector is specific enough to beat Pico's
+   own nav-link rule, which would otherwise apply link colouring plus the
+   padding and negative margin that keep nav links evenly spaced. */
+nav ul li a.brand {
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  text-decoration: none;
+  background: none;
+}
+
+nav ul li a.brand:hover {
+  color: var(--pico-primary);
+}
+
 /* Tab bar under the header. */
 nav.tabs {
   border-bottom: 1px solid var(--pico-muted-border-color);

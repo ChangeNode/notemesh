@@ -35,7 +35,9 @@ export function AdminShell(props: { children: JSX.Element }) {
       <nav>
         <ul>
           <li>
-            <strong>ob-sync</strong>
+            <a class="brand" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+              <strong>ob-sync</strong>
+            </a>
           </li>
         </ul>
         <ul>

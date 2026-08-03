@@ -111,6 +111,7 @@ export async function getSettingsPage() {
     backend: syncKind(),
     gitRemote: getSetting("git_remote") ?? "",
     gitBranch: getSetting("git_branch") ?? "main",
+    gitConflictStrategy: getSetting("git_conflict_strategy") ?? "file",
     gitDebounceSeconds: Number(getSetting("git_debounce_seconds")) || 5,
     gitPullSeconds: Number(getSetting("git_pull_seconds")) || 30,
   };
@@ -205,6 +206,16 @@ export async function setGitTiming(debounceSeconds: number, pullSeconds: number)
   setSetting("git_pull_seconds", String(clamp(pullSeconds, 5, 3600)));
   // Timers are read at start(), so restart to pick the new values up.
   syncBackend().resetAndStart();
+  return { ok: true };
+}
+
+// What to do when git can't reconcile two versions. See sync/conflict.ts —
+// this only ever applies to the residue git cannot merge itself.
+export async function setGitConflictStrategy(strategy: string) {
+  "use server";
+  await requireAdmin();
+  const valid = strategy === "branch" || strategy === "inline" ? strategy : "file";
+  setSetting("git_conflict_strategy", valid);
   return { ok: true };
 }
 

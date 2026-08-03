@@ -1,9 +1,15 @@
-import { execa } from "execa";
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
-import { getGitCredentials } from "./git-credentials";
+import { runGit } from "./git-exec";
+import type { ConflictRecord } from "./types";
+import {
+  probeMerge,
+  resolveConflict,
+  parseConflictStrategy,
+  type ConflictStrategy,
+} from "./conflict";
 import { LogRing, type LogLine, type SyncBackend, type SyncState, type SyncStatus } from "./types";
 
 // Git-backed vault sync.
@@ -44,65 +50,13 @@ function debounceMs(): number {
   return (Number.isFinite(n) && n > 0 ? n : DEFAULT_DEBOUNCE_SECONDS) * 1000;
 }
 
+function conflictStrategy(): ConflictStrategy {
+  return parseConflictStrategy(getSetting("git_conflict_strategy"));
+}
+
 function pullMs(): number {
   const n = Number(getSetting("git_pull_seconds"));
   return (Number.isFinite(n) && n > 0 ? n : DEFAULT_PULL_SECONDS) * 1000;
-}
-
-export interface GitResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  combined: string;
-  code: number | null;
-}
-
-// Credentials reach git through a helper that reads them from the environment
-// rather than from argv or the stored remote URL. argv is world-readable via
-// ps/proc, and a token baked into the remote would persist in .git/config.
-const CREDENTIAL_HELPER =
-  `!f() { printf 'username=%s\\npassword=%s\\n' "$OB_GIT_USER" "$OB_GIT_TOKEN"; }; f`;
-
-function redact(text: string, secrets: (string | undefined)[]): string {
-  let out = text;
-  for (const s of secrets) {
-    if (s && s.length >= 6) out = out.split(s).join("«redacted»");
-  }
-  return out;
-}
-
-export async function runGit(
-  args: string[],
-  opts: { cwd?: string; authenticated?: boolean; timeoutMs?: number } = {},
-): Promise<GitResult> {
-  const creds = opts.authenticated ? getGitCredentials() : null;
-  const full = creds ? ["-c", `credential.helper=${CREDENTIAL_HELPER}`, ...args] : args;
-  try {
-    const res = await execa("git", full, {
-      cwd: opts.cwd ?? env.vaultDir,
-      env: {
-        // Never prompt: an interactive credential prompt in a daemon hangs
-        // forever instead of failing.
-        GIT_TERMINAL_PROMPT: "0",
-        GIT_ASKPASS: "",
-        ...(creds ? { OB_GIT_USER: creds.username, OB_GIT_TOKEN: creds.token } : {}),
-      },
-      timeout: opts.timeoutMs ?? 120_000,
-      reject: false,
-      all: true,
-    });
-    const secrets = [creds?.token];
-    return {
-      ok: res.exitCode === 0,
-      stdout: redact(String(res.stdout ?? ""), secrets),
-      stderr: redact(String(res.stderr ?? ""), secrets),
-      combined: redact(String((res as any).all ?? ""), secrets),
-      code: res.exitCode ?? null,
-    };
-  } catch (e: any) {
-    const msg = redact(String(e?.message ?? e), [getGitCredentials()?.token]);
-    return { ok: false, stdout: "", stderr: msg, combined: msg, code: null };
-  }
 }
 
 export async function gitVersionOk(): Promise<{ ok: boolean; version: string }> {
@@ -132,7 +86,7 @@ class GitBackend implements SyncBackend {
   startedAt: number | null = null;
   lastActivityAt: number | null = null;
   restartCount = 0;
-  conflicts: { branch: string; at: number }[] = [];
+  conflicts: ConflictRecord[] = [];
 
   private ring = new LogRing();
   private pullTimer: ReturnType<typeof setInterval> | null = null;
@@ -330,8 +284,8 @@ class GitBackend implements SyncBackend {
     const behind = await runGit(["rev-list", "--count", `HEAD..${remote}`]);
     if (!behind.ok || Number(behind.stdout.trim()) === 0) return true;
 
-    const probe = await runGit(["merge-tree", "--write-tree", "HEAD", remote]);
-    if (probe.ok) {
+    const probe = await probeMerge(env.vaultDir, "HEAD", remote);
+    if (probe.clean) {
       const merged = await runGit([
         "-c",
         "user.name=ob-sync",
@@ -356,34 +310,29 @@ class GitBackend implements SyncBackend {
       return true;
     }
 
-    return await this.park(cfg);
-  }
-
-  // A real conflict. Park local work on a branch and take the remote state, so
-  // the vault is immediately consistent and readable while nothing is lost.
-  private async park(cfg: GitConfig): Promise<boolean> {
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const branch = `ob-sync/conflict-${stamp}`;
-    const made = await runGit(["branch", branch]);
-    if (!made.ok) {
-      this.log(`[git] could not park conflicting work: ${made.combined.trim()}`, "error");
+    const strategy = conflictStrategy();
+    const outcome = await resolveConflict({
+      dir: env.vaultDir,
+      remoteRef: remote,
+      strategy,
+      paths: probe.paths,
+    });
+    if (!outcome.ok) {
+      this.log(`[git] ${outcome.message}`, "error");
       this.state = "backoff";
       return false;
     }
-    const reset = await runGit(["reset", "--hard", `origin/${cfg.branch}`]);
-    if (!reset.ok) {
-      this.log(`[git] reset to remote failed: ${reset.combined.trim()}`, "error");
-      this.state = "backoff";
-      return false;
-    }
-    this.conflicts.push({ branch, at: Date.now() });
-    this.state = "conflict";
-    this.log(
-      `[git] Error: conflicting edits — your changes and the remote both touched the same ` +
-        `part of a note. The vault now matches the remote; the assistant's version is kept on ` +
-        `branch ${branch}. Recover it with: git merge ${branch}`,
-      "error",
-    );
+    this.conflicts.push({
+      at: Date.now(),
+      strategy: outcome.strategy,
+      paths: outcome.paths,
+      branch: outcome.branch,
+      copies: outcome.copies,
+    });
+    // Inline is the operator's explicit choice, so it isn't an error state —
+    // the merge completed and the note holds both versions.
+    if (strategy !== "inline") this.state = "conflict";
+    this.log(`[git] ${strategy === "inline" ? "" : "Error: "}${outcome.message}`, "error");
     return true;
   }
 

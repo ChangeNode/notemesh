@@ -1,7 +1,7 @@
 {
   "name": "ob-sync",
   "version": "0.1.0",
-  "description": "Personal Obsidian vault MCP server — Railway template",
+  "description": "Personal Obsidian vault MCP server \u2014 Railway template",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.16.0",
@@ -9,7 +9,9 @@
     "dev": "vinxi dev",
     "build": "vinxi build",
     "start": "vinxi start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@better-auth/api-key": "1.6.25",
@@ -34,7 +36,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=22"

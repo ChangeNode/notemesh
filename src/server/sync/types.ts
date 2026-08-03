@@ -34,8 +34,19 @@ export interface SyncStatus {
   lastActivityAt: number | null;
   restartCount: number;
   activity: SyncActivity & { active: boolean };
-  /** git only: local work parked on a branch after a conflict, awaiting a human. */
-  conflicts?: { branch: string; at: number }[];
+  /** git only: conflicts that were resolved by the configured strategy. */
+  conflicts?: ConflictRecord[];
+}
+
+// A conflict that the configured strategy handled. Which fields are populated
+// depends on the strategy: a branch name for "branch", the conflict copies
+// written for "file", neither for "inline".
+export interface ConflictRecord {
+  at: number;
+  strategy: "file" | "branch" | "inline";
+  paths: string[];
+  branch?: string;
+  copies?: string[];
 }
 
 export const MAX_LOG_LINES = 500;

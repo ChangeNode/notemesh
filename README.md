@@ -111,14 +111,24 @@ How it behaves:
 - **Commits are attributable.** Each is authored `ob-sync <ob-sync@localhost>`
   with the tool names in the subject and the paths in the body, so
   `git log --author=ob-sync` is a complete record of assistant activity.
-- **Conflicts never reach your notes.** Before merging anything the server runs
-  `git merge-tree`, which performs the merge in git's object database and
+- **Conflicts are checked for before anything is written.** The server runs
+  `git merge-tree`, which performs the merge inside git's object database and
   reports conflicts without touching the working tree. Concurrent edits to
   different notes — or to different parts of the same note — merge cleanly and
-  keep both sides. A genuine overlap parks the assistant's commit on an
-  `ob-sync/conflict-<timestamp>` branch, sets the vault to match the remote, and
-  tells you on the Status tab. Nothing is discarded; `git merge <branch>`
-  recovers it.
+  keep both sides, with no conflict handling involved at all.
+
+  The only case that needs a decision is the same region of the same note
+  changing on both sides at once, and the **Settings** tab chooses what happens
+  then:
+
+  | Strategy | What you get |
+  | --- | --- |
+  | **Generate conflict file** (default) | Your devices' version keeps the real filename; the assistant's is saved beside it as `Note (Conflicted copy ob-sync 202608031958).md` and synced to every device — the same convention Obsidian Sync uses |
+  | **Place conflicts on a branch** | Vault left untouched and matching the remote; the assistant's version kept on `ob-sync/conflict-<timestamp>`, recoverable with `git merge` |
+  | **Inline git-style markers** | Both versions in the note separated by `<<<<<<<` — faithful to git, but the assistant reads your notes and will treat the markers as content |
+
+  Under the first two, conflict markers never enter the vault at all. Nothing is
+  ever discarded under any of the three.
 - **Attachments.** git handles large binaries poorly, so this suits
   markdown-heavy vaults. `git-lfs` is installed in the image, so LFS-backed
   repos work; if an LFS object is ever missing, reads fail loudly rather than
@@ -126,6 +136,17 @@ How it behaves:
 
 Requires git 2.38+ for `merge-tree` (the image ships 2.47). SSH remotes aren't
 supported yet.
+
+## Tests
+
+```bash
+pnpm test
+```
+
+The conflict-handling suite runs against the real git binary in throwaway
+repositories rather than mocks — the behaviour under test *is* git's merge
+behaviour, so stubbing it would prove nothing. It covers the clean-merge cases,
+all three conflict strategies, binary attachments, and the LFS pointer guard.
 
 ## Publish it as a Railway template
 

@@ -1,5 +1,5 @@
 import { createResource, For, Show } from "solid-js";
-import { getSettingsPage, setDeleteEnabled, setDailyConfig, setGitTiming } from "~/server/admin";
+import { getSettingsPage, setDeleteEnabled, setDailyConfig, setGitTiming, setGitConflictStrategy } from "~/server/admin";
 import { AdminShell, Check } from "~/components/AdminShell";
 
 export default function Settings() {
@@ -36,6 +36,31 @@ export default function Settings() {
                 <p class="muted">
                   Syncing <code>{d.gitRemote}</code> on <code>{d.gitBranch}</code>.
                 </p>
+                <label for="git-conflict">Conflict resolution</label>
+                <select
+                  id="git-conflict"
+                  value={d.gitConflictStrategy}
+                  onChange={(e) => setGitConflictStrategy(e.currentTarget.value).then(() => refetch())}
+                >
+                  <option value="file">Generate conflict file (recommended)</option>
+                  <option value="branch">Place conflicts on a branch</option>
+                  <option value="inline">Inline git-style markers</option>
+                </select>
+                <small class="muted">
+                  Only applies when git can't merge two versions itself — edits to different notes,
+                  or to different parts of the same note, always merge cleanly and keep both sides.
+                  <br />
+                  <b>Conflict file</b> keeps your other devices' version at the original filename
+                  and saves the assistant's alongside as{" "}
+                  <code>Note (Conflicted copy ob-sync …).md</code>, the way Obsidian Sync does — it
+                  syncs to all your devices, so you'll see it.{" "}
+                  <b>Branch</b> leaves the vault untouched and keeps the assistant's version in git
+                  only, visible here and in a git client.{" "}
+                  <b>Inline markers</b> puts both versions in the note separated by{" "}
+                  <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> — be aware the assistant reads your
+                  notes and will treat those markers as content until you resolve them.
+                </small>
+                <hr />
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();

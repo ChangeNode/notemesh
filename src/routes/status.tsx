@@ -174,17 +174,20 @@ export default function Status() {
               <Show when={(live()?.sync ?? d.sync).conflicts?.length}>
                 <div class="callout warn">
                   <p>
-                    <b>Conflicting edits were parked.</b> Your remote and this server changed the
-                    same part of the same note, so the vault was set to match the remote and the
-                    assistant's version was kept on a branch. Nothing was lost.
+                    <b>Conflicting edits.</b> Your other devices and this server changed the same
+                    part of the same note. Nothing was lost — here's where each version went.
                   </p>
                   <For each={(live()?.sync ?? d.sync).conflicts ?? []}>
                     {(c) => (
                       <p class="muted logfile">
-                        <code>{c.branch}</code>
+                        <code>{c.paths.join(", ")}</code>
                         <span>
-                          {new Date(c.at).toLocaleString()} — recover with{" "}
-                          <code>git merge {c.branch}</code>
+                          {new Date(c.at).toLocaleString()} —{" "}
+                          {c.strategy === "file"
+                            ? `the assistant's version was saved as ${c.copies?.join(", ")}`
+                            : c.strategy === "branch"
+                              ? `kept on branch ${c.branch} — recover with git merge ${c.branch}`
+                              : "both versions are in the note, separated by <<<<<<< markers"}
                         </span>
                       </p>
                     )}

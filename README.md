@@ -37,7 +37,7 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 | Links & tags | `get_links` (backlinks / outgoing), `list_link_issues` (unresolved / orphans / deadends), `list_tags`, `notes_by_tag` |
 | Vault | `get_vault_info`, `get_outline`, `word_count`, `random_note`, `unique_note` |
 
-\* `delete_note` is disabled by default; enable it from the dashboard.
+\* `delete_note` is disabled by default; enable it on the **Settings** tab.
 
 Everything an MCP client writes lands in the synced vault folder and propagates
 to your other devices through Obsidian Sync (end-to-end encrypted, as always).
@@ -66,8 +66,15 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
    3. Pick the remote vault. Leave the encryption password **blank** unless the
       vault uses end-to-end encryption — Obsidian Sync's default is managed
       encryption, which has no password.
-6. The server starts a continuous sync daemon and the dashboard shows its
-   status, logs, connected clients, and API keys.
+6. The server starts a continuous sync daemon and drops you into the admin UI,
+   which has four tabs:
+
+   | Tab | What's there |
+   | --- | --- |
+   | **Setup** | The MCP endpoint URL, copy-paste setup for each client, and API keys |
+   | **Status** | Sync health, vault stats, live log tail, connected OAuth clients |
+   | **Settings** | The `delete_note` toggle and your daily-note folder/format |
+   | **Security** | Live posture of this instance — see [Security model](#security-model) |
 
 **Sizing the volume:** the vault copy includes synced attachments (images,
 audio, PDFs, video), so size the volume for your vault plus headroom, not just
@@ -104,7 +111,9 @@ claims it, and sign-up closes permanently after that.
 
 ## Connect MCP clients
 
-The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP).
+The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP). The
+**Setup** tab shows all of this filled in with your own URL, with copy buttons —
+what follows is the same thing for reference.
 
 - **Claude (web, Desktop, Cowork)** — add it as a **custom connector**, not an
   `.mcpb` bundle. Bundles package *local* stdio servers; ob-sync is a remote
@@ -121,14 +130,14 @@ The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP).
 - **Claude Code**:
 
   ```bash
-  claude mcp add --transport http obsidian https://<your-app>/api/mcp
+  claude mcp add --transport http ob-sync https://<your-app>/api/mcp
   ```
 
-- **Codex** — add to `~/.codex/config.toml`, then `codex mcp login obsidian`:
+- **Codex** — add to `~/.codex/config.toml`, then `codex mcp login ob-sync`:
 
   ```toml
-  [mcp_servers.obsidian]
-  url = "http://localhost:3000/api/mcp"
+  [mcp_servers.ob-sync]
+  url = "https://<your-app>/api/mcp"
   auth = "oauth"
   default_tools_approval_mode = "approve"
   ```
@@ -140,7 +149,7 @@ The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP).
   left unapproved long enough also hits Codex's own timeout and can knock the
   whole tool schema out of its session.
 
-- **Anything with a bearer token** — create an API key on the dashboard and
+- **Anything with a bearer token** — create an API key on the **Setup** tab and
   send it as `Authorization: Bearer <key>` (or `x-api-key: <key>`).
 
 ## How writes propagate (read this before testing)
@@ -192,6 +201,14 @@ text previously produced a 12 MB response of replacement characters.
   opt-in setting on top of that.
 - Path traversal, symlinks, and the `.obsidian` config directory are blocked
   from all MCP file operations.
+- Only *failed* authentication is throttled. A request carrying a valid API key
+  or OAuth token is never rate-limited, so a busy agent is unaffected; the limit
+  exists to damp anonymous probing.
+
+The **Security** tab renders this as the live state of your instance rather than
+prose: whether you're on HTTPS, whether client IPs are visible to the throttle,
+how many keys/clients/tokens currently hold access, what's being blocked right
+now, and which endpoints are exposed with what auth.
 
 ## Local development
 

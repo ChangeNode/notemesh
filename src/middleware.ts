@@ -4,7 +4,7 @@ import { ensureIndexerStarted } from "./server/vault/indexer";
 
 // Pages that require a signed-in admin. Everything else (login, setup, the
 // OAuth consent page, API routes) handles its own access rules.
-const PROTECTED_PAGES = new Set(["/"]);
+const PROTECTED_PAGES = new Set(["/", "/status", "/settings", "/security"]);
 
 function redirectTo(path: string): Response {
   return new Response(null, { status: 302, headers: { Location: path } });
@@ -72,7 +72,12 @@ export default createMiddleware({
         const accept = event.request.headers.get("accept") ?? "";
         const ctype = event.request.headers.get("content-type") ?? "";
         const wantsJson = ctype.includes("application/json") || accept.includes("application/json");
-        const isPageRoute = ["/", "/login", "/setup", "/oauth/consent"].includes(url.pathname);
+        // Real page routes are never bogus API paths, whatever they're posted
+        // with. (Server-function RPC goes to /_server as text/plain, so it
+        // doesn't reach this check at all.)
+        const isPageRoute =
+          PROTECTED_PAGES.has(url.pathname) ||
+          ["/login", "/setup", "/oauth/consent"].includes(url.pathname);
         if (wantsJson && !isPageRoute && event.request.method !== "GET") {
           return notFoundJson(url.pathname);
         }
@@ -89,6 +94,12 @@ export default createMiddleware({
         if (!(await isSetupComplete())) return redirectTo("/setup");
         const session = await auth.api.getSession({ headers: event.request.headers });
         if (!session) return redirectTo("/login");
+        // The admin account is created at wizard step 1, so "an admin exists"
+        // isn't the same as "the wizard finished". Send a signed-in admin whose
+        // vault isn't linked yet back to the wizard, rather than rendering tabs
+        // that have no vault behind them.
+        const { getSetting } = await import("./server/db");
+        if (getSetting("vault_configured") !== "true") return redirectTo("/setup");
       }
 
       // OAuth discovery endpoints live under /.well-known/, which the file

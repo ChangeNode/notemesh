@@ -1,5 +1,6 @@
 import { getRequestEvent } from "solid-js/web";
-import { auth, audit } from "./auth";
+import { auth, audit, MAX_OAUTH_CLIENTS } from "./auth";
+import { authFailureSnapshot } from "./mcp/ratelimit";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
 import { env } from "./env";
@@ -13,42 +14,93 @@ function headers(): Headers {
   return getRequestEvent()!.request.headers;
 }
 
-// Plain server functions (no solid-router query()/action() wrappers): the
-// dashboard refetches after every mutation, and query()'s key-based cache
-// would serve stale data to those refetches.
-export async function getDashboard() {
+// Plain server functions (no solid-router query()/action() wrappers): each tab
+// refetches after every mutation, and query()'s key-based cache would serve
+// stale data to those refetches.
+//
+// One loader per tab rather than one shared dashboard payload, so switching
+// tabs doesn't re-run every query — notably vaultInfo(), which counts notes
+// and words, and listApiKeys(), which hits Better Auth.
+
+// Clients from unauthenticated dynamic client registration (the MCP norm) have
+// no owning user, so Better Auth's session-scoped get-clients endpoint returns
+// nothing — query the OAuth tables directly.
+function oauthClientRows() {
+  return db()
+    .prepare('SELECT clientId, name, createdAt FROM "oauthClient" ORDER BY createdAt DESC')
+    .all() as { clientId: string; name: string | null; createdAt: string | number }[];
+}
+
+// Setup tab: how to point an MCP client at this server, plus API keys.
+export async function getSetupPage() {
   "use server";
   await requireAdmin();
   ensureIndexerStarted();
   const keys = await auth.api.listApiKeys({ headers: headers() }).catch(() => []);
-  // Query OAuth tables directly: clients from unauthenticated dynamic client
-  // registration (the MCP norm) have no owning user, so the session-scoped
-  // get-clients endpoint would return nothing.
-  const clients = db()
-    .prepare('SELECT clientId, name, createdAt FROM "oauthClient" ORDER BY createdAt DESC')
-    .all() as { clientId: string; name: string | null; createdAt: string | number }[];
-  const consents = db().prepare('SELECT COUNT(*) AS n FROM "oauthConsent"').get() as { n: number };
-  const sup = supervisor();
   return {
     baseUrl: env.baseUrl,
-    vault: vaultInfo(),
-    sync: sup.status(),
-    logs: sup.getLogs().slice(-80),
-    deleteEnabled: getSetting("delete_enabled") === "true",
-    dailyFolder: getSetting("daily_folder") ?? "",
-    dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
     apiKeys: (Array.isArray(keys) ? keys : ((keys as any)?.apiKeys ?? [])).map((k: any) => ({
       id: k.id,
       name: k.name ?? "(unnamed)",
       createdAt: k.createdAt,
       start: k.start ?? null,
     })),
-    oauthClients: clients.map((c) => ({
+  };
+}
+
+// Status tab: sync health, vault stats, log tail, and the connected clients.
+export async function getStatusPage() {
+  "use server";
+  await requireAdmin();
+  ensureIndexerStarted();
+  const sup = supervisor();
+  return {
+    vault: vaultInfo(),
+    sync: sup.status(),
+    logs: sup.getLogs().slice(-80),
+    oauthClients: oauthClientRows().map((c) => ({
       clientId: c.clientId,
       name: c.name ?? "(unnamed client)",
       createdAt: c.createdAt,
     })),
-    consentCount: consents.n,
+  };
+}
+
+export async function getSettingsPage() {
+  "use server";
+  await requireAdmin();
+  return {
+    deleteEnabled: getSetting("delete_enabled") === "true",
+    dailyFolder: getSetting("daily_folder") ?? "",
+    dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
+  };
+}
+
+// Security tab: the live posture of this instance. Everything here is derived
+// from current state rather than documentation, so it stays true as the
+// deployment changes (moving behind Railway's proxy, enabling delete, etc).
+export async function getSecurityPage() {
+  "use server";
+  await requireAdmin();
+  const d = db();
+  const count = (sql: string) => (d.prepare(sql).get() as { n: number }).n;
+  const keys = await auth.api.listApiKeys({ headers: headers() }).catch(() => []);
+  const keyCount = (Array.isArray(keys) ? keys : ((keys as any)?.apiKeys ?? [])).length;
+  const url = env.baseUrl;
+  return {
+    baseUrl: url,
+    isHttps: url.startsWith("https://"),
+    isLocalAddress: /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(url),
+    trustsProxyHeaders: Boolean(
+      process.env.RAILWAY_PUBLIC_DOMAIN || process.env.TRUST_PROXY_HEADERS,
+    ),
+    deleteEnabled: getSetting("delete_enabled") === "true",
+    apiKeyCount: keyCount,
+    oauthClientCount: oauthClientRows().length,
+    maxOAuthClients: MAX_OAUTH_CLIENTS,
+    consentCount: count('SELECT COUNT(*) AS n FROM "oauthConsent"'),
+    accessTokenCount: count('SELECT COUNT(*) AS n FROM "oauthAccessToken"'),
+    throttle: authFailureSnapshot(),
   };
 }
 

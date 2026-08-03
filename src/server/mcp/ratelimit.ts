@@ -80,3 +80,32 @@ export function noteAuthFailure(ip: string): void {
 export function clearAuthFailures(ip: string): void {
   buckets().delete(ip);
 }
+
+// Read-only view of the throttle for the Security tab. Counts only live
+// buckets — expired ones are ignored rather than deleted, so a dashboard poll
+// never mutates limiter state.
+export function authFailureSnapshot(): {
+  trackedSources: number;
+  blockedSources: number;
+  recentFailures: number;
+  windowMinutes: number;
+  maxFailures: number;
+} {
+  const now = Date.now();
+  let trackedSources = 0;
+  let blockedSources = 0;
+  let recentFailures = 0;
+  for (const b of buckets().values()) {
+    if (now >= b.resetAt) continue;
+    trackedSources += 1;
+    recentFailures += b.failures;
+    if (b.failures >= MAX_FAILURES) blockedSources += 1;
+  }
+  return {
+    trackedSources,
+    blockedSources,
+    recentFailures,
+    windowMinutes: WINDOW_MS / 60_000,
+    maxFailures: MAX_FAILURES,
+  };
+}

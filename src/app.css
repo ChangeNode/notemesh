@@ -35,6 +35,104 @@ button.danger {
 .status-dot.warn { background: #ed6c02; }
 .status-dot.err { background: #c0392b; }
 
+/* Tab bar under the header. */
+nav.tabs {
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  margin-bottom: 1.5rem;
+}
+
+/* :first-of-type to outrank Pico's own `nav ul:first-of-type`, which ties on
+   specificity and would otherwise win on source order. */
+nav.tabs ul:first-of-type {
+  gap: 0.25rem;
+  padding: 0;
+  /* Cancel the link padding and Pico's nav offset so the first tab's text
+     lines up with the cards below it. */
+  margin-left: -0.9rem;
+}
+
+nav.tabs li {
+  padding: 0;
+}
+
+/* Specific enough to beat Pico's own nav-link rule, which sets a negative
+   margin that would otherwise push the underline past the nav's rule. The
+   -1px bottom margin laps the active underline over that rule. */
+nav.tabs ul li a {
+  display: block;
+  margin: 0 0 -1px;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  color: var(--pico-muted-color);
+}
+
+nav.tabs ul li a:hover {
+  color: var(--pico-color);
+  background: none;
+}
+
+nav.tabs ul li a.active {
+  color: var(--pico-primary);
+  border-bottom-color: var(--pico-primary);
+  font-weight: 600;
+}
+
+/* Code line with a copy button pinned to its right. */
+.snippet {
+  position: relative;
+}
+
+.snippet pre {
+  padding-right: 5.5rem;
+  margin-bottom: var(--pico-spacing);
+}
+
+.snippet button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: auto;
+  margin: 0;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75em;
+}
+
+/* Security posture rows. */
+.check {
+  display: flex;
+  align-items: baseline;
+  gap: 0.15rem;
+  margin-bottom: 0.75rem;
+}
+
+.check:last-child {
+  margin-bottom: 0;
+}
+
+/* The dot is a flex item next to text that wraps; without this it gets
+   squeezed into a sliver on multi-line rows. */
+.check .status-dot {
+  flex: none;
+}
+
+/* Callout for something the operator needs to act on. */
+.callout {
+  border-left: 3px solid var(--pico-primary);
+  background: var(--pico-card-sectioning-background-color);
+  padding: 0.75rem 1rem;
+  margin-bottom: var(--pico-spacing);
+  border-radius: 0 4px 4px 0;
+}
+
+.callout.warn {
+  border-left-color: #ed6c02;
+}
+
+.callout > :last-child {
+  margin-bottom: 0;
+}
+
 /* Log tail viewer. */
 pre.logs {
   max-height: 300px;

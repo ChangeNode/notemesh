@@ -38,7 +38,7 @@ export function audit(event: string, detail: Record<string, unknown> = {}) {
 // Ceiling on dynamically-registered OAuth clients (see the /oauth2/register
 // hook below). Well above what real use produces — testing accumulated a
 // handful — but bounded so anonymous registration can't grow the DB forever.
-const MAX_OAUTH_CLIENTS = 50;
+export const MAX_OAUTH_CLIENTS = 50;
 
 function userCount(): number {
   try {

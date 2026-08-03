@@ -155,7 +155,7 @@ export default function Setup() {
                       value={newKeyName()}
                       onInput={(e) => setNewKeyName(e.currentTarget.value)}
                     />
-                    <button type="submit">Create key</button>
+                    <button type="submit">Create Key</button>
                   </fieldset>
                 </form>
               </article>

@@ -93,20 +93,25 @@ nav.tabs ul li a.active {
   font-weight: 600;
 }
 
-/* Code line with a copy button pinned to its right. */
+/* Code line with a copy button pinned to its right. The spacing lives on the
+   wrapper rather than the <pre> so the wrapper's box is exactly the code
+   block, letting the button centre against the text instead of against the
+   text plus its trailing margin. */
 .snippet {
   position: relative;
+  margin-bottom: var(--pico-spacing);
 }
 
 .snippet pre {
   padding-right: 5.5rem;
-  margin-bottom: var(--pico-spacing);
+  margin-bottom: 0;
 }
 
 .snippet button {
   position: absolute;
-  top: 0.5rem;
+  top: 50%;
   right: 0.5rem;
+  transform: translateY(-50%);
   width: auto;
   margin: 0;
   padding: 0.2rem 0.7rem;

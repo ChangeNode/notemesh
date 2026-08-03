@@ -151,7 +151,7 @@ export default function Status() {
                   aria-busy={running() === "sync"}
                   onClick={() => run("sync", syncNow)}
                 >
-                  {running() === "sync" ? "Syncing…" : "Sync now"}
+                  {running() === "sync" ? "Syncing…" : "Sync Now"}
                 </button>
                 <button
                   class="secondary"
@@ -159,7 +159,7 @@ export default function Status() {
                   aria-busy={running() === "restart"}
                   onClick={() => run("restart", restartSync)}
                 >
-                  {running() === "restart" ? "Restarting…" : "Restart daemon"}
+                  {running() === "restart" ? "Restarting…" : "Restart Daemon"}
                 </button>
                 <button
                   class="secondary"
@@ -167,7 +167,7 @@ export default function Status() {
                   aria-busy={running() === "rebuild"}
                   onClick={() => run("rebuild", rebuildIndex)}
                 >
-                  {running() === "rebuild" ? "Rebuilding…" : "Rebuild index"}
+                  {running() === "rebuild" ? "Rebuilding…" : "Rebuild Index"}
                 </button>
               </div>
               <Show when={d.sync.state === "needs-reauth"}>

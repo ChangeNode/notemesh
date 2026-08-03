@@ -71,7 +71,7 @@ export default function Settings() {
                   </a>{" "}
                   like YYYY-MM-DD).
                 </small>
-                <button type="submit">Save daily note settings</button>
+                <button type="submit">Save Daily Note Settings</button>
               </form>
             </article>
 

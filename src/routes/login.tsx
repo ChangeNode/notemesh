@@ -68,7 +68,7 @@ export default function Login() {
             <p class="error">{error()}</p>
           </Show>
           <button type="submit" aria-busy={busy()} disabled={busy()}>
-            Sign in
+            Sign In
           </button>
         </form>
       </article>

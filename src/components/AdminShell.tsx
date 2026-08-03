@@ -49,7 +49,7 @@ export function AdminShell(props: { children: JSX.Element }) {
                 window.location.href = "/login";
               }}
             >
-              Sign out
+              Sign Out
             </button>
           </li>
         </ul>

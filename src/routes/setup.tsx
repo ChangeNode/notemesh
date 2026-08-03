@@ -50,7 +50,7 @@ export default function Setup() {
                   <strong>✅ Setup complete</strong>
                 </header>
                 <p>Your vault is syncing and the MCP endpoint is live.</p>
-                <button onClick={() => navigate("/")}>Go to dashboard</button>
+                <button onClick={() => navigate("/")}>Go to Dashboard</button>
               </article>
             </Match>
           </Switch>
@@ -121,7 +121,7 @@ function AdminStep(props: { onDone: () => void }) {
           <p class="error">{error()}</p>
         </Show>
         <button type="submit" aria-busy={busy()} disabled={busy()}>
-          Create admin account
+          Create Admin Account
         </button>
       </form>
     </article>
@@ -173,7 +173,7 @@ function ObsidianStep(props: { onDone: () => void }) {
           <p class="error">{error()}</p>
         </Show>
         <button type="submit" aria-busy={busy()} disabled={busy()}>
-          Sign in to Obsidian
+          Sign In to Obsidian
         </button>
       </form>
     </article>
@@ -288,7 +288,7 @@ function VaultStep(props: { onDone: () => void }) {
           <p class="error">{error()}</p>
         </Show>
         <button type="submit" aria-busy={busy()} disabled={busy()}>
-          {busy() ? "Connecting… (first sync may take a while)" : "Connect vault & start sync"}
+          {busy() ? "Connecting… (first sync may take a while)" : "Connect Vault & Start Sync"}
         </button>
       </form>
     </article>

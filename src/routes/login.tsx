@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
+import { RepoFooter } from "~/components/AdminShell";
 
 export default function Login() {
   const [email, setEmail] = createSignal("");
@@ -71,6 +72,7 @@ export default function Login() {
           </button>
         </form>
       </article>
+      <RepoFooter />
     </main>
   );
 }

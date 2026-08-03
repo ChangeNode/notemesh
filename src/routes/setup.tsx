@@ -8,6 +8,7 @@ import {
   setupConfigureVault,
   type SetupStage,
 } from "~/server/setup";
+import { RepoFooter } from "~/components/AdminShell";
 
 const STEP_NUMBER: Record<SetupStage, number> = {
   admin: 1,
@@ -55,6 +56,7 @@ export default function Setup() {
           </Switch>
         )}
       </Show>
+      <RepoFooter />
     </main>
   );
 }

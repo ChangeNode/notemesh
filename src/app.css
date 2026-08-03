@@ -133,6 +133,19 @@ nav.tabs ul li a.active {
   margin-bottom: 0;
 }
 
+/* Repo link closing every page. */
+.repo-footer {
+  margin-bottom: 0;
+}
+
+.repo-footer a {
+  color: var(--pico-muted-color);
+}
+
+.repo-footer a:hover {
+  color: var(--pico-primary);
+}
+
 /* Log tail viewer. */
 pre.logs {
   max-height: 300px;

@@ -2,6 +2,7 @@ import { createSignal, createResource, Show, For } from "solid-js";
 import { isServer } from "solid-js/web";
 import { useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
+import { RepoFooter } from "~/components/AdminShell";
 
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "vault:read": "Read your notes: search, list, and open any note in the vault",
@@ -79,6 +80,7 @@ export default function Consent() {
           </div>
         </footer>
       </article>
+      <RepoFooter />
     </main>
   );
 }

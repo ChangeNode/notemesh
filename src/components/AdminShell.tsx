@@ -9,6 +9,23 @@ const TABS = [
   { href: "/security", label: "Security" },
 ];
 
+const REPO_URL = "https://github.com/ChangeNode/ob-sync";
+
+// Sits at the bottom of every page, signed in or not, so the source is always
+// one click away from whatever the operator is looking at.
+export function RepoFooter() {
+  return (
+    <>
+      <hr />
+      <p class="muted repo-footer">
+        <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+          ob-sync on GitHub
+        </a>
+      </p>
+    </>
+  );
+}
+
 // Shared chrome for the four admin tabs. Each page renders its own cards
 // inside this so the nav stays identical and client-side navigation between
 // tabs doesn't remount the whole document.
@@ -48,6 +65,7 @@ export function AdminShell(props: { children: JSX.Element }) {
         </ul>
       </nav>
       {props.children}
+      <RepoFooter />
     </main>
   );
 }

@@ -106,9 +106,18 @@ claims it, and sign-up closes permanently after that.
 
 The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP).
 
-- **Claude.ai** — Settings → Connectors → *Add custom connector* → paste the
-  endpoint URL. The OAuth flow redirects to your server; approve access on the
-  consent screen.
+- **Claude (web, Desktop, Cowork)** — add it as a **custom connector**, not an
+  `.mcpb` bundle. Bundles package *local* stdio servers; ob-sync is a remote
+  Streamable HTTP server, which is what custom connectors are for. Configure it
+  once at claude.ai → Customize → Connectors → *Add custom connector* → paste
+  the endpoint URL, and it becomes available across your Claude surfaces. The
+  OAuth flow redirects to your server; approve on the consent screen.
+
+  **This requires a public HTTPS URL.** Anthropic's infrastructure makes the
+  connection, not your machine, so `http://localhost:3000/api/mcp` will not work
+  as a custom connector — deploy to Railway first and use that URL. (Claude Code
+  and Codex run locally and *can* reach localhost, which is why they work
+  against a dev server.)
 - **Claude Code**:
 
   ```bash

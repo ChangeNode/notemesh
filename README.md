@@ -317,3 +317,23 @@ One Node process (SolidStart) plus one supervised child process:
 - **SQLite** (`/data/app.sqlite`) — auth tables, OAuth clients/tokens, API
   keys, settings, and an FTS5 index over the vault (rebuilt by a chokidar
   watcher on every file change) powering search, links, tags, and tasks.
+
+## Licence
+
+ob-sync is dual-licensed.
+
+- **[AGPL-3.0](LICENSE)** for everyone. Free to use, modify, and self-host.
+  Running your own instance triggers no obligation — it is single-user by
+  design, so you are the only user of your service and you already have the
+  source.
+- **A commercial licence** if you want to offer ob-sync to *other people* as a
+  hosted service without publishing your source. See
+  [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+
+Contributions require a CLA so that arrangement keeps working — see
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+Note that the Obsidian Sync backend spawns Obsidian's official headless client,
+which npm publishes as `UNLICENSED` (proprietary, Dynalist Inc.). Nothing here
+relicenses it: it is run as a separate process and installed from npm by
+whoever deploys ob-sync.

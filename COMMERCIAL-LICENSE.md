@@ -24,7 +24,7 @@ instances to customers.
 That is the case AGPL-3.0 §13 covers, and a commercial licence removes the
 source-disclosure requirement for it.
 
-**Contact:** `TODO-set-a-contact-address` <!-- replace before publishing -->
+**Contact:** <https://changenode.com/contact/>
 
 Terms are negotiated per case; there is no published price list. Tell me what
 you want to build and we'll work out something sensible.

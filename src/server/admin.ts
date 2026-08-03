@@ -3,6 +3,7 @@ import path from "node:path";
 import { getRequestEvent } from "solid-js/web";
 import { auth, audit, MAX_OAUTH_CLIENTS } from "./auth";
 import { authFailureSnapshot } from "./mcp/ratelimit";
+import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
 import { env } from "./env";
@@ -134,6 +135,7 @@ export async function getSecurityPage() {
     consentCount: count('SELECT COUNT(*) AS n FROM "oauthConsent"'),
     accessTokenCount: count('SELECT COUNT(*) AS n FROM "oauthAccessToken"'),
     throttle: authFailureSnapshot(),
+    claimWindowMinutes: CLAIM_WINDOW_MINUTES,
   };
 }
 

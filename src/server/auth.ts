@@ -7,6 +7,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import crypto from "node:crypto";
 import { db } from "./db";
 import { env } from "./env";
+import { withinClaimWindow, CLAIM_WINDOW_MINUTES } from "./claim";
 
 // Session-signing secret derived from (not equal to) the credential
 // encryption key, so one secret in the Railway template covers both.
@@ -16,14 +17,6 @@ function authSecret(): string {
     .update(env.encryptionKey)
     .update("better-auth-secret")
     .digest("base64");
-}
-
-// Constant-time string compare that also hides length via hashing, so the
-// SETUP_TOKEN gate leaks neither the token's bytes nor its length via timing.
-function safeEqual(a: string, b: string): boolean {
-  const ha = crypto.createHash("sha256").update(a).digest();
-  const hb = crypto.createHash("sha256").update(b).digest();
-  return crypto.timingSafeEqual(ha, hb);
 }
 
 // Minimal structured audit log for security-relevant events (no secrets).
@@ -71,7 +64,7 @@ export const auth = betterAuth({
       // Password guessing. Generous enough to survive a few fat-fingered
       // attempts, and the window is short so a mistake isn't a long lockout.
       "/sign-in/email": { window: 60, max: 10 },
-      // Guessing SETUP_TOKEN to claim an unconfigured instance.
+      // Racing to claim an unconfigured instance while its window is open.
       "/sign-up/email": { window: 3600, max: 10 },
       // Unauthenticated dynamic client registration.
       "/oauth2/register": { window: 3600, max: 20 },
@@ -90,7 +83,8 @@ export const auth = betterAuth({
   },
   hooks: {
     // This instance is single-user: exactly one admin account, created by the
-    // setup wizard. The first (and only) sign-up must present the SETUP_TOKEN.
+    // setup wizard. Sign-up is open only while the instance is unclaimed AND
+    // still inside the post-start claim window — see server/claim.ts.
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email") {
         if (userCount() > 0) {
@@ -99,11 +93,13 @@ export const auth = betterAuth({
             message: "This instance is already claimed.",
           });
         }
-        const token = ctx.headers?.get("x-setup-token") ?? "";
-        if (!safeEqual(token, env.setupToken)) {
-          audit("signup.rejected", { reason: "bad_setup_token" });
+        if (!withinClaimWindow()) {
+          audit("signup.rejected", { reason: "claim_window_closed" });
           throw new APIError("FORBIDDEN", {
-            message: "Invalid setup token.",
+            message:
+              `This server is locked down: it was not claimed within ` +
+              `${CLAIM_WINDOW_MINUTES} minutes of starting. Restart it, then create ` +
+              `the admin account.`,
           });
         }
         audit("signup.accepted", {});

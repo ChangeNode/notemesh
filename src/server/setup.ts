@@ -1,5 +1,6 @@
 import { getSetting, setSetting } from "./db";
 import { isSetupComplete, runAuthMigrations } from "./auth";
+import { claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
 import {
   obLogin,
   obListRemoteVaults,
@@ -32,6 +33,30 @@ async function computeStage(): Promise<SetupStage> {
 export async function getSetupStage(): Promise<SetupStage> {
   "use server";
   return computeStage();
+}
+
+export interface ClaimState {
+  claimable: boolean;
+  secondsLeft: number;
+  windowMinutes: number;
+}
+
+// Public by necessity: this drives the very first screen, before any account
+// exists to authenticate against. Once the instance is claimed it reports a
+// closed window unconditionally, so it stops describing the process to anyone
+// who asks.
+export async function getClaimState(): Promise<ClaimState> {
+  "use server";
+  await runAuthMigrations();
+  if (await isSetupComplete()) {
+    return { claimable: false, secondsLeft: 0, windowMinutes: CLAIM_WINDOW_MINUTES };
+  }
+  const remaining = claimWindowRemainingMs();
+  return {
+    claimable: remaining > 0,
+    secondsLeft: Math.ceil(remaining / 1000),
+    windowMinutes: CLAIM_WINDOW_MINUTES,
+  };
 }
 
 export interface ObsidianLoginResult {

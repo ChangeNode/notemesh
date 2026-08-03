@@ -21,9 +21,6 @@ export const env = {
   get dbPath(): string {
     return path.join(this.dataDir, "app.sqlite");
   },
-  get setupToken(): string {
-    return required("SETUP_TOKEN");
-  },
   get encryptionKey(): Buffer {
     const raw = required("ENCRYPTION_KEY").trim();
     // Require real 256-bit key material — 32 bytes as base64 or hex. This key

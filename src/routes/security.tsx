@@ -163,7 +163,8 @@ export default function Security() {
                       <code>/setup</code>
                     </td>
                     <td>
-                      <code>SETUP_TOKEN</code>, and only until the instance is claimed
+                      Open only while unclaimed and within {d.claimWindowMinutes} minutes of
+                      server start
                     </td>
                   </tr>
                   <tr>

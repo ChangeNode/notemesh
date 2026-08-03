@@ -48,8 +48,6 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
 2. Attach a **volume** mounted at `/data` — this holds your vault copy,
    database, and sync state.
 3. Set these variables on the service:
-   - `SETUP_TOKEN` — any random string (Railway can generate one). Gates the
-     first-boot setup wizard so a stranger can't claim your fresh instance.
    - `ENCRYPTION_KEY` — 32 random bytes as base64 (`openssl rand -base64 32`)
      or hex (`openssl rand -hex 32`). Encrypts your stored Obsidian credentials
      at rest and derives the session secret, so it must be real random key
@@ -60,8 +58,9 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
    The OAuth issuer is derived from `RAILWAY_PUBLIC_DOMAIN` when the process
    starts, so a service that booted before it had a domain will advertise the
    wrong issuer until it restarts. (Setting `BASE_URL` explicitly also works.)
-5. Open the service URL and follow the setup wizard:
-   1. Paste the `SETUP_TOKEN` and choose your admin email/password.
+5. Open the service URL **within 30 minutes of the deploy** and follow the
+   setup wizard:
+   1. Choose your admin email/password — no token to look up.
    2. Sign in with your **Obsidian account** (MFA supported).
    3. Pick the remote vault. Leave the encryption password **blank** unless the
       vault uses end-to-end encryption — Obsidian Sync's default is managed
@@ -96,7 +95,6 @@ To let other people deploy their own instance with one click:
 
    | Variable | Value |
    | --- | --- |
-   | `SETUP_TOKEN` | `${{secret(32)}}` |
    | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
    | `DATA_DIR` | `/data` |
 
@@ -108,8 +106,8 @@ To let other people deploy their own instance with one click:
    button markdown.
 
 Deployers still need their own Obsidian Sync subscription, and each deployment
-is a **single-user** instance — the first person to present the `SETUP_TOKEN`
-claims it, and sign-up closes permanently after that.
+is a **single-user** instance — the first person to create an account claims
+it, and sign-up closes permanently after that.
 
 ## Connect MCP clients
 
@@ -191,8 +189,10 @@ text previously produced a 12 MB response of replacement characters.
 
 ## Security model
 
-- Single-user: exactly one admin account, created once via the token-gated
-  setup wizard; subsequent sign-ups are rejected.
+- Single-user: exactly one admin account. Sign-up is open only while the
+  instance is unclaimed **and** the process has been up for less than 30
+  minutes; after that the server locks down and a restart is required to
+  reopen the window. Once claimed, sign-up closes permanently.
 - The server holds your Obsidian account credentials and the vault E2E
   password (AES-256-GCM encrypted with a key derived from `ENCRYPTION_KEY`) so
   the sync daemon can re-authenticate. Treat the Railway project as sensitive.

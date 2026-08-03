@@ -1,4 +1,14 @@
-import { createSignal, createResource, createEffect, Show, For, Match, Switch } from "solid-js";
+import {
+  createSignal,
+  createResource,
+  createEffect,
+  onMount,
+  onCleanup,
+  Show,
+  For,
+  Match,
+  Switch,
+} from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
 import {
@@ -6,6 +16,7 @@ import {
   setupObsidianLogin,
   setupListVaults,
   setupConfigureVault,
+  getClaimState,
   type SetupStage,
 } from "~/server/setup";
 import { RepoFooter } from "~/components/AdminShell";
@@ -61,13 +72,37 @@ export default function Setup() {
   );
 }
 
+function formatCountdown(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m <= 0) return `${s}s`;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
 function AdminStep(props: { onDone: () => void }) {
-  const [token, setToken] = createSignal("");
+  const [claim] = createResource(() => getClaimState());
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [confirm, setConfirm] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
+
+  // Count the window down locally from the server's figure so the page turns
+  // itself over to the lockdown notice at zero, rather than letting someone
+  // fill in a form that the server will refuse.
+  //
+  // Derived from a plain elapsed counter rather than seeded into a signal by an
+  // effect: effects don't run during SSR, so a seeded signal would still be at
+  // its initial value when the server renders and every fresh instance would
+  // render as locked down.
+  const [elapsed, setElapsed] = createSignal(0);
+  onMount(() => {
+    const timer = setInterval(() => setElapsed((e) => e + 1), 1_000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  const left = () => Math.max(0, (claim()?.secondsLeft ?? 0) - elapsed());
+  const open = () => Boolean(claim()?.claimable) && left() > 0;
 
   async function submit(e: Event) {
     e.preventDefault();
@@ -81,9 +116,6 @@ function AdminStep(props: { onDone: () => void }) {
       email: email(),
       password: password(),
       name: "Admin",
-      fetchOptions: {
-        headers: { "x-setup-token": token() },
-      },
     });
     setBusy(false);
     if (error) {
@@ -94,37 +126,63 @@ function AdminStep(props: { onDone: () => void }) {
   }
 
   return (
-    <article>
-      <header>
-        <strong>Claim this server</strong>
-      </header>
-      <p class="muted">
-        Paste the <code>SETUP_TOKEN</code> from your Railway service's Variables tab, then choose
-        the admin credentials you'll use to sign in here.
-      </p>
-      <form onSubmit={submit}>
-        <label for="token">Setup token</label>
-        <input id="token" type="password" required value={token()} onInput={(e) => setToken(e.currentTarget.value)} />
-        <label for="email">Admin email</label>
-        <input id="email" type="email" autocomplete="username" required value={email()} onInput={(e) => setEmail(e.currentTarget.value)} />
-        <div class="grid">
-          <div>
-            <label for="password">Admin password (10+ characters)</label>
-            <input id="password" type="password" autocomplete="new-password" required minLength={10} value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
-          </div>
-          <div>
-            <label for="confirm">Confirm password</label>
-            <input id="confirm" type="password" autocomplete="new-password" required value={confirm()} onInput={(e) => setConfirm(e.currentTarget.value)} />
-          </div>
-        </div>
-        <Show when={error()}>
-          <p class="error">{error()}</p>
+    <Show when={claim()} keyed>
+      {(c) => (
+        <Show
+          when={open()}
+          fallback={
+            <article>
+              <header>
+                <strong>🔒 Locked down</strong>
+              </header>
+              <p>
+                This server wasn't claimed within {c.windowMinutes} minutes of starting, so it
+                stopped accepting new admin accounts.
+              </p>
+              <p class="muted">
+                Restart the server and open this page again — you'll have another{" "}
+                {c.windowMinutes} minutes to create the account. On Railway that's your service →{" "}
+                <b>Deployments</b> → <b>Restart</b>.
+              </p>
+            </article>
+          }
+        >
+          <article>
+            <header>
+              <strong>Claim this server</strong>
+            </header>
+            <p class="muted">
+              Nobody has claimed this server yet, so you can create the admin account now — no
+              token needed. For safety this is only possible in the first {c.windowMinutes} minutes
+              after the server starts.
+            </p>
+            <p>
+              <b>Time remaining: {formatCountdown(left())}</b>
+            </p>
+            <form onSubmit={submit}>
+              <label for="email">Admin email</label>
+              <input id="email" type="email" autocomplete="username" required value={email()} onInput={(e) => setEmail(e.currentTarget.value)} />
+              <div class="grid">
+                <div>
+                  <label for="password">Admin password (10+ characters)</label>
+                  <input id="password" type="password" autocomplete="new-password" required minLength={10} value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
+                </div>
+                <div>
+                  <label for="confirm">Confirm password</label>
+                  <input id="confirm" type="password" autocomplete="new-password" required value={confirm()} onInput={(e) => setConfirm(e.currentTarget.value)} />
+                </div>
+              </div>
+              <Show when={error()}>
+                <p class="error">{error()}</p>
+              </Show>
+              <button type="submit" aria-busy={busy()} disabled={busy()}>
+                Create Admin Account
+              </button>
+            </form>
+          </article>
         </Show>
-        <button type="submit" aria-busy={busy()} disabled={busy()}>
-          Create Admin Account
-        </button>
-      </form>
-    </article>
+      )}
+    </Show>
   );
 }
 

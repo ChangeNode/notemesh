@@ -3,38 +3,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
-import { obIsAuthenticated } from "./cli";
+import { obIsAuthenticated, obSyncOnce } from "./cli";
+import { MAX_LOG_LINES, type LogLine, type SyncActivity, type SyncBackend, type SyncState, type SyncStatus } from "../sync/types";
 
-export type SyncState =
-  | "stopped"
-  | "running"
-  | "backoff" // crashed, waiting to restart
-  | "needs-reauth"; // Obsidian session invalid; won't restart until re-auth
-
-export interface LogLine {
-  ts: number;
-  line: string;
-  // Set only for lines this app injects itself. Output from the sync client
-  // has no severity channel, so those lines are classified by content when
-  // they're rendered.
-  level?: "error" | "warn";
-}
-
-export interface SyncActivity {
-  downloaded: number;
-  uploaded: number;
-  deleted: number;
-  startedAt: number | null;
-  lastEventAt: number | null;
-}
-
-export const MAX_LOG_LINES = 500;
+export { MAX_LOG_LINES };
+export type { LogLine, SyncActivity, SyncState };
 // A new file event after this much quiet starts a fresh activity burst.
 const BURST_GAP_MS = 15_000;
 // Activity counts as "in progress" if an event landed this recently.
 const ACTIVE_WINDOW_MS = 5_000;
 
-class SyncSupervisor {
+class SyncSupervisor implements SyncBackend {
+  readonly kind = "obsidian" as const;
+
   state: SyncState = "stopped";
   lastActivityAt: number | null = null;
   startedAt: number | null = null;
@@ -179,7 +160,23 @@ class SyncSupervisor {
     this.start();
   }
 
-  status() {
+  // One-shot sync, reported into the same log the operator is watching rather
+  // than back through the button that triggered it.
+  async syncNow(): Promise<{ ok: boolean; output: string }> {
+    const res = await obSyncOnce();
+    const tail = res.combined.split("\n").filter(Boolean).slice(-5).join("\n");
+    if (res.ok) {
+      this.note("[admin] Manual sync finished.");
+    } else {
+      this.note("[admin] Error: manual sync failed.", "error");
+      for (const line of tail.split("\n").filter(Boolean)) {
+        this.note(`[admin] ${line}`, "error");
+      }
+    }
+    return { ok: res.ok, output: tail };
+  }
+
+  status(): SyncStatus {
     const a = this.activity ?? { downloaded: 0, uploaded: 0, deleted: 0, startedAt: null, lastEventAt: null };
     return {
       state: this.state,
@@ -227,19 +224,5 @@ if (!(globalThis as any)[exitKey]) {
       shutdown();
       process.exit(0);
     });
-  }
-}
-
-// Idempotent boot hook: starts the daemon if setup has completed.
-let bootChecked = false;
-export function ensureSyncStarted() {
-  if (bootChecked) return;
-  bootChecked = true;
-  try {
-    if (getSetting("vault_configured") === "true") {
-      supervisor().start();
-    }
-  } catch {
-    // DB not ready yet — first boot before setup; nothing to start.
   }
 }

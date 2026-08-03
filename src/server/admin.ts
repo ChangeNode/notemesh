@@ -7,11 +7,12 @@ import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
 import { env } from "./env";
-import { supervisor, MAX_LOG_LINES } from "./ob/supervisor";
+import { MAX_LOG_LINES } from "./ob/supervisor";
+import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
-import { obLogin, obSyncOnce, looksLikeMfaRequired } from "./ob/cli";
+import { obLogin, looksLikeMfaRequired } from "./ob/cli";
 import { storeObsidianAccount, getObsidianAccount } from "./ob/credentials";
 
 function headers(): Headers {
@@ -85,7 +86,7 @@ export async function getStatusPage() {
   "use server";
   await requireAdmin();
   ensureIndexerStarted();
-  const sup = supervisor();
+  const sup = syncBackend();
   return {
     vault: vaultInfo(),
     sync: sup.status(),
@@ -107,6 +108,11 @@ export async function getSettingsPage() {
     dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
     syncLogs: syncLogFiles(),
     logTailLines: MAX_LOG_LINES,
+    backend: syncKind(),
+    gitRemote: getSetting("git_remote") ?? "",
+    gitBranch: getSetting("git_branch") ?? "main",
+    gitDebounceSeconds: Number(getSetting("git_debounce_seconds")) || 5,
+    gitPullSeconds: Number(getSetting("git_pull_seconds")) || 30,
   };
 }
 
@@ -136,6 +142,7 @@ export async function getSecurityPage() {
     accessTokenCount: count('SELECT COUNT(*) AS n FROM "oauthAccessToken"'),
     throttle: authFailureSnapshot(),
     claimWindowMinutes: CLAIM_WINDOW_MINUTES,
+    backend: syncKind(),
   };
 }
 
@@ -144,7 +151,7 @@ export async function getSecurityPage() {
 export async function getSyncActivity() {
   "use server";
   await requireAdmin();
-  const sup = supervisor();
+  const sup = syncBackend();
   return {
     now: Date.now(),
     sync: sup.status(),
@@ -187,6 +194,20 @@ export async function revokeOAuthClient(clientId: string) {
   return { ok: true };
 }
 
+// How eagerly the git backend publishes and refreshes. Debounce trades latency
+// for commit noise; pull interval trades freshness for API calls.
+export async function setGitTiming(debounceSeconds: number, pullSeconds: number) {
+  "use server";
+  await requireAdmin();
+  const clamp = (n: number, lo: number, hi: number) =>
+    Math.min(hi, Math.max(lo, Math.round(Number.isFinite(n) ? n : lo)));
+  setSetting("git_debounce_seconds", String(clamp(debounceSeconds, 1, 300)));
+  setSetting("git_pull_seconds", String(clamp(pullSeconds, 5, 3600)));
+  // Timers are read at start(), so restart to pick the new values up.
+  syncBackend().resetAndStart();
+  return { ok: true };
+}
+
 export async function setDeleteEnabled(enabled: boolean) {
   "use server";
   await requireAdmin();
@@ -208,27 +229,15 @@ export async function setDailyConfig(folder: string, format: string) {
 export async function syncNow() {
   "use server";
   await requireAdmin();
-  const res = await obSyncOnce();
-  const tail = res.combined.split("\n").filter(Boolean).slice(-5).join("\n");
-  const sup = supervisor();
-  // Report into the sync log rather than back through the button: that panel
-  // is already on screen and already being watched, and it keeps the outcome
-  // around instead of it vanishing with a transient message.
-  if (res.ok) {
-    sup.note("[admin] Manual sync finished.");
-  } else {
-    sup.note("[admin] Error: manual sync failed.", "error");
-    for (const line of tail.split("\n").filter(Boolean)) {
-      sup.note(`[admin] ${line}`, "error");
-    }
-  }
-  return { ok: res.ok, output: tail };
+  // Each backend reports the outcome into its own log; see supervisor.syncNow
+  // and GitBackend.syncNow.
+  return syncBackend().syncNow();
 }
 
 export async function restartSync() {
   "use server";
   await requireAdmin();
-  const sup = supervisor();
+  const sup = syncBackend();
   sup.stop();
   // Give the child a moment to exit before restarting.
   await new Promise((r) => setTimeout(r, 1_000));
@@ -265,6 +274,6 @@ export async function reauth(input: { email?: string; password?: string; mfa?: s
       };
     }
     if (input.email && input.password) storeObsidianAccount(input.email, input.password);
-    supervisor().resetAndStart();
+    syncBackend().resetAndStart();
   return { ok: true };
 }

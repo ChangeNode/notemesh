@@ -8,6 +8,8 @@ import {
   readVaultFile,
   isBinaryFile,
   formatBytes,
+  isLfsPointer,
+  lfsPointerError,
   VaultPathError,
 } from "./paths";
 
@@ -106,6 +108,8 @@ export function readAttachment(notePath: string): {
       `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
     );
   }
+  // The pointer is small, so this fires well before the size cap below.
+  if (isLfsPointer(abs)) throw lfsPointerError();
   if (st.size > MAX_ATTACHMENT_BYTES) {
     throw new VaultPathError(
       `Attachment is ${formatBytes(st.size)}; the limit for inline reads is ` +

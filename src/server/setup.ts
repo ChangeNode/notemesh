@@ -10,21 +10,93 @@ import {
   type RemoteVault,
 } from "./ob/cli";
 import { storeObsidianAccount, storeVaultPassword } from "./ob/credentials";
-import { supervisor } from "./ob/supervisor";
+import { syncBackend } from "./sync";
 import { requireAdmin } from "./session";
+import { probeRemote, cloneVault, repoDisplayName } from "./sync/git";
+import { storeGitCredentials, clearGitCredentials } from "./sync/git-credentials";
 
 export type SetupStage =
   | "admin" // no admin account yet — wizard step 1
-  | "obsidian-login" // admin exists, Obsidian account not linked
-  | "vault" // logged in to Obsidian, vault not chosen
+  | "backend" // admin exists, hasn't chosen how the vault syncs
+  | "obsidian-login" // Obsidian backend: account not linked
+  | "vault" // Obsidian backend: logged in, vault not chosen
+  | "git" // git backend: repo not linked
   | "done";
 
 async function computeStage(): Promise<SetupStage> {
   await runAuthMigrations();
   if (!(await isSetupComplete())) return "admin";
+  const backend = getSetting("sync_backend");
+  if (!backend) return "backend";
+  if (backend === "git") {
+    return getSetting("vault_configured") === "true" ? "done" : "git";
+  }
   if (getSetting("obsidian_logged_in") !== "true") return "obsidian-login";
   if (getSetting("vault_configured") !== "true") return "vault";
   return "done";
+}
+
+export async function setupChooseBackend(kind: "obsidian" | "git"): Promise<{ ok: boolean }> {
+  "use server";
+  await requireAdmin();
+  setSetting("sync_backend", kind === "git" ? "git" : "obsidian");
+  return { ok: true };
+}
+
+export interface GitSetupResult {
+  ok: boolean;
+  message?: string;
+}
+
+// Link a git repo as the vault. Probes the remote first so a bad URL, a bad
+// token, or a too-old git reports precisely instead of failing halfway through
+// a clone.
+export async function setupGitRepo(
+  remote: string,
+  branch: string,
+  username: string,
+  token: string,
+): Promise<GitSetupResult> {
+  "use server";
+  await requireAdmin();
+  const url = remote.trim();
+  const ref = branch.trim() || "main";
+  // HTTPS only: the token travels with every fetch and push, so a plaintext
+  // remote would put it on the wire. OB_ALLOW_LOCAL_GIT exists so the project's
+  // own tests can point at a bare repo on disk; it is not documented for
+  // deployments and does nothing unless explicitly set.
+  const allowLocal = process.env.OB_ALLOW_LOCAL_GIT === "1";
+  const acceptable = allowLocal
+    ? /^(https:\/\/|file:\/\/|\/)[^\s]+$/i.test(url)
+    : /^https:\/\/[^\s]+$/i.test(url);
+  if (!acceptable) {
+    return {
+      ok: false,
+      message: "Use an HTTPS clone URL (https://…). SSH remotes aren't supported yet.",
+    };
+  }
+  if (!/^[\w.\-\/]+$/.test(ref)) {
+    return { ok: false, message: "Branch names are limited to letters, numbers, . - _ and /." };
+  }
+
+  storeGitCredentials(username, token);
+  const probe = await probeRemote(url, ref);
+  if (!probe.ok) {
+    clearGitCredentials();
+    return { ok: false, message: probe.message ?? "Could not reach the repository." };
+  }
+
+  setSetting("git_remote", url);
+  setSetting("git_branch", ref);
+  const cloned = await cloneVault(url, ref);
+  if (!cloned.ok) {
+    return { ok: false, message: cloned.message ?? "Clone failed." };
+  }
+
+  setSetting("vault_name", repoDisplayName(url));
+  setSetting("vault_configured", "true");
+  syncBackend().resetAndStart();
+  return { ok: true };
 }
 
 // Plain server function, deliberately NOT wrapped in solid-router's query():
@@ -128,7 +200,7 @@ export async function setupConfigureVault(
     }
   }
   setSetting("vault_name", vaultName);
-  supervisor().resetAndStart();
+  syncBackend().resetAndStart();
   return { ok: true };
 }
 

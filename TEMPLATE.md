@@ -268,8 +268,10 @@ like any other edit.
 
 ## What you need
 
-- **An Obsidian Sync subscription.** This is how the vault reaches the server;
-  there is no way around it.
+- **A way for the vault to reach the server** — either an Obsidian Sync
+  subscription, or a git repository holding your vault (any HTTPS remote:
+  GitHub, GitLab, Gitea, self-hosted). You choose during setup, and it can't be
+  changed afterwards without starting over.
 - **A Railway account.** The instance runs continuously, so it is not free.
 - Five minutes, and the willingness to finish the setup in one sitting — see
   [the claim window](#the-30-minute-claim-window).

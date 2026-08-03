@@ -2,11 +2,12 @@
 
 **Talk to your Obsidian vault from an AI assistant.**
 
-ob-sync is a self-hosted MCP server for people who use [Obsidian
-Sync](https://obsidian.md/sync). It joins your vault as another sync client —
-using Obsidian's official [headless sync
-client](https://github.com/obsidianmd/obsidian-headless) — so the server keeps a
-live, continuously-updating copy of your notes. It then exposes that vault over
+ob-sync is a self-hosted MCP server for your Obsidian vault. It joins your vault
+as another sync client — either through [Obsidian
+Sync](https://obsidian.md/sync) using Obsidian's official [headless sync
+client](https://github.com/obsidianmd/obsidian-headless), or through **any git
+remote** — so the server keeps a live, continuously-updating copy of your notes.
+It then exposes that vault over
 the [Model Context Protocol](https://modelcontextprotocol.io), so MCP clients
 (Claude, Codex, ChatGPT, MCP Inspector, …) can search, read, and edit your notes.
 Anything an assistant writes syncs back to your other devices the same way an
@@ -15,8 +16,13 @@ edit from your phone would.
 Deploy it to [Railway](https://railway.com) and it's a private, single-user
 server that only you can connect to.
 
-**Requirements:** an Obsidian Sync subscription (that's how the vault reaches the
-server) and a place to run it.
+**Requirements:** a place to run it, plus one way for the vault to reach the
+server — either an Obsidian Sync subscription or a git repository holding your
+vault. You pick which during setup.
+
+With the git backend every change an assistant makes lands as its own commit,
+authored as `ob-sync`, so `git log --author=ob-sync` shows you exactly what it
+did and any of it can be reverted.
 
 > ob-sync is an independent, unofficial project. It is not affiliated with,
 > endorsed by, or sponsored by Obsidian. "Obsidian" and "Obsidian Sync" are
@@ -40,7 +46,8 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 \* `delete_note` is disabled by default; enable it on the **Settings** tab.
 
 Everything an MCP client writes lands in the synced vault folder and propagates
-to your other devices through Obsidian Sync (end-to-end encrypted, as always).
+to your other devices — through Obsidian Sync (end-to-end encrypted, as always),
+or as a commit pushed to your git remote.
 
 ## Deploy on Railway
 
@@ -66,10 +73,13 @@ to your other devices through Obsidian Sync (end-to-end encrypted, as always).
 5. Open the service URL **within 30 minutes of the deploy** and follow the
    setup wizard:
    1. Choose your admin email/password — no token to look up.
-   2. Sign in with your **Obsidian account** (MFA supported).
-   3. Pick the remote vault. Leave the encryption password **blank** unless the
-      vault uses end-to-end encryption — Obsidian Sync's default is managed
-      encryption, which has no password.
+   2. Choose how your vault syncs — **Obsidian Sync** or a **git repository**.
+      This can't be changed later without starting over.
+   3. Either sign in with your **Obsidian account** (MFA supported) and pick the
+      remote vault — leaving the encryption password **blank** unless the vault
+      is end-to-end encrypted, since Obsidian Sync defaults to managed
+      encryption — or give the HTTPS clone URL, branch, and an access token
+      scoped to that one repository.
 6. The server starts a continuous sync daemon and drops you into the admin UI,
    which has four tabs:
 
@@ -86,6 +96,36 @@ its markdown. You can narrow what syncs later with `ob sync-config --file-types`
 inside the container. The sync client also keeps its own append-only log on the
 volume, which grows without bound — the **Settings** tab shows its path and
 current size.
+
+## Git-backed vaults
+
+Pick **Git repository** during setup and any HTTPS remote works — GitHub,
+GitLab, Gitea, self-hosted. Give the clone URL, the branch, and a token scoped
+to that one repo (on GitHub: a fine-grained PAT with *Contents: read and write*).
+
+How it behaves:
+
+- **Writes land on disk immediately**, then batch into one commit and push after
+  a few seconds of quiet — configurable on the Settings tab, and forced at least
+  every 30 seconds so a busy assistant can't defer it indefinitely.
+- **Commits are attributable.** Each is authored `ob-sync <ob-sync@localhost>`
+  with the tool names in the subject and the paths in the body, so
+  `git log --author=ob-sync` is a complete record of assistant activity.
+- **Conflicts never reach your notes.** Before merging anything the server runs
+  `git merge-tree`, which performs the merge in git's object database and
+  reports conflicts without touching the working tree. Concurrent edits to
+  different notes — or to different parts of the same note — merge cleanly and
+  keep both sides. A genuine overlap parks the assistant's commit on an
+  `ob-sync/conflict-<timestamp>` branch, sets the vault to match the remote, and
+  tells you on the Status tab. Nothing is discarded; `git merge <branch>`
+  recovers it.
+- **Attachments.** git handles large binaries poorly, so this suits
+  markdown-heavy vaults. `git-lfs` is installed in the image, so LFS-backed
+  repos work; if an LFS object is ever missing, reads fail loudly rather than
+  serving you a pointer file dressed up as an image.
+
+Requires git 2.38+ for `merge-tree` (the image ships 2.47). SSH remotes aren't
+supported yet.
 
 ## Publish it as a Railway template
 
@@ -105,8 +145,8 @@ The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the 32 byt
 of key material the server requires. A plain `${{secret()}}` is rejected at boot:
 it isn't valid base64 or hex.
 
-Deployers still need their own Obsidian Sync subscription, and each deployment
-is a **single-user** instance — the first person to create an account claims it,
+Deployers bring their own vault — an Obsidian Sync subscription or a git repo —
+and each deployment is a **single-user** instance — the first person to create an account claims it,
 and sign-up closes permanently after that.
 
 ## Connect MCP clients
@@ -189,6 +229,10 @@ text previously produced a 12 MB response of replacement characters.
 
 ## Security model
 
+- Credentials stored depend on the backend. Obsidian Sync needs your **account
+  password**, because the sync client re-authenticates with it. Git needs only a
+  **scoped access token** for one repository, which you can revoke without
+  touching anything else. Both are AES-256-GCM encrypted at rest.
 - Single-user: exactly one admin account. Sign-up is open only while the
   instance is unclaimed **and** the process has been up for less than 30
   minutes; after that the server locks down and a restart is required to

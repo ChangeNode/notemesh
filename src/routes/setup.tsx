@@ -17,15 +17,29 @@ import {
   setupListVaults,
   setupConfigureVault,
   getClaimState,
+  setupChooseBackend,
+  setupGitRepo,
   type SetupStage,
 } from "~/server/setup";
 import { RepoFooter } from "~/components/AdminShell";
 
+// Both backends are three steps: claim, choose, configure. The Obsidian path
+// splits "configure" into login + vault picker, so it shows 3 of 4.
 const STEP_NUMBER: Record<SetupStage, number> = {
   admin: 1,
-  "obsidian-login": 2,
-  vault: 3,
-  done: 3,
+  backend: 2,
+  "obsidian-login": 3,
+  vault: 4,
+  git: 3,
+  done: 4,
+};
+const STEP_TOTAL: Record<SetupStage, number> = {
+  admin: 3,
+  backend: 3,
+  "obsidian-login": 4,
+  vault: 4,
+  git: 3,
+  done: 4,
 };
 
 export default function Setup() {
@@ -37,17 +51,25 @@ export default function Setup() {
       <hgroup>
         <h2>Set up ob-sync</h2>
         <Show when={stage() && stage() !== "done"}>
-          <p class="muted">Step {STEP_NUMBER[stage()!]} of 3</p>
+          <p class="muted">
+            Step {STEP_NUMBER[stage()!]} of {STEP_TOTAL[stage()!]}
+          </p>
         </Show>
       </hgroup>
       <Show when={stage() && stage() !== "done"}>
-        <progress value={STEP_NUMBER[stage()!] - 1} max={3} />
+        <progress value={STEP_NUMBER[stage()!] - 1} max={STEP_TOTAL[stage()!]} />
       </Show>
       <Show when={stage()} keyed>
         {(s) => (
           <Switch>
             <Match when={s === "admin"}>
               <AdminStep onDone={refetch} />
+            </Match>
+            <Match when={s === "backend"}>
+              <BackendStep onDone={refetch} />
+            </Match>
+            <Match when={s === "git"}>
+              <GitStep onDone={refetch} />
             </Match>
             <Match when={s === "obsidian-login"}>
               <ObsidianStep onDone={refetch} />
@@ -183,6 +205,144 @@ function AdminStep(props: { onDone: () => void }) {
         </Show>
       )}
     </Show>
+  );
+}
+
+function BackendStep(props: { onDone: () => void }) {
+  const [busy, setBusy] = createSignal<"obsidian" | "git" | null>(null);
+
+  async function choose(kind: "obsidian" | "git") {
+    setBusy(kind);
+    await setupChooseBackend(kind);
+    setBusy(null);
+    props.onDone();
+  }
+
+  return (
+    <article>
+      <header>
+        <strong>How does your vault sync?</strong>
+      </header>
+      <p class="muted">
+        ob-sync keeps its own copy of your vault and needs a way to stay in step with your other
+        devices. Pick whichever you already use — this can't be changed later without starting
+        over.
+      </p>
+
+      <article class="choice">
+        <header>
+          <strong>Obsidian Sync</strong>
+        </header>
+        <p class="muted">
+          The official service. Handles attachments and conflicts for you, and works with vaults
+          of any shape. Requires an <b>Obsidian Sync subscription</b>, and this server stores your
+          Obsidian account password so it can re-authenticate.
+        </p>
+        <button aria-busy={busy() === "obsidian"} disabled={busy() !== null} onClick={() => choose("obsidian")}>
+          Use Obsidian Sync
+        </button>
+      </article>
+
+      <article class="choice">
+        <header>
+          <strong>Git repository</strong>
+        </header>
+        <p class="muted">
+          Any HTTPS git remote — GitHub, GitLab, Gitea, self-hosted. No subscription needed, and
+          every change an assistant makes becomes a commit you can review and revert. Stores a
+          scoped access token rather than an account password. Best for markdown-heavy vaults;
+          git handles large binary attachments poorly.
+        </p>
+        <button
+          class="secondary"
+          aria-busy={busy() === "git"}
+          disabled={busy() !== null}
+          onClick={() => choose("git")}
+        >
+          Use a Git Repo
+        </button>
+      </article>
+    </article>
+  );
+}
+
+function GitStep(props: { onDone: () => void }) {
+  const [remote, setRemote] = createSignal("");
+  const [branch, setBranch] = createSignal("main");
+  const [username, setUsername] = createSignal("");
+  const [token, setToken] = createSignal("");
+  const [error, setError] = createSignal<string | null>(null);
+  const [busy, setBusy] = createSignal(false);
+
+  async function submit(e: Event) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    const res = await setupGitRepo(remote(), branch(), username(), token());
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.message ?? "Could not link the repository.");
+      return;
+    }
+    props.onDone();
+  }
+
+  return (
+    <article>
+      <header>
+        <strong>Link your vault repository</strong>
+      </header>
+      <p class="muted">
+        The HTTPS clone URL of the repo holding your vault. It can be empty if you're starting
+        fresh. The token is stored encrypted on this server and only needs access to this one
+        repository.
+      </p>
+      <form onSubmit={submit}>
+        <label for="git-remote">Clone URL</label>
+        <input
+          id="git-remote"
+          type="url"
+          required
+          placeholder="https://github.com/you/my-vault.git"
+          value={remote()}
+          onInput={(e) => setRemote(e.currentTarget.value)}
+        />
+        <div class="grid">
+          <div>
+            <label for="git-branch">Branch</label>
+            <input id="git-branch" type="text" value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />
+          </div>
+          <div>
+            <label for="git-username">Username</label>
+            <input
+              id="git-username"
+              type="text"
+              placeholder="your GitHub username"
+              value={username()}
+              onInput={(e) => setUsername(e.currentTarget.value)}
+            />
+          </div>
+        </div>
+        <label for="git-token">Access token</label>
+        <input
+          id="git-token"
+          type="password"
+          required
+          value={token()}
+          onInput={(e) => setToken(e.currentTarget.value)}
+        />
+        <small class="muted">
+          On GitHub: a fine-grained personal access token scoped to this repository with{" "}
+          <b>Contents: read and write</b>. Revoke it any time without affecting anything else.
+        </small>
+        <Show when={error()}>
+          <p class="error">{error()}</p>
+        </Show>
+        <button type="submit" aria-busy={busy()} disabled={busy()}>
+          {busy() ? "Cloning… (a large vault may take a while)" : "Link Repository & Start Sync"}
+        </button>
+      </form>
+    </article>
   );
 }
 

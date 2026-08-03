@@ -223,3 +223,14 @@ td [role="button"] {
 .logfile span {
   display: block;
 }
+
+/* Side-by-side option cards in the setup wizard. */
+article.choice {
+  margin-bottom: var(--pico-spacing);
+  background: var(--pico-card-sectioning-background-color);
+}
+
+article.choice > button {
+  width: auto;
+  margin-bottom: 0;
+}

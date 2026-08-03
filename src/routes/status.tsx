@@ -30,6 +30,7 @@ const STATE_LABEL: Record<string, { cls: string; label: string }> = {
   stopped: { cls: "warn", label: "Stopped" },
   backoff: { cls: "warn", label: "Retrying after an error" },
   "needs-reauth": { cls: "err", label: "Needs re-authentication" },
+  conflict: { cls: "err", label: "Conflicting edits parked" },
 };
 
 export default function Status() {
@@ -170,6 +171,26 @@ export default function Status() {
                   {running() === "rebuild" ? "Rebuilding…" : "Rebuild Index"}
                 </button>
               </div>
+              <Show when={(live()?.sync ?? d.sync).conflicts?.length}>
+                <div class="callout warn">
+                  <p>
+                    <b>Conflicting edits were parked.</b> Your remote and this server changed the
+                    same part of the same note, so the vault was set to match the remote and the
+                    assistant's version was kept on a branch. Nothing was lost.
+                  </p>
+                  <For each={(live()?.sync ?? d.sync).conflicts ?? []}>
+                    {(c) => (
+                      <p class="muted logfile">
+                        <code>{c.branch}</code>
+                        <span>
+                          {new Date(c.at).toLocaleString()} — recover with{" "}
+                          <code>git merge {c.branch}</code>
+                        </span>
+                      </p>
+                    )}
+                  </For>
+                </div>
+              </Show>
               <Show when={d.sync.state === "needs-reauth"}>
                 <p class="error">
                   The Obsidian session expired. Re-authenticate with your stored credentials:

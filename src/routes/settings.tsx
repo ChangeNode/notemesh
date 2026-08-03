@@ -1,5 +1,5 @@
 import { createResource, For, Show } from "solid-js";
-import { getSettingsPage, setDeleteEnabled, setDailyConfig } from "~/server/admin";
+import { getSettingsPage, setDeleteEnabled, setDailyConfig, setGitTiming } from "~/server/admin";
 import { AdminShell, Check } from "~/components/AdminShell";
 
 export default function Settings() {
@@ -27,6 +27,63 @@ export default function Settings() {
                 Deletions sync to every device. Off by default; leave it off unless you need it.
               </small>
             </article>
+
+            <Show when={d.backend === "git"}>
+              <article>
+                <header>
+                  <strong>Git sync</strong>
+                </header>
+                <p class="muted">
+                  Syncing <code>{d.gitRemote}</code> on <code>{d.gitBranch}</code>.
+                </p>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget as HTMLFormElement;
+                    const debounce = Number(
+                      (form.elements.namedItem("git-debounce") as HTMLInputElement).value,
+                    );
+                    const pull = Number(
+                      (form.elements.namedItem("git-pull") as HTMLInputElement).value,
+                    );
+                    await setGitTiming(debounce, pull);
+                    refetch();
+                  }}
+                >
+                  <div class="grid">
+                    <div>
+                      <label for="git-debounce">Push after idle (seconds)</label>
+                      <input
+                        id="git-debounce"
+                        name="git-debounce"
+                        type="number"
+                        min="1"
+                        max="300"
+                        value={d.gitDebounceSeconds}
+                      />
+                    </div>
+                    <div>
+                      <label for="git-pull">Pull every (seconds)</label>
+                      <input
+                        id="git-pull"
+                        name="git-pull"
+                        type="number"
+                        min="5"
+                        max="3600"
+                        value={d.gitPullSeconds}
+                      />
+                    </div>
+                  </div>
+                  <small class="muted">
+                    Writes hit this server's disk immediately; these control when they reach the
+                    remote and how fresh the assistant's view is. Edits are batched into one commit
+                    per push, and a push happens at least every 30 seconds regardless of idle time
+                    so a busy assistant can't defer it indefinitely.
+                  </small>
+                  <button type="submit">Save Git Settings</button>
+                </form>
+              </article>
+            </Show>
 
             <article>
               <header>

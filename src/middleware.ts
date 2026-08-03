@@ -1,5 +1,5 @@
 import { createMiddleware } from "@solidjs/start/middleware";
-import { ensureSyncStarted } from "./server/ob/supervisor";
+import { ensureSyncStarted } from "./server/sync";
 import { ensureIndexerStarted } from "./server/vault/indexer";
 
 // Pages that require a signed-in admin. Everything else (login, setup, the

@@ -23,6 +23,7 @@ export function readVaultFile(abs: string): string {
       `Note is too large to read (${Math.round(st.size / 1000 / 1000)} MB; limit ${MAX_NOTE_BYTES / 1000 / 1000} MB)`,
     );
   }
+  if (isLfsPointer(abs)) throw lfsPointerError();
   if (isBinaryFile(abs)) {
     throw new VaultPathError(
       `This is a binary attachment (${formatBytes(st.size)}), not readable as text. ` +
@@ -55,6 +56,34 @@ export function isBinaryFile(abs: string): boolean {
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
   }
+}
+
+// A Git LFS pointer stands in for a file whose content lives outside the repo.
+// It is small, plain ASCII, and contains no NUL — so the binary sniff above
+// says "text" and every read path would happily serve 130 bytes of metadata as
+// though it were the note or the image. Detect it explicitly.
+const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/";
+
+export function isLfsPointer(abs: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(abs, "r");
+    const buf = Buffer.alloc(64);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    return buf.subarray(0, read).toString("utf8").startsWith(LFS_POINTER_PREFIX);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+export function lfsPointerError(): VaultPathError {
+  return new VaultPathError(
+    "This file is stored in Git LFS and its content hasn't been fetched, so only a " +
+      "pointer is on disk. Check the Status tab: the LFS objects may have failed to " +
+      "download (quota, or an access token without LFS permission).",
+  );
 }
 
 // Reject control characters (incl. NUL) and Unicode bidi overrides in a path.

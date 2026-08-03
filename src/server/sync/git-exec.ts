@@ -77,7 +77,11 @@ export async function runGitBuffer(
       reject: false,
       encoding: "buffer",
     });
-    return { ok: res.exitCode === 0, stdout: (res.stdout as unknown as Buffer) ?? Buffer.alloc(0) };
+    // execa hands back a Uint8Array here. Convert rather than cast: the two are
+    // interchangeable for fs writes, but only a Buffer has an encoding-aware
+    // toString, so a cast would leave a trap for the next caller.
+    const out = res.stdout as unknown as Uint8Array | undefined;
+    return { ok: res.exitCode === 0, stdout: out ? Buffer.from(out) : Buffer.alloc(0) };
   } catch {
     return { ok: false, stdout: Buffer.alloc(0) };
   }

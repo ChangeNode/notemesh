@@ -69,7 +69,7 @@ export async function gitVersionOk(): Promise<{ ok: boolean; version: string }> 
   return { ok, version: `${major}.${minor}` };
 }
 
-function looksLikeAuthFailure(text: string): boolean {
+export function looksLikeAuthFailure(text: string): boolean {
   return /authentication failed|could not read Username|invalid username or password|403 Forbidden|401 Unauthorized|Permission denied \(publickey\)|remote: Repository not found/i.test(
     text,
   );

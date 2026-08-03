@@ -143,10 +143,21 @@ supported yet.
 pnpm test
 ```
 
-The conflict-handling suite runs against the real git binary in throwaway
-repositories rather than mocks — the behaviour under test *is* git's merge
-behaviour, so stubbing it would prove nothing. It covers the clean-merge cases,
-all three conflict strategies, binary attachments, and the LFS pointer guard.
+175 tests across seven files. Anything touching git runs against the real git
+binary in throwaway repositories rather than mocks — the behaviour under test
+*is* git's merge behaviour, so stubbing it would prove nothing.
+
+| Area | Covers |
+| --- | --- |
+| Path resolution | Traversal, absolute paths, dot-directories, control and bidi characters, symlink escapes — each pinned to the specific guard that rejects it |
+| Vault data | Read windowing and its byte ceiling, append/prepend block separation, frontmatter-aware prepend, overwrite and clobber refusals, attachment caps |
+| Credential encryption | Round-trip, per-value IVs, tampered ciphertext/tag/IV rejection, key binding |
+| Abuse throttle | Blocks probing at the threshold; never counts authorised traffic; ignores forwarding headers unless a proxy is known to be in front |
+| Git sync | Version floor, remote probing, clone into empty/existing/foreign directories, auth-failure classification, binary-safe reads |
+| Conflicts | Clean merges keeping both sides, all three strategies, byte-exact binary conflict copies, Obsidian naming |
+
+The security tests are mutation-checked: deleting a guard has to make specific
+tests fail, or the test wasn't testing it.
 
 ## Publish it as a Railway template
 

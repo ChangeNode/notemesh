@@ -11,8 +11,13 @@ export function encryptSecret(plaintext: string): string {
 }
 
 export function decryptSecret(stored: string): string {
-  const [ivB64, encB64, tagB64] = stored.split(".");
-  if (!ivB64 || !encB64 || !tagB64) throw new Error("Malformed encrypted value");
+  const parts = stored.split(".");
+  // Check the shape, not the truthiness of each field: an empty plaintext
+  // encrypts to an empty ciphertext, and rejecting that would make decrypt
+  // refuse a value encrypt had just produced. The IV and tag are never empty.
+  if (parts.length !== 3) throw new Error("Malformed encrypted value");
+  const [ivB64, encB64, tagB64] = parts;
+  if (!ivB64 || !tagB64) throw new Error("Malformed encrypted value");
   const decipher = crypto.createDecipheriv(
     "aes-256-gcm",
     env.encryptionKey,

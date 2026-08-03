@@ -12,6 +12,19 @@ import { AdminShell } from "~/components/AdminShell";
 
 type LiveStatus = Awaited<ReturnType<typeof getSyncActivity>>;
 
+// Lines this app injects carry an explicit level. Everything else comes from
+// the sync client, which has no severity channel, so the only signal available
+// is the text itself. Deliberately loose — a missed highlight is worse than a
+// spurious one, though it does mean a note whose filename contains "error"
+// will light up as it syncs.
+const ERROR_RE = /error|failed|failure/i;
+const WARN_RE = /warn/i;
+
+function lineClass(l: { line: string; level?: "error" | "warn" }): string {
+  const level = l.level ?? (ERROR_RE.test(l.line) ? "error" : WARN_RE.test(l.line) ? "warn" : "");
+  return level ? `log-${level}` : "";
+}
+
 const STATE_LABEL: Record<string, { cls: string; label: string }> = {
   running: { cls: "ok", label: "Syncing continuously" },
   stopped: { cls: "warn", label: "Stopped" },
@@ -182,9 +195,18 @@ export default function Status() {
                 <strong>Sync log</strong>
               </header>
               <pre class="logs" ref={logsEl}>
-                {(live()?.logs ?? d.logs)
-                  .map((l) => `${new Date(l.ts).toLocaleTimeString()}  ${l.line}`)
-                  .join("\n") || "(no log output yet)"}
+                <Show
+                  when={(live()?.logs ?? d.logs).length > 0}
+                  fallback={<div class="muted">(no log output yet)</div>}
+                >
+                  <For each={live()?.logs ?? d.logs}>
+                    {(l) => (
+                      <div class={lineClass(l)}>
+                        {`${new Date(l.ts).toLocaleTimeString()}  ${l.line}`}
+                      </div>
+                    )}
+                  </For>
+                </Show>
               </pre>
               <small class="muted">
                 Live tail of the sync daemon, following new output unless you scroll up to read.

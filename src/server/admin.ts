@@ -207,7 +207,20 @@ export async function syncNow() {
   "use server";
   await requireAdmin();
   const res = await obSyncOnce();
-  return { ok: res.ok, output: res.combined.split("\n").slice(-5).join("\n") };
+  const tail = res.combined.split("\n").filter(Boolean).slice(-5).join("\n");
+  const sup = supervisor();
+  // Report into the sync log rather than back through the button: that panel
+  // is already on screen and already being watched, and it keeps the outcome
+  // around instead of it vanishing with a transient message.
+  if (res.ok) {
+    sup.note("[admin] Manual sync finished.");
+  } else {
+    sup.note("[admin] Error: manual sync failed.", "error");
+    for (const line of tail.split("\n").filter(Boolean)) {
+      sup.note(`[admin] ${line}`, "error");
+    }
+  }
+  return { ok: res.ok, output: tail };
 }
 
 export async function restartSync() {

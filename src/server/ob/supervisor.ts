@@ -11,9 +11,13 @@ export type SyncState =
   | "backoff" // crashed, waiting to restart
   | "needs-reauth"; // Obsidian session invalid; won't restart until re-auth
 
-interface LogLine {
+export interface LogLine {
   ts: number;
   line: string;
+  // Set only for lines this app injects itself. Output from the sync client
+  // has no severity channel, so those lines are classified by content when
+  // they're rendered.
+  level?: "error" | "warn";
 }
 
 export interface SyncActivity {
@@ -69,13 +73,13 @@ class SyncSupervisor {
     return "ob";
   }
 
-  private log(line: string) {
+  private log(line: string, level?: "error" | "warn") {
     for (const l of line.split("\n")) {
       // Cap each stored line so a single newline-free blob from ob can't grow
       // the buffer unbounded.
       const t = l.trimEnd().slice(0, 2000);
       if (!t) continue;
-      this.logs.push({ ts: Date.now(), line: t });
+      this.logs.push({ ts: Date.now(), line: t, level });
       this.lastActivityAt = Date.now();
       this.trackActivity(t);
     }
@@ -86,6 +90,19 @@ class SyncSupervisor {
 
   getLogs(): LogLine[] {
     return [...this.logs];
+  }
+
+  // Push a message from outside the child process into the same buffer, so a
+  // one-off admin action reports itself in the log the operator is already
+  // watching. Deliberately does not touch lastActivityAt or the activity
+  // counters — those describe the sync daemon, not us.
+  note(line: string, level?: "error" | "warn") {
+    const t = line.trimEnd().slice(0, 2000);
+    if (!t) return;
+    this.logs.push({ ts: Date.now(), line: t, level });
+    if (this.logs.length > MAX_LOG_LINES) {
+      this.logs = this.logs.slice(-MAX_LOG_LINES);
+    }
   }
 
   start() {
@@ -122,13 +139,17 @@ class SyncSupervisor {
       const authed = await obIsAuthenticated().catch(() => true);
       if (!authed) {
         this.state = "needs-reauth";
-        this.log(`[supervisor] not authenticated with Obsidian — re-authentication required`);
+        this.log(
+          `[supervisor] not authenticated with Obsidian — re-authentication required`,
+          "error",
+        );
         return;
       }
       this.state = "backoff";
       this.restartCount += 1;
       this.log(
         `[supervisor] sync exited (code ${result.exitCode}); restarting in ${Math.round(this.backoffMs / 1000)}s`,
+        "warn",
       );
       this.restartTimer = setTimeout(() => {
         this.backoffMs = Math.min(this.backoffMs * 2, 300_000);

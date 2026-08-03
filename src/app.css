@@ -169,6 +169,14 @@ pre.logs {
   line-height: 1.4;
 }
 
+pre.logs .log-error {
+  color: var(--pico-del-color);
+}
+
+pre.logs .log-warn {
+  color: #ed6c02;
+}
+
 /* Compact tables (Pico's defaults are roomy for an admin panel). */
 table td,
 table th {

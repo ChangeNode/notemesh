@@ -38,14 +38,37 @@ export const env = {
     );
   },
   get baseUrl(): string {
-    const explicit = process.env.BASE_URL;
-    if (explicit) return explicit.replace(/\/$/, "");
-    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-      return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
-    }
+    // BASE_URL wins, but only when it names an origin something can actually
+    // parse. A Railway template reference like
+    // `https://${{ RAILWAY_PUBLIC_DOMAIN }}` resolves to a bare "https://" when
+    // the service has no domain yet — and that string is truthy, so without the
+    // host check it would beat the fallback below and pin the OAuth issuer to a
+    // value no URL parser accepts. The provider plugin then throws during async
+    // init, which surfaces as an unhandled rejection at boot and a 500 on every
+    // request afterwards. Falling through to the fallback degrades far better:
+    // the origin ends up wrong but valid, and detectOriginMismatch() below says
+    // so in plain language.
+    const explicit = usableOrigin(process.env.BASE_URL);
+    if (explicit) return explicit;
+    const domain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+    const fromRailway = domain ? usableOrigin(`https://${domain}`) : null;
+    if (fromRailway) return fromRailway;
     return "http://localhost:3000";
   },
 };
+
+// An absolute origin with a host, or null. Anything else — empty, whitespace, a
+// bare scheme, a hostname with no scheme — is not usable as an issuer.
+function usableOrigin(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    if (!new URL(trimmed).host) return null;
+  } catch {
+    return null;
+  }
+  return trimmed.replace(/\/$/, "");
+}
 
 export function ensureDataDirs() {
   for (const dir of [env.dataDir, env.vaultDir, env.obHomeDir]) {

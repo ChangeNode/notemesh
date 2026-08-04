@@ -242,3 +242,14 @@ pre.logs .repeat {
   opacity: 0.65;
   font-variant-numeric: tabular-nums;
 }
+
+/* Pico lays a role="group" out as a flex row and lets every child shrink, so a
+   button sized by its label gets squeezed below that width and its text wraps —
+   "Create Key" was breaking across two lines next to the key-name input. The
+   button keeps its natural width; the input, which has nothing to lose by being
+   narrower, absorbs the difference. */
+[role="group"] > button,
+[role="group"] > [type="submit"] {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

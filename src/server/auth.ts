@@ -160,6 +160,17 @@ export const auth = betterAuth({
       clientRegistrationAllowedScopes: ["profile", "email"],
       // MCP clients pass the endpoint URL as the RFC 8707 resource indicator.
       validAudiences: [env.baseUrl, `${env.baseUrl}/api/mcp`],
+      silenceWarnings: {
+        // The plugin warns on every boot that
+        // /.well-known/oauth-authorization-server/api/auth may not exist. It
+        // checks for a route it registered itself, and ours is served from
+        // middleware.ts, which it cannot see. Measured against the built
+        // server: that path returns 200, as do the other three discovery
+        // documents. Left unsilenced the warning appears in every deployed
+        // instance's logs and gets reported as a bug. server/discovery.test.ts
+        // takes over guarding the path list.
+        oauthAuthServerConfig: true,
+      },
     }),
   ],
 });

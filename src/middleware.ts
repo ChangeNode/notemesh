@@ -1,6 +1,7 @@
 import { createMiddleware } from "@solidjs/start/middleware";
 import { ensureSyncStarted } from "./server/sync";
 import { ensureIndexerStarted } from "./server/vault/indexer";
+import { discoveryEndpoint } from "./server/discovery";
 
 // Pages that require a signed-in admin. Everything else (login, setup, the
 // OAuth consent page, API routes) handles its own access rules.
@@ -103,29 +104,22 @@ export default createMiddleware({
       }
 
       // OAuth discovery endpoints live under /.well-known/, which the file
-      // router doesn't serve — handle them here.
-      // RFC 8414 path-inserted variants: issuer is <base>/api/auth, so clients
-      // may request /.well-known/oauth-authorization-server/api/auth.
-      if (
-        url.pathname === "/.well-known/oauth-authorization-server" ||
-        url.pathname === "/.well-known/oauth-authorization-server/api/auth"
-      ) {
+      // router doesn't serve — handle them here. The path list lives in
+      // server/discovery.ts so it can be tested.
+      const discovery = discoveryEndpoint(url.pathname);
+      if (discovery === "auth-server") {
         const { oauthProviderAuthServerMetadata } = await import("@better-auth/oauth-provider");
         const { auth, runAuthMigrations } = await import("./server/auth");
         await runAuthMigrations();
         return stripIssParamSupport(await oauthProviderAuthServerMetadata(auth)(event.request));
       }
-      if (
-        url.pathname === "/.well-known/openid-configuration" ||
-        url.pathname === "/.well-known/openid-configuration/api/auth" ||
-        url.pathname === "/api/auth/.well-known/openid-configuration"
-      ) {
+      if (discovery === "openid") {
         const { oauthProviderOpenIdConfigMetadata } = await import("@better-auth/oauth-provider");
         const { auth, runAuthMigrations } = await import("./server/auth");
         await runAuthMigrations();
         return stripIssParamSupport(await oauthProviderOpenIdConfigMetadata(auth)(event.request));
       }
-      if (url.pathname === "/.well-known/oauth-protected-resource") {
+      if (discovery === "protected-resource") {
         const { env } = await import("./server/env");
         return new Response(
           JSON.stringify({

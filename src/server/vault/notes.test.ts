@@ -370,10 +370,15 @@ describe("finding attachments", () => {
     expect(() => readAttachment("screen.png")).toThrow(/A\/screen\.png/);
   });
 
-  it("points at the discovery tools when there is genuinely no such file", () => {
+  it("says the file is absent, not that the path was wrong", () => {
+    // By this point every folder has been searched by name, so the caller
+    // cannot fix this by looking harder — the message has to say so rather
+    // than sending them off to a listing that will not contain it either.
     put("Files/other.png", PNG);
-    expect(() => readAttachment("missing.png")).toThrow(/Attachment not found: missing\.png/);
-    expect(() => readAttachment("missing.png")).toThrow(/list_attachments/);
+    expect(() => readAttachment("missing.png")).toThrow(
+      /No attachment named "missing\.png" exists anywhere in the vault/,
+    );
+    expect(() => readAttachment("missing.png")).toThrow(/embed is broken/);
   });
 
   it("does not let the fallback reach outside the vault", () => {
@@ -381,12 +386,12 @@ describe("finding attachments", () => {
     // walk up into the parent directory.
     fs.writeFileSync(path.join(root, "outside.png"), PNG);
     expect(() => readAttachment("../outside.png")).toThrow(VaultPathError);
-    expect(() => readAttachment("outside.png")).toThrow(/not found/);
+    expect(() => readAttachment("outside.png")).toThrow(/exists anywhere in the vault/);
   });
 
   it("does not resolve a markdown note through the filename fallback", () => {
     put("Notes/Ideas.md", "# Ideas");
-    expect(() => readAttachment("Ideas.md")).toThrow(/not found/);
+    expect(() => readAttachment("Ideas.md")).toThrow(/exists anywhere in the vault/);
   });
 });
 

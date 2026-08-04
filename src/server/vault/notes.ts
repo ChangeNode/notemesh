@@ -116,10 +116,15 @@ function resolveByFilename(requested: string): string {
         (matches.length > 10 ? ", …" : ""),
     );
   }
+  // Every folder has already been searched by filename, so this is not a
+  // wrong-path problem the caller can fix by looking harder — the file is not
+  // in the vault. Say that, rather than pointing at a listing tool that will
+  // not contain it either.
   throw new VaultPathError(
-    `Attachment not found: ${requested}. Vault attachments are stored under their own ` +
-      `folders — use list_attachments to see them, or get_links on the note that embeds ` +
-      `this file to get its resolved path.`,
+    `No attachment named "${path.basename(requested)}" exists anywhere in the vault ` +
+      `(every folder was searched by filename). If a note embeds it, that embed is broken: ` +
+      `the file was deleted, or was never synced. list_link_issues with type "unresolved" ` +
+      `shows every link in this state.`,
   );
 }
 

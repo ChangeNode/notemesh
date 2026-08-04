@@ -363,7 +363,9 @@ export function createMcpServer(access: McpAccess): McpServer {
       "set_property",
       {
         title: "Set property",
-        description: "Set a frontmatter property on a note (creates frontmatter if missing).",
+        description:
+          "Set a frontmatter property on a note (creates frontmatter if missing). Returns "
+          + "changed:false, and leaves the file untouched, if the property already had this value.",
         inputSchema: {
           path: z.string(),
           name: z.string(),
@@ -371,9 +373,10 @@ export function createMcpServer(access: McpAccess): McpServer {
         },
       },
       safe(({ path, name, value }: { path: string; name: string; value: unknown }) => {
-        const data = setProperty(path, name, value);
-        w(path, "set_property");
-        return json(data);
+        const res = setProperty(path, name, value);
+        // Only reindex and tell the sync backend when bytes actually changed.
+        if (res.changed) w(path, "set_property");
+        return json(res);
       }),
     );
 
@@ -382,14 +385,14 @@ export function createMcpServer(access: McpAccess): McpServer {
       {
         title: "Remove property",
         description:
-          "Remove a frontmatter property from a note. Returns removed:false, and leaves the " +
+          "Remove a frontmatter property from a note. Returns changed:false, and leaves the " +
           "file untouched, if the property was not set.",
         inputSchema: { path: z.string(), name: z.string() },
       },
       safe(({ path, name }: { path: string; name: string }) => {
         const res = removeProperty(path, name);
         // Only reindex and tell the sync backend when bytes actually changed.
-        if (res.removed) w(path, "remove_property");
+        if (res.changed) w(path, "remove_property");
         return json(res);
       }),
     );

@@ -19,9 +19,11 @@
 export type PageAccess = "public" | "protected" | "not-a-page";
 
 // Reachable without signing in, and each is deliberate: the login form itself,
-// the setup wizard (which must be usable before any account exists), and the
-// OAuth consent screen (reached mid-flow, and which checks its own session).
-const PUBLIC_PAGES = new Set(["/login", "/setup", "/oauth/consent"]);
+// the setup wizard (which must be usable before any account exists), the OAuth
+// consent screen (reached mid-flow, and which checks its own session), and the
+// admin password reset (whose entire premise is that nobody can sign in — it is
+// gated by an environment variable, a logged PIN and a time window instead).
+const PUBLIC_PAGES = new Set(["/login", "/setup", "/oauth/consent", "/reset"]);
 
 // Not pages at all. These carry their own access rules and must never be
 // redirected — sending /_server to the login form would break every server

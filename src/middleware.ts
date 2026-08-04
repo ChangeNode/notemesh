@@ -3,6 +3,7 @@ import { ensureSyncStarted } from "./server/sync";
 import { ensureIndexerStarted } from "./server/vault/indexer";
 import { discoveryEndpoint } from "./server/discovery";
 import { pageAccess } from "./server/pages";
+import { announceResetFlow } from "./server/reset";
 
 function redirectTo(path: string): Response {
   return new Response(null, { status: 302, headers: { Location: path } });
@@ -59,6 +60,8 @@ export default createMiddleware({
       // a full-vault scan.
       ensureSyncStarted();
       ensureIndexerStarted();
+      // Prints the reset PIN on the first request after a boot, when armed.
+      announceResetFlow();
 
       const url = new URL(event.request.url);
       // Default closed — see server/pages.ts. A route added without being

@@ -1,7 +1,8 @@
-import { createSignal, Show } from "solid-js";
-import { useNavigate, useSearchParams } from "@solidjs/router";
+import { createResource, createSignal, Show } from "solid-js";
+import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
 import { getSetupStage } from "~/server/setup";
+import { getResetState } from "~/server/reset-actions";
 import { RepoFooter } from "~/components/AdminShell";
 
 export default function Login() {
@@ -11,6 +12,7 @@ export default function Login() {
   const [busy, setBusy] = createSignal(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const [reset] = createResource(() => getResetState());
 
   async function submit(e: Event) {
     e.preventDefault();
@@ -80,6 +82,64 @@ export default function Login() {
           </button>
         </form>
       </article>
+
+      {/* Armed: link straight to it, because someone reaching this page in that
+          state is almost certainly here to use it. Not armed: explain how to
+          arm it, folded away so it does not clutter an ordinary sign-in. */}
+      <Show
+        when={reset() && reset()!.mode !== "off"}
+        fallback={
+          <article>
+            <details>
+              <summary>How To Reset Your Admin Password</summary>
+              <p class="muted">
+                There is no password reset email — this server has no way to send one, and no
+                account anywhere but here. Instead you prove you control the deployment, by setting
+                a variable only its owner can set.
+              </p>
+              <ol>
+                <li>
+                  Set <code>RESET_ADMIN_FLOW</code> to <code>1</code> in your server's environment
+                  variables. On Railway: your service → <b>Variables</b> → <b>New Variable</b>.
+                  Saving it redeploys the service, which is what arms the reset.
+                </li>
+                <li>
+                  Open the service's <b>Logs</b> and find the block headed{" "}
+                  <b>ADMIN PASSWORD RESET ARMED</b>. It contains an eight-digit PIN, generated fresh
+                  on every start.
+                </li>
+                <li>
+                  Come back to this page and follow the reset link, which appears once the variable
+                  is set. Enter the PIN and choose a new password.
+                </li>
+                <li>
+                  <b>Delete the variable afterwards.</b> While it is set, every restart issues a new
+                  PIN and reopens the window.
+                </li>
+              </ol>
+              <p class="muted">
+                The window is open for 30 minutes after the server starts, and the PIN may be
+                entered a limited number of times before a restart is required. Both exist so that
+                leaving the variable set by accident is not the same as leaving the door open.
+              </p>
+            </details>
+          </article>
+        }
+      >
+        <article>
+          <header>
+            <strong>Password reset is armed</strong>
+          </header>
+          <p class="muted">
+            <code>RESET_ADMIN_FLOW</code> is set on this server, so the admin password can be
+            changed with the PIN printed in its log. Remove the variable once you are done.
+          </p>
+          <A href="/reset" role="button">
+            Reset Admin Password
+          </A>
+        </article>
+      </Show>
+
       <RepoFooter />
     </main>
   );

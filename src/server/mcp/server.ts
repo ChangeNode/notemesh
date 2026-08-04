@@ -330,7 +330,11 @@ export function createMcpServer(access: McpAccess): McpServer {
     "search_vault",
     {
       title: "Search vault",
-      description: "Full-text search across all notes (titles, headings, body). Returns paths and snippets.",
+      description:
+        "Full-text search across all notes (titles, headings, body). Each hit has path, title, " +
+        "snippet — plain text, safe to quote verbatim, with no highlight markup — and matches, " +
+        "the words in that snippet that matched. Matching is stemmed, so a match is often not " +
+        "the word you searched for.",
       inputSchema: {
         query: z.string().describe("Search terms (all terms must match)"),
         context: z.boolean().optional().describe("Return longer snippets with more surrounding context"),

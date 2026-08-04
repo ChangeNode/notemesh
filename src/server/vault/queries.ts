@@ -9,7 +9,36 @@ import { dailyNotePath , timestampInZone, configuredTimeZone} from "./daily";
 export interface SearchHit {
   path: string;
   title: string;
+  /** Plain text, safe to quote verbatim — carries no highlight markup. */
   snippet: string;
+  /** The words in `snippet` that matched, deduplicated, in order of appearance. */
+  matches: string[];
+}
+
+// FTS5 brackets each matched term with delimiters we choose. They used to be
+// `>>` and `<<`, returned inline and undocumented, so every consumer either had
+// to know to strip them or passed them downstream into whatever it produced.
+//
+// Control characters rather than printable ones: a snippet is arbitrary note
+// prose, and any printable delimiter can also occur naturally in the text, which
+// leaves no way to tell a marker from content. These never reach a caller — the
+// markers are parsed off here, and what matched comes back as its own field.
+// Keeping that separate rather than dropping it: the porter tokenizer means the
+// matched word often is not the queried one, and nothing else recovers it.
+const HL_START = "\u0001";
+const HL_END = "\u0002";
+const HIGHLIGHT = new RegExp(`${HL_START}([\\s\\S]*?)${HL_END}`, "g");
+
+export function splitHighlights(raw: string): { snippet: string; matches: string[] } {
+  const matches: string[] = [];
+  let snippet = raw.replace(HIGHLIGHT, (_full, term: string) => {
+    if (term) matches.push(term);
+    return term;
+  });
+  // Any marker left unpaired — a snippet truncated mid-highlight — would
+  // otherwise leak a control character into the text.
+  snippet = snippet.split(HL_START).join("").split(HL_END).join("");
+  return { snippet, matches: [...new Set(matches)] };
 }
 
 export function searchVault(query: string, opts: { limit?: number; context?: boolean } = {}): SearchHit[] {
@@ -24,11 +53,15 @@ export function searchVault(query: string, opts: { limit?: number; context?: boo
   const snippetTokens = opts.context ? 24 : 10;
   const rows = db()
     .prepare(
-      `SELECT path, title, snippet(notes_fts, 3, '>>', '<<', ' … ', ?) AS snippet
+      `SELECT path, title, snippet(notes_fts, 3, ?, ?, ' … ', ?) AS snippet
        FROM notes_fts WHERE notes_fts MATCH ? ORDER BY rank LIMIT ?`,
     )
-    .all(snippetTokens, terms, limit) as SearchHit[];
-  return rows;
+    .all(HL_START, HL_END, snippetTokens, terms, limit) as {
+    path: string;
+    title: string;
+    snippet: string;
+  }[];
+  return rows.map((r) => ({ path: r.path, title: r.title, ...splitHighlights(r.snippet) }));
 }
 
 // Normalize a note path the way the index stores it (vault-relative, .md).

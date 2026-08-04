@@ -16,6 +16,7 @@ import path from "node:path";
 let root: string;
 let vault: string;
 let uniqueNote: typeof import("./queries").uniqueNote;
+let splitHighlights: typeof import("./queries").splitHighlights;
 let timestampInZone: typeof import("./daily").timestampInZone;
 let setSetting: typeof import("../db").setSetting;
 
@@ -24,7 +25,7 @@ beforeAll(async () => {
   vault = path.join(root, "vault");
   fs.mkdirSync(vault, { recursive: true });
   process.env.DATA_DIR = root;
-  ({ uniqueNote } = await import("./queries"));
+  ({ uniqueNote, splitHighlights } = await import("./queries"));
   ({ timestampInZone } = await import("./daily"));
   ({ setSetting } = await import("../db"));
 });
@@ -94,5 +95,68 @@ describe("uniqueNote", () => {
     expect(second).toMatch(/^\d{12}-[0-9a-f]{4}\.md$/);
     // The first note must survive intact.
     expect(fs.readFileSync(path.join(vault, first), "utf8")).toContain("one");
+  });
+});
+
+// Search snippets used to come back with FTS5's highlight delimiters inline and
+// undocumented — "polls, rolls, >>leaderboards<<" — so every consumer either
+// knew to strip them or passed them downstream into whatever it produced. The
+// markers are parsed off now, and what matched is returned as its own field:
+// stemming means the matched word is often not the queried one, and nothing
+// else recovers it.
+const S = "\u0001";
+const E = "\u0002";
+const CONTROL = /[\u0001\u0002]/;
+
+describe("splitHighlights", () => {
+  it("returns a snippet free of markup", () => {
+    const r = splitHighlights(`polls, rolls, ${S}leaderboards${E}`);
+    expect(r.snippet).toBe("polls, rolls, leaderboards");
+    expect(r.snippet).not.toMatch(CONTROL);
+  });
+
+  it("reports which words matched", () => {
+    const r = splitHighlights(`${S}polls${E}, rolls, ${S}leaderboards${E}`);
+    expect(r.matches).toEqual(["polls", "leaderboards"]);
+  });
+
+  it("deduplicates a term that matched more than once", () => {
+    const r = splitHighlights(`${S}roll${E} and another ${S}roll${E}`);
+    expect(r.matches).toEqual(["roll"]);
+    expect(r.snippet).toBe("roll and another roll");
+  });
+
+  it("leaves an unmatched snippet alone", () => {
+    expect(splitHighlights("no matches here")).toEqual({
+      snippet: "no matches here",
+      matches: [],
+    });
+  });
+
+  it("does not mistake note content for a marker", () => {
+    // Why the delimiters are control characters. With >> and <<, a note
+    // containing a shell redirect or an ASCII arrow was indistinguishable from
+    // a highlight, and stripping one meant eating the other.
+    const r = splitHighlights(`run cmd >> log.txt and ${S}search${E} it`);
+    expect(r.snippet).toBe("run cmd >> log.txt and search it");
+    expect(r.matches).toEqual(["search"]);
+  });
+
+  it("strips a marker left unpaired by truncation", () => {
+    // FTS5 can cut a snippet mid-highlight; a stray control character must not
+    // reach the caller.
+    const r = splitHighlights(`… some text ${S}partial`);
+    expect(r.snippet).toBe("… some text partial");
+    expect(r.snippet).not.toMatch(CONTROL);
+  });
+
+  it("preserves the ellipsis FTS5 puts between fragments", () => {
+    expect(splitHighlights(`start … ${S}term${E} … end`).snippet).toBe("start … term … end");
+  });
+
+  it("never leaks a control character, whatever the input", () => {
+    for (const raw of [S, E, `${E}${S}`, `${S}${E}`, `a${S}b${S}c${E}d`, ""]) {
+      expect(splitHighlights(raw).snippet).not.toMatch(CONTROL);
+    }
   });
 });

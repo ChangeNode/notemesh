@@ -21,15 +21,18 @@ describe("counts transfer events", () => {
   });
 
   it("counts an upload", () => {
+    // "Upload complete", not "Uploaded" — see COUNTS in supervisor.ts. This
+    // test previously asserted a word ob never emits, which is how uploads
+    // came to be permanently uncounted.
     const a = fresh();
-    applyActivityLine(a, "Uploaded Notes/Alpha.md", T0);
+    applyActivityLine(a, "Upload complete Notes/Alpha.md", T0);
     expect(a.uploaded).toBe(1);
   });
 
   it("counts a delete under either wording ob uses", () => {
     const a = fresh();
-    applyActivityLine(a, "Deleted Notes/Old.md", T0);
-    applyActivityLine(a, "Removed Notes/Older.md", T0 + 1);
+    applyActivityLine(a, "Deleting remote file Notes/Old.md", T0);
+    applyActivityLine(a, "Removing local-only file Notes/Older.md", T0 + 1);
     expect(a.deleted).toBe(2);
   });
 
@@ -82,7 +85,7 @@ describe("burst boundaries", () => {
   it("resets the tally when a new sync announces itself", () => {
     const a = fresh();
     applyActivityLine(a, "Downloaded a.md", T0);
-    applyActivityLine(a, "Uploaded b.md", T0 + 1);
+    applyActivityLine(a, "Upload complete b.md", T0 + 1);
     applyActivityLine(a, "Starting sync:", T0 + 2);
     expect(a).toMatchObject({ downloaded: 0, uploaded: 0, deleted: 0 });
     expect(a.startedAt).toBe(T0 + 2);
@@ -125,4 +128,68 @@ describe("recognises the other event verbs without miscounting them", () => {
       expect(a.downloaded + a.uploaded + a.deleted).toBe(0);
     },
   );
+});
+
+// The wording below is lifted from obsidian-headless 0.0.14's own log calls,
+// not from what the words "ought" to be. The original parser assumed a
+// consistent past tense; ob does not have one, so uploads and deletions were
+// never counted at all while downloads were — which read as "sync isn't
+// uploading anything" on a server that was uploading fine.
+describe("counts the events ob actually emits", () => {
+  it("counts a completed upload", () => {
+    const a = fresh();
+    applyActivityLine(a, "Upload complete Notes/Alpha.md", T0);
+    expect(a.uploaded).toBe(1);
+  });
+
+  it("does not double-count the start and the end of one upload", () => {
+    // Both lines are transfer activity, but only the completion is a file.
+    const a = fresh();
+    applyActivityLine(a, "Uploading file Notes/Alpha.md", T0);
+    applyActivityLine(a, "Upload complete Notes/Alpha.md", T0 + 200);
+    expect(a.uploaded).toBe(1);
+  });
+
+  it("treats an upload in progress as activity even though it counts nothing", () => {
+    const a = fresh();
+    applyActivityLine(a, "Uploading file Big.pdf", T0);
+    expect(a.uploaded).toBe(0);
+    expect(a.lastEventAt).toBe(T0);
+    expect(a.startedAt).toBe(T0);
+  });
+
+  it.each(["Deleting remote file gone.md", "Removing local-only file stale.md"])(
+    "counts %s as a deletion",
+    (line) => {
+      const a = fresh();
+      applyActivityLine(a, line, T0);
+      expect(a.deleted).toBe(1);
+    },
+  );
+
+  it.each(["Deleting remote folder Old", "Removing local-only folder Scratch"])(
+    "does not count %s, which is a folder",
+    (line) => {
+      const a = fresh();
+      applyActivityLine(a, line, T0);
+      expect(a.deleted).toBe(0);
+      // Still activity — the daemon is working.
+      expect(a.lastEventAt).toBe(T0);
+    },
+  );
+
+  it("tallies a mixed burst", () => {
+    const a = fresh();
+    applyActivityLine(a, "Downloaded one.md", T0);
+    applyActivityLine(a, "Uploading file two.md", T0 + 1);
+    applyActivityLine(a, "Upload complete two.md", T0 + 2);
+    applyActivityLine(a, "Deleting remote file three.md", T0 + 3);
+    expect(a).toMatchObject({ downloaded: 1, uploaded: 1, deleted: 1 });
+  });
+
+  it("never counts the same line under two headings", () => {
+    const a = fresh();
+    applyActivityLine(a, "Downloaded x.md", T0);
+    expect(a.downloaded + a.uploaded + a.deleted).toBe(1);
+  });
 });

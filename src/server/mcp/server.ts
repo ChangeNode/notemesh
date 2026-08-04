@@ -377,13 +377,16 @@ export function createMcpServer(access: McpAccess): McpServer {
       "remove_property",
       {
         title: "Remove property",
-        description: "Remove a frontmatter property from a note.",
+        description:
+          "Remove a frontmatter property from a note. Returns removed:false, and leaves the " +
+          "file untouched, if the property was not set.",
         inputSchema: { path: z.string(), name: z.string() },
       },
       safe(({ path, name }: { path: string; name: string }) => {
-        const data = removeProperty(path, name);
-        w(path, "remove_property");
-        return json(data);
+        const res = removeProperty(path, name);
+        // Only reindex and tell the sync backend when bytes actually changed.
+        if (res.removed) w(path, "remove_property");
+        return json(res);
       }),
     );
   }

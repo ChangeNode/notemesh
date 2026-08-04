@@ -26,16 +26,35 @@ export function setProperty(notePath: string, name: string, value: unknown): Rec
   return data;
 }
 
-export function removeProperty(notePath: string, name: string): Record<string, unknown> {
+/**
+ * Remove a frontmatter property.
+ *
+ * Reports whether the property was actually there. Removing something absent is
+ * still a success — the caller asked for a state, and the note is in it — but
+ * "removed" and "was never set" are different answers to "did my edit apply",
+ * and collapsing them leaves a caller unable to tell a typo in the property
+ * name from a no-op.
+ *
+ * A miss also skips the write entirely. Rewriting an unchanged note is not
+ * free: it moves the mtime, re-indexes, and on the git backend produces a
+ * commit and a push for a file whose bytes did not change.
+ */
+export function removeProperty(
+  notePath: string,
+  name: string,
+): { removed: boolean; properties: Record<string, unknown> } {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const parsed = matter(readVaultFile(abs));
   const data = { ...(parsed.data ?? {}) };
+  if (!Object.prototype.hasOwnProperty.call(data, name)) {
+    return { removed: false, properties: data };
+  }
   delete data[name];
   const body = parsed.content;
   const next = Object.keys(data).length > 0 ? matter.stringify(body, data) : body.replace(/^\n+/, "");
   fs.writeFileSync(abs, next, "utf8");
-  return data;
+  return { removed: true, properties: data };
 }
 
 // Vault-wide property survey from the index (property name -> usage count).

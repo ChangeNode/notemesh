@@ -26,14 +26,31 @@ const ACTIVE_WINDOW_MS = 5_000;
 // the class so it can be tested directly — the parsing is the part that breaks
 // when ob changes its wording, and it is otherwise only reachable by spawning a
 // child process and waiting on timers.
+// What ob calls each thing, read from obsidian-headless 0.0.14's own log calls
+// rather than guessed. It is not consistent: a download completes as
+// "Downloaded", but an upload completes as "Upload complete" and a deletion is
+// only ever announced in progressive tense. Counting the past tense across the
+// board — as this did — left uploaded and deleted permanently zero while
+// downloaded worked, because downloads are the one case where the guess was
+// right. Each pattern below must fire exactly once per file.
+const COUNTS: [RegExp, keyof Pick<SyncActivity, "downloaded" | "uploaded" | "deleted">][] = [
+  [/^Downloaded\b/, "downloaded"],
+  [/^Upload complete\b/, "uploaded"],
+  // Folder-level variants ("Deleting remote folder", "Removing local-only
+  // folder") are deliberately excluded, so the tally counts files.
+  [/^(Deleting remote file|Removing local-only file)\b/, "deleted"],
+];
+
+// Lines that mean the daemon is doing transfer work, whether or not they are
+// counted. These drive burst detection and the "active" flag, so progressive
+// forms belong here — a long upload should read as active while it runs.
+const EVENT =
+  /^(Starting sync|Download(ing|ed)|Upload(ing|ed)|Upload complete|Accepted|Merging|Merged|Delet(ing|ed)|Remov(ing|ed))\b/;
+
 export function applyActivityLine(a: SyncActivity, rawLine: string, now: number): void {
   // Drop a leading "[2026-08-03T…]" timestamp if ob prefixed one.
   const line = rawLine.replace(/^\[[^\]]*\]\s*/, "");
-  const isEvent =
-    /^(Starting sync|Download(ing|ed)|Upload(ing|ed)|Accepted|Merging|Merged|Delet(ing|ed)|Remov(ing|ed))\b/.test(
-      line,
-    );
-  if (!isEvent) return;
+  if (!EVENT.test(line)) return;
   // A fresh burst either announces itself or follows a long enough silence.
   if (/^Starting sync/.test(line) || (a.lastEventAt && now - a.lastEventAt > BURST_GAP_MS)) {
     a.downloaded = 0;
@@ -42,9 +59,12 @@ export function applyActivityLine(a: SyncActivity, rawLine: string, now: number)
     a.startedAt = now;
   }
   if (a.startedAt === null) a.startedAt = now;
-  if (/^Downloaded\b/.test(line)) a.downloaded += 1;
-  else if (/^Uploaded\b/.test(line)) a.uploaded += 1;
-  else if (/^(Deleted|Removed)\b/.test(line)) a.deleted += 1;
+  for (const [re, key] of COUNTS) {
+    if (re.test(line)) {
+      a[key] += 1;
+      break;
+    }
+  }
   a.lastEventAt = now;
 }
 

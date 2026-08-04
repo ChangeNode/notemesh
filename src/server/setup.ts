@@ -6,9 +6,11 @@ import { claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
 import {
   obLogin,
   obListRemoteVaults,
+  obIsAuthenticated,
   obSyncSetup,
   obSyncStatus,
   looksLikeMfaRequired,
+  looksLikeAuthFailure,
   type RemoteVault,
 } from "./ob/cli";
 import { storeObsidianAccount, storeVaultPassword } from "./ob/credentials";
@@ -173,6 +175,22 @@ export async function setupObsidianLogin(
     }
     return { ok: false, message: lastLines(res.combined) || "Login failed." };
   }
+  // ob exits 0 even when the login did not take, so a zero exit proves nothing.
+  // Confirm with a command that genuinely requires auth before recording
+  // success — otherwise the wizard advances to the vault picker and only then
+  // discovers there is no session, with no way back.
+  if (!(await obIsAuthenticated())) {
+    if (looksLikeMfaRequired(res.combined)) {
+      return { ok: false, mfaRequired: true, message: "Multi-factor code required." };
+    }
+    return {
+      ok: false,
+      message:
+        lastLines(res.combined) ||
+        "Obsidian did not accept those credentials. Check the email and password for your " +
+          "Obsidian.md account — these are not your vault's encryption password.",
+    };
+  }
   storeObsidianAccount(email, password);
   setSetting("obsidian_logged_in", "true");
   return { ok: true };
@@ -189,7 +207,19 @@ export async function setupListVaults(): Promise<VaultListResult> {
   "use server";
   await requireAdmin();
   const { result, vaults } = await obListRemoteVaults();
-  if (!result.ok) {
+  if (!result.ok || (!vaults.length && looksLikeAuthFailure(result.combined))) {
+    // Losing the session here means the wizard would otherwise sit on a vault
+    // picker it can never populate. Drop back to the login step so the
+    // credentials can simply be entered again.
+    if (looksLikeAuthFailure(result.combined)) {
+      setSetting("obsidian_logged_in", "false");
+      return {
+        ok: false,
+        vaults: [],
+        raw: result.combined,
+        message: "The Obsidian session is gone — sign in again.",
+      };
+    }
     return { ok: false, vaults: [], raw: result.combined, message: lastLines(result.combined) };
   }
   return { ok: true, vaults, raw: result.stdout };

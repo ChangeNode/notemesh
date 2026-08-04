@@ -492,6 +492,22 @@ function VaultStep(props: { onDone: () => void }) {
               when={l.ok && l.vaults.length > 0}
               fallback={
                 <>
+                  <Show when={l.message?.includes("sign in again")}>
+                    <div class="callout warn">
+                      <p>
+                        <b>The Obsidian session is gone.</b> Reload this page to sign in again —
+                        the most common cause is a password that wasn't accepted, since the sync
+                        client can report success without actually establishing a session.
+                      </p>
+                      <p class="muted">
+                        These are your <b>Obsidian.md account</b> credentials, not your vault's
+                        encryption password.
+                      </p>
+                      <button type="button" onClick={() => window.location.reload()}>
+                        Sign In Again
+                      </button>
+                    </div>
+                  </Show>
                   <p class="muted">
                     Enter the vault name exactly as it appears in Obsidian Sync.
                     <Show when={l.raw || l.message}> Raw output:</Show>

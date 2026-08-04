@@ -80,7 +80,7 @@ export default function Setup() {
             <Match when={s === "done"}>
               <article>
                 <header>
-                  <strong>✅ Setup complete</strong>
+                  <strong>Setup complete</strong>
                 </header>
                 <p>Your vault is syncing and the MCP endpoint is live.</p>
                 <button onClick={() => navigate("/")}>Go to Dashboard</button>
@@ -155,7 +155,7 @@ function AdminStep(props: { onDone: () => void }) {
           fallback={
             <article>
               <header>
-                <strong>⚠️ This server needs a restart before you can claim it</strong>
+                <strong>This server needs a restart before you can claim it</strong>
               </header>
               <p>
                 It started before it had a public domain, so it is still configured as{" "}
@@ -182,7 +182,7 @@ function AdminStep(props: { onDone: () => void }) {
           fallback={
             <article>
               <header>
-                <strong>🔒 Locked down</strong>
+                <strong>Locked down</strong>
               </header>
               <p>
                 This server wasn't claimed within {c.windowMinutes} minutes of starting, so it

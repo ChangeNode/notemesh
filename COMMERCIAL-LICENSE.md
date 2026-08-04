@@ -1,5 +1,9 @@
 # Commercial licensing
 
+Copyright &copy; 2026 [ChangeNode](https://changenode.com/) (Will Iverson), who holds
+the copyright in notemesh and can therefore license it on terms other than the
+AGPL.
+
 notemesh is dual-licensed.
 
 ## The open-source option — AGPL-3.0

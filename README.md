@@ -341,6 +341,8 @@ One Node process (SolidStart) plus one supervised child process:
 
 ## Licence
 
+Copyright &copy; 2026 [ChangeNode](https://changenode.com/) (Will Iverson).
+
 notemesh is dual-licensed.
 
 - **[AGPL-3.0](LICENSE)** for everyone. Free to use, modify, and self-host.

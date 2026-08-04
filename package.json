@@ -42,5 +42,6 @@
   "engines": {
     "node": ">=22"
   },
+  "author": "ChangeNode (Will Iverson) <https://changenode.com/>",
   "license": "AGPL-3.0-or-later"
 }

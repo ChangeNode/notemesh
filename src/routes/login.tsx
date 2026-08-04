@@ -3,6 +3,7 @@ import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
 import { getSetupStage } from "~/server/setup";
 import { getResetState } from "~/server/reset-actions";
+import { resetBanner } from "~/server/reset";
 import { RepoFooter } from "~/components/AdminShell";
 
 export default function Login() {
@@ -89,7 +90,7 @@ export default function Login() {
           deliver the bad news after a click. Not armed at all: explain how to
           arm it, folded away so it does not clutter an ordinary sign-in. */}
       <Show
-        when={reset() && reset()!.mode !== "off"}
+        when={reset() && resetBanner(reset()!) !== "instructions"}
         fallback={
           <article>
             <details>
@@ -129,7 +130,7 @@ export default function Login() {
         }
       >
         <Show
-          when={reset()!.mode === "open"}
+          when={resetBanner(reset()!) === "armed"}
           fallback={
             <article>
               <header>

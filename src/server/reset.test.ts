@@ -239,3 +239,106 @@ function capturePin(m: typeof import("./reset")): string {
   if (!match) throw new Error("no PIN was announced");
   return match[1];
 }
+
+// process.uptime() is what bounds the window, so pushing it past the limit is
+// the only way to reach the expired state without waiting half an hour. Without
+// this, "expired" was the one mode nothing asserted — and it is a mode an
+// operator only ever meets when something has already gone wrong.
+function pretendUptime(seconds: number) {
+  return vi.spyOn(process, "uptime").mockReturnValue(seconds);
+}
+
+describe("the window closing", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("reports expired once the window has passed", async () => {
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    pretendUptime(31 * 60);
+    expect(m.resetState()).toEqual({ mode: "expired", windowMinutes: 30 });
+  });
+
+  it("is still open a minute before the boundary", async () => {
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    pretendUptime(29 * 60);
+    expect(m.resetState().mode).toBe("open");
+  });
+
+  it("refuses the correct PIN after the window closes", async () => {
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    const pin = capturePin(m);
+    pretendUptime(31 * 60);
+    const res = await m.performAdminReset(pin, "a-long-enough-password");
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/window has closed/i);
+  });
+
+  it("does not spend an attempt on a request the window already refused", async () => {
+    // Otherwise a closed window quietly eats the budget that a restart is
+    // supposed to restore.
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    pretendUptime(31 * 60);
+    await m.performAdminReset("00000000", "a-long-enough-password");
+    vi.restoreAllMocks();
+    expect(m.resetState()).toMatchObject({ mode: "open" });
+    const res = await m.performAdminReset("00000000", "a-long-enough-password");
+    expect(res.attemptsLeft).toBe(m.MAX_PIN_ATTEMPTS - 1);
+  });
+});
+
+describe("more than one account", () => {
+  it("refuses rather than guessing which one to reset", async () => {
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    const pin = capturePin(m);
+    const { runAuthMigrations } = await import("./auth");
+    await runAuthMigrations();
+    const { db } = await import("./db");
+    const insert = db().prepare(
+      'INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,?,?,?)',
+    );
+    const now = new Date().toISOString();
+    insert.run("u1", "One", "one@example.com", 1, now, now);
+    insert.run("u2", "Two", "two@example.com", 1, now, now);
+    const res = await m.performAdminReset(pin, "a-long-enough-password");
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/more than one account/i);
+  });
+});
+
+// The sign-in page used to collapse three states into two, telling someone
+// whose window had closed to use a PIN that would be refused. These check the
+// decision against every mode, which is the part a browser test would miss
+// because two of the three need a 30-minute wait or ten spent guesses.
+describe("which card the sign-in page shows", () => {
+  it("folds the how-to away when the flow is off", async () => {
+    const m = await load();
+    expect(m.resetBanner({ mode: "off" })).toBe("instructions");
+  });
+
+  it("offers the link only while the reset can actually be used", async () => {
+    const m = await load();
+    expect(m.resetBanner({ mode: "open", secondsLeft: 600, windowMinutes: 30 })).toBe("armed");
+  });
+
+  it.each(["expired", "exhausted"] as const)(
+    "does not offer a link that leads nowhere when %s",
+    async (mode) => {
+      const m = await load();
+      expect(m.resetBanner({ mode, windowMinutes: 30 })).toBe("unusable");
+    },
+  );
+
+  it("handles every mode resetState can return", async () => {
+    // Exhaustiveness, so a mode added later cannot silently fall through to
+    // whichever branch happens to be last.
+    const m = await load();
+    const all = [
+      { mode: "off" } as const,
+      { mode: "open", secondsLeft: 1, windowMinutes: 30 } as const,
+      { mode: "expired", windowMinutes: 30 } as const,
+      { mode: "exhausted", windowMinutes: 30 } as const,
+    ];
+    for (const state of all) {
+      expect(["instructions", "armed", "unusable"]).toContain(m.resetBanner(state));
+    }
+  });
+});

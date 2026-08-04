@@ -86,24 +86,34 @@ Railway workspace → **Settings → Templates → New Template**.
    `/data`. This holds the vault copy, the SQLite database, and the sync
    client's state. Without it, every redeploy wipes the instance and the user
    has to run the whole wizard again.
-3. **Set the variables:**
+3. **Set the variables.** All four, exactly these — the goal is that a deployer
+   never opens this panel:
 
    | Variable | Value | Why |
    | --- | --- | --- |
    | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` | 64 hex characters — exactly the 32 bytes of key material the server demands |
    | `DATA_DIR` | `/data` | Must match the volume mount path |
+   | `PORT` | `3000` | Pins the listening port to the domain's target port |
+   | `BASE_URL` | `https://${{ RAILWAY_PUBLIC_DOMAIN }}` | Gives the OAuth issuer the real domain from first boot |
 
-   Use the generator function, not a literal. A fixed value in a published
-   template would ship the same encryption key to every deployment on the
-   platform.
+   **`ENCRYPTION_KEY` must be the generator function, never a literal.** A fixed
+   value in a published template would ship the same encryption key to every
+   deployment on the platform. A plain `${{secret()}}` also won't do: the server
+   rejects anything that isn't valid base64 or hex, so it would fail at boot.
+   The `"abcdef0123456789"` alphabet argument is what makes it hex.
 
-   A plain `${{secret()}}` will **not** work here: the server rejects anything
-   that is not valid base64 or hex key material, so it would fail at boot. The
-   `"abcdef0123456789"` alphabet argument is what makes it hex.
+   **`PORT` is not optional.** Railway assigns a port dynamically and the app
+   follows whatever it is given, so without pinning this the app can end up
+   listening somewhere the generated domain isn't pointing — which presents as a
+   502 with `connection refused` and no error in the logs.
 
-   `BASE_URL` is deliberately absent. The server derives its public origin from
-   `RAILWAY_PUBLIC_DOMAIN` at startup, which is what you want on Railway. Only
-   set `BASE_URL` for a custom domain.
+   **`BASE_URL` uses a reference, not a literal.** `${{ RAILWAY_PUBLIC_DOMAIN }}`
+   resolves at deploy time to this service's own domain. The server would also
+   read `RAILWAY_PUBLIC_DOMAIN` directly, so this is belt-and-braces — but it
+   makes the dependency explicit in the template, and it is the pattern Railway
+   documents for building a URL from a domain. Never set it to a literal: a
+   hardcoded `http://localhost:3000` would pin every deployment's OAuth issuer to
+   localhost.
 
 4. **Settings** — healthcheck path `/api/health`. This is already in
    [`railway.json`](railway.json) along with the Dockerfile builder and restart

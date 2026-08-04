@@ -177,10 +177,14 @@ own secrets.
 | --- | --- |
 | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
 | `DATA_DIR` | `/data` |
+| `PORT` | `3000` |
+| `BASE_URL` | `https://${{ RAILWAY_PUBLIC_DOMAIN }}` |
 
 The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the 32 bytes
 of key material the server requires. A plain `${{secret()}}` is rejected at boot:
-it isn't valid base64 or hex.
+it isn't valid base64 or hex. `PORT` must be pinned because Railway assigns one
+dynamically and the app follows it, which otherwise leaves the domain pointing at
+a port nothing is listening on.
 
 Deployers bring their own vault — an Obsidian Sync subscription or a git repo —
 and each deployment is a **single-user** instance — the first person to create an account claims it,

@@ -234,3 +234,11 @@ article.choice > button {
   width: auto;
   margin-bottom: 0;
 }
+
+/* Repeat count on a collapsed log line — present so the line reads as a
+   heartbeat rather than a single event, but dimmed so it doesn't compete with
+   the message itself. */
+pre.logs .repeat {
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}

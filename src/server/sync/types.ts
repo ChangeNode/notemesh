@@ -18,6 +18,10 @@ export interface LogLine {
   // client has no severity channel, so those lines are classified by content
   // when they're rendered.
   level?: "error" | "warn";
+  // How many consecutive times this identical line arrived. Absent means once.
+  // `ts` tracks the most recent occurrence, so it still answers "when did this
+  // last happen".
+  repeat?: number;
 }
 
 export interface SyncActivity {
@@ -73,20 +77,44 @@ export interface SyncBackend {
 
 // Shared bounded log buffer. Both backends keep the last N lines in memory and
 // nothing on disk — see the Settings tab for what actually gets persisted.
+/**
+ * Append one already-trimmed line, collapsing it into the previous entry when
+ * it is identical.
+ *
+ * The sync clients emit heartbeats: `ob sync --continuous` logs "Fully synced"
+ * at the end of every polling pass, roughly twice a minute, forever. Stored
+ * verbatim those fill the entire buffer within a few hours, so the window an
+ * operator can actually see contains nothing but heartbeat and any real event
+ * has long since scrolled out. Collapsing keeps the liveness signal — the count
+ * and the refreshed timestamp — without spending the buffer on it.
+ *
+ * Replaces the last entry rather than mutating it, because getLogs() hands out
+ * shallow copies whose elements callers may still be holding.
+ */
+export function appendLogLine(lines: LogLine[], line: string, level?: "error" | "warn"): void {
+  const last = lines[lines.length - 1];
+  if (last && last.line === line && last.level === level) {
+    lines[lines.length - 1] = { ...last, ts: Date.now(), repeat: (last.repeat ?? 1) + 1 };
+    return;
+  }
+  lines.push({ ts: Date.now(), line, level });
+  if (lines.length > MAX_LOG_LINES) lines.splice(0, lines.length - MAX_LOG_LINES);
+}
+
+// Split a raw chunk into storable lines: blank lines dropped, each capped so a
+// single newline-free blob can't grow the buffer without bound.
+export function logLinesOf(chunk: string): string[] {
+  return chunk
+    .split("\n")
+    .map((raw) => raw.trimEnd().slice(0, 2000))
+    .filter(Boolean);
+}
+
 export class LogRing {
   private lines: LogLine[] = [];
 
   push(chunk: string, level?: "error" | "warn"): void {
-    for (const raw of chunk.split("\n")) {
-      // Cap each stored line so a single newline-free blob can't grow the
-      // buffer without bound.
-      const line = raw.trimEnd().slice(0, 2000);
-      if (!line) continue;
-      this.lines.push({ ts: Date.now(), line, level });
-    }
-    if (this.lines.length > MAX_LOG_LINES) {
-      this.lines = this.lines.slice(-MAX_LOG_LINES);
-    }
+    for (const line of logLinesOf(chunk)) appendLogLine(this.lines, line, level);
   }
 
   all(): LogLine[] {

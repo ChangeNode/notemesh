@@ -4,7 +4,16 @@ import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
 import { obIsAuthenticated, obSyncOnce } from "./cli";
-import { MAX_LOG_LINES, type LogLine, type SyncActivity, type SyncBackend, type SyncState, type SyncStatus } from "../sync/types";
+import {
+  MAX_LOG_LINES,
+  appendLogLine,
+  logLinesOf,
+  type LogLine,
+  type SyncActivity,
+  type SyncBackend,
+  type SyncState,
+  type SyncStatus,
+} from "../sync/types";
 
 export { MAX_LOG_LINES };
 export type { LogLine, SyncActivity, SyncState };
@@ -66,17 +75,13 @@ class SyncSupervisor implements SyncBackend {
   }
 
   private log(line: string, level?: "error" | "warn") {
-    for (const l of line.split("\n")) {
-      // Cap each stored line so a single newline-free blob from ob can't grow
-      // the buffer unbounded.
-      const t = l.trimEnd().slice(0, 2000);
-      if (!t) continue;
-      this.logs.push({ ts: Date.now(), line: t, level });
+    for (const t of logLinesOf(line)) {
+      // Collapsed if identical to the line before it — see appendLogLine. The
+      // activity tally below still counts every occurrence; only the stored
+      // representation is deduplicated.
+      appendLogLine(this.logs, t, level);
       this.lastActivityAt = Date.now();
       this.trackActivity(t);
-    }
-    if (this.logs.length > MAX_LOG_LINES) {
-      this.logs = this.logs.slice(-MAX_LOG_LINES);
     }
   }
 
@@ -91,10 +96,7 @@ class SyncSupervisor implements SyncBackend {
   note(line: string, level?: "error" | "warn") {
     const t = line.trimEnd().slice(0, 2000);
     if (!t) return;
-    this.logs.push({ ts: Date.now(), line: t, level });
-    if (this.logs.length > MAX_LOG_LINES) {
-      this.logs = this.logs.slice(-MAX_LOG_LINES);
-    }
+    appendLogLine(this.logs, t, level);
   }
 
   start() {

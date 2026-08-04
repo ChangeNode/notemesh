@@ -227,6 +227,9 @@ export default function Status() {
                     {(l) => (
                       <div class={lineClass(l)}>
                         {`${new Date(l.ts).toLocaleTimeString()}  ${l.line}`}
+                        <Show when={(l.repeat ?? 1) > 1}>
+                          <span class="repeat">{` ×${l.repeat}`}</span>
+                        </Show>
                       </div>
                     )}
                   </For>

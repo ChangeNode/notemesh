@@ -7,7 +7,13 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import crypto from "node:crypto";
 import { db } from "./db";
 import { env } from "./env";
-import { withinClaimWindow, CLAIM_WINDOW_MINUTES } from "./claim";
+import { userCount, withinClaimWindow, CLAIM_WINDOW_MINUTES } from "./claim";
+import { audit } from "./audit";
+
+// Both used to live here, and auth is where the rest of the app reaches for
+// them, so keep them importable from this module.
+export { audit } from "./audit";
+export { userCount, isSetupComplete, type UserCount } from "./claim";
 
 // Session-signing secret derived from (not equal to) the credential
 // encryption key, so one secret in the Railway template covers both.
@@ -19,31 +25,10 @@ function authSecret(): string {
     .digest("base64");
 }
 
-// Minimal structured audit log for security-relevant events (no secrets).
-export function audit(event: string, detail: Record<string, unknown> = {}) {
-  try {
-    console.log(JSON.stringify({ audit: event, ts: new Date().toISOString(), ...detail }));
-  } catch {
-    console.log(`audit ${event}`);
-  }
-}
-
 // Ceiling on dynamically-registered OAuth clients (see the /oauth2/register
 // hook below). Well above what real use produces — testing accumulated a
 // handful — but bounded so anonymous registration can't grow the DB forever.
 export const MAX_OAUTH_CLIENTS = 50;
-
-function userCount(): number {
-  try {
-    const row = db()
-      .prepare('SELECT COUNT(*) AS n FROM "user"')
-      .get() as { n: number };
-    return row.n;
-  } catch {
-    // Table doesn't exist yet (first boot, before migrations run).
-    return 0;
-  }
-}
 
 export const auth = betterAuth({
   baseURL: env.baseUrl,
@@ -87,7 +72,18 @@ export const auth = betterAuth({
     // still inside the post-start claim window — see server/claim.ts.
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email") {
-        if (userCount() > 0) {
+        const users = userCount();
+        if (!users.known) {
+          // Never create an account on a guess. A database we cannot read is
+          // not a database we know to be empty.
+          audit("signup.rejected", { reason: "user_count_unavailable" });
+          throw new APIError("SERVICE_UNAVAILABLE", {
+            message:
+              "Could not verify whether this instance is already claimed, so sign-up is " +
+              "refused. Check the server logs and try again.",
+          });
+        }
+        if (users.count > 0) {
           audit("signup.rejected", { reason: "already_claimed" });
           throw new APIError("FORBIDDEN", {
             message: "This instance is already claimed.",
@@ -167,10 +163,6 @@ export const auth = betterAuth({
     }),
   ],
 });
-
-export async function isSetupComplete(): Promise<boolean> {
-  return userCount() > 0;
-}
 
 let migrated = false;
 

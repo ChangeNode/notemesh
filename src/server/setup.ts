@@ -1,8 +1,8 @@
 import { getRequestEvent } from "solid-js/web";
 import { getSetting, setSetting } from "./db";
 import { env, detectOriginMismatch, type OriginMismatch } from "./env";
-import { isSetupComplete, runAuthMigrations } from "./auth";
-import { claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
+import { runAuthMigrations } from "./auth";
+import { isSetupComplete, claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
 import {
   obLogin,
   obListRemoteVaults,

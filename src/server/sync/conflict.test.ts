@@ -21,6 +21,11 @@ let server: string; // the ob-sync side
 let device: string; // stands in for the user's phone/laptop
 let remote: string;
 
+// Bare repos below are created with `-b main` on purpose. Without it the repo's
+// HEAD follows the host's init.defaultBranch, so on a machine that still
+// defaults to "master" a later clone tracks a ref that was never pushed and
+// every `git pull` in these tests fails. GIT_CONFIG_GLOBAL is nulled for the
+// same reason: the suite must not depend on the developer's git config.
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
     cwd,
@@ -74,7 +79,7 @@ beforeEach(() => {
   remote = path.join(root, "remote.git");
   server = path.join(root, "server");
   device = path.join(root, "device");
-  git(root, "init", "-q", "--bare", "remote.git");
+  git(root, "init", "-q", "--bare", "-b", "main", "remote.git");
   git(root, "clone", "-q", remote, "server");
   write(server, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n");
   write(server, "Projects/Alpha.md", "# Alpha\n\nline one\nline two\nline three\n");
@@ -266,7 +271,7 @@ describe("conflict strategies", () => {
       remote = path.join(root, "remote.git");
       server = path.join(root, "server");
       device = path.join(root, "device");
-      git(root, "init", "-q", "--bare", "remote.git");
+      git(root, "init", "-q", "--bare", "-b", "main", "remote.git");
       git(root, "clone", "-q", remote, "server");
       write(server, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n");
       commitAll(server, "seed");

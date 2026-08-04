@@ -39,7 +39,7 @@ function git(cwd: string, ...args: string[]): string {
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-git-"));
   remote = path.join(root, "remote.git");
-  git(root, "init", "-q", "--bare", "remote.git");
+  git(root, "init", "-q", "--bare", "-b", "main", "remote.git");
   // DATA_DIR drives env.vaultDir, which is where cloneVault writes.
   process.env.DATA_DIR = path.join(root, "data");
   fs.mkdirSync(path.join(root, "data"), { recursive: true });
@@ -151,7 +151,7 @@ describe("cloneVault", () => {
     seedRemote();
     await cloneVault(remote, "main");
     const other = path.join(root, "other.git");
-    git(root, "init", "-q", "--bare", "other.git");
+    git(root, "init", "-q", "--bare", "-b", "main", "other.git");
     const res = await cloneVault(other, "main");
     expect(res.ok).toBe(false);
     expect(res.message).toMatch(/different remote/i);

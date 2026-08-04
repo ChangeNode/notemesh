@@ -83,8 +83,10 @@ export default function Login() {
         </form>
       </article>
 
-      {/* Armed: link straight to it, because someone reaching this page in that
-          state is almost certainly here to use it. Not armed: explain how to
+      {/* Armed and usable: link straight to it, because someone reaching this
+          page in that state is almost certainly here to use it. Armed but out
+          of window or attempts says so here rather than letting the reset page
+          deliver the bad news after a click. Not armed at all: explain how to
           arm it, folded away so it does not clutter an ordinary sign-in. */}
       <Show
         when={reset() && reset()!.mode !== "off"}
@@ -126,18 +128,42 @@ export default function Login() {
           </article>
         }
       >
-        <article>
-          <header>
-            <strong>Password reset is armed</strong>
-          </header>
-          <p class="muted">
-            <code>RESET_ADMIN_FLOW</code> is set on this server, so the admin password can be
-            changed with the PIN printed in its log. Remove the variable once you are done.
-          </p>
-          <A href="/reset" role="button">
-            Reset Admin Password
-          </A>
-        </article>
+        <Show
+          when={reset()!.mode === "open"}
+          fallback={
+            <article>
+              <header>
+                <strong>
+                  {reset()!.mode === "exhausted"
+                    ? "Password reset is locked out"
+                    : "The password reset window has closed"}
+                </strong>
+              </header>
+              <p class="muted">
+                <code>RESET_ADMIN_FLOW</code> is still set, but{" "}
+                {reset()!.mode === "exhausted"
+                  ? "the PIN was entered incorrectly too many times"
+                  : "a reset is only possible in the first 30 minutes after the server starts"}
+                . Restart the server to get a new PIN and a fresh window — on Railway, your service
+                → <b>Deployments</b> → <b>Restart</b>. If you did not mean to leave the reset armed,
+                delete the variable instead.
+              </p>
+            </article>
+          }
+        >
+          <article>
+            <header>
+              <strong>Password reset is armed</strong>
+            </header>
+            <p class="muted">
+              <code>RESET_ADMIN_FLOW</code> is set on this server, so the admin password can be
+              changed with the PIN printed in its log. Remove the variable once you are done.
+            </p>
+            <A href="/reset" role="button">
+              Reset Admin Password
+            </A>
+          </article>
+        </Show>
       </Show>
 
       <RepoFooter />

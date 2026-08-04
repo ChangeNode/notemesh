@@ -183,6 +183,20 @@ export async function setupObsidianLogin(
     if (looksLikeMfaRequired(res.combined)) {
       return { ok: false, mfaRequired: true, message: "Multi-factor code required." };
     }
+    // A wrong password fails loudly: the CLI exits non-zero with "Login failed,
+    // please double check your email and password". Exiting cleanly with no
+    // output at all means something else — in practice, that it prompted for a
+    // two-factor code and reached end-of-input, because a server can't answer
+    // an interactive prompt.
+    if (!res.combined.trim()) {
+      return {
+        ok: false,
+        mfaRequired: true,
+        message:
+          "The sync client stopped without an error, which almost always means it asked for a " +
+          "two-factor code. Enter the current code from your authenticator and try again.",
+      };
+    }
     return {
       ok: false,
       message:

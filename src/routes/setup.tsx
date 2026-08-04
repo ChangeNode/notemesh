@@ -411,10 +411,23 @@ function ObsidianStep(props: { onDone: () => void }) {
         <input id="ob-email" type="email" required value={email()} onInput={(e) => setEmail(e.currentTarget.value)} />
         <label for="ob-password">Obsidian account password</label>
         <input id="ob-password" type="password" required value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
-        <Show when={mfaRequired()}>
-          <label for="ob-mfa">Two-factor code</label>
-          <input id="ob-mfa" type="text" inputmode="numeric" value={mfa()} onInput={(e) => setMfa(e.currentTarget.value)} />
-        </Show>
+        <label for="ob-mfa">
+          Two-factor code <span class="muted">— only if your Obsidian account uses one</span>
+        </label>
+        <input
+          id="ob-mfa"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          placeholder="123456"
+          value={mfa()}
+          onInput={(e) => setMfa(e.currentTarget.value)}
+        />
+        <small class="muted">
+          Leave blank if you don't use two-factor. It has to be entered here rather than prompted
+          for: the sync client asks for the code interactively, and a server has no way to answer.
+          Get it from your authenticator just before submitting, since the codes expire quickly.
+        </small>
         <Show when={error()}>
           <p class="error">{error()}</p>
         </Show>

@@ -1,5 +1,5 @@
 import { createResource, For, Show } from "solid-js";
-import { getSettingsPage, setDeleteEnabled, setDailyConfig, setGitTiming, setGitConflictStrategy } from "~/server/admin";
+import { getSettingsPage, setDeleteEnabled, setDailyConfig, setGitTiming, setGitConflictStrategy, setTimezone } from "~/server/admin";
 import { AdminShell, Check } from "~/components/AdminShell";
 
 export default function Settings() {
@@ -114,6 +114,34 @@ export default function Settings() {
               <header>
                 <strong>Daily notes</strong>
               </header>
+              <label for="tz">Timezone</label>
+              <div class="actions">
+                <input
+                  id="tz"
+                  type="text"
+                  value={d.timezone}
+                  onChange={(e) => setTimezone(e.currentTarget.value).then(() => refetch())}
+                />
+                <button
+                  type="button"
+                  class="secondary"
+                  onClick={() => {
+                    const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const el = document.getElementById("tz") as HTMLInputElement;
+                    if (el) el.value = browser;
+                    setTimezone(browser).then(() => refetch());
+                  }}
+                >
+                  Use This Device's
+                </button>
+              </div>
+              <small class="muted">
+                Which timezone <b>today</b> means. The server itself runs in UTC, so without this a
+                daily note created in the evening in the Americas would land on tomorrow's date.
+                Use an IANA name like <code>America/Los_Angeles</code> — the button fills in
+                whatever this browser is set to.
+              </small>
+              <hr />
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();

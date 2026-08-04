@@ -37,23 +37,77 @@ function dailyConfig(): DailyConfig {
   }
 }
 
+// "Today" has to be resolved in the user's timezone, not the server's. A
+// container runs in UTC, so an evening in the Americas is already tomorrow as
+// far as the process is concerned and the daily note lands on the wrong day.
+export const DEFAULT_TIMEZONE = "UTC";
+
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function configuredTimeZone(): string {
+  const tz = getSetting("timezone");
+  return tz && isValidTimeZone(tz) ? tz : DEFAULT_TIMEZONE;
+}
+
+/** Calendar date, decoupled from any instant so no zone can shift it again. */
+export interface DateParts {
+  year: number;
+  month: number; // 1-12
+  day: number;
+  weekday: number; // 0 = Sunday
+}
+
+function weekdayOf(year: number, month: number, day: number): number {
+  // Computed in UTC purely as arithmetic on a fixed calendar date.
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+/** What day it is right now, where the user is. */
+export function todayInZone(now: Date, timeZone: string): DateParts {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const p: Record<string, string> = {};
+  for (const part of fmt.formatToParts(now)) p[part.type] = part.value;
+  const year = Number(p.year);
+  const month = Number(p.month);
+  const day = Number(p.day);
+  return { year, month, day, weekday: weekdayOf(year, month, day) };
+}
+
+/** An explicit YYYY-MM-DD is taken at face value — never re-interpreted. */
+export function partsFromISO(iso: string): DateParts {
+  const [year, month, day] = iso.split("-").map(Number);
+  return { year, month, day, weekday: weekdayOf(year, month, day) };
+}
+
 // Minimal moment-format subset covering common daily note formats.
-function formatDate(date: Date, format: string): string {
+export function formatDate(d: DateParts, format: string): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
   const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   const replacements: Record<string, string> = {
-    YYYY: String(date.getFullYear()),
-    YY: String(date.getFullYear()).slice(-2),
-    MMMM: months[date.getMonth()],
-    MMM: months[date.getMonth()].slice(0, 3),
-    MM: pad(date.getMonth() + 1),
-    M: String(date.getMonth() + 1),
-    DDDD: days[date.getDay()],
-    dddd: days[date.getDay()],
-    ddd: days[date.getDay()].slice(0, 3),
-    DD: pad(date.getDate()),
-    D: String(date.getDate()),
+    YYYY: String(d.year),
+    YY: String(d.year).slice(-2),
+    MMMM: months[d.month - 1],
+    MMM: months[d.month - 1].slice(0, 3),
+    MM: pad(d.month),
+    M: String(d.month),
+    DDDD: days[d.weekday],
+    dddd: days[d.weekday],
+    ddd: days[d.weekday].slice(0, 3),
+    DD: pad(d.day),
+    D: String(d.day),
   };
   // Replace longest tokens first to avoid partial matches.
   return format.replace(/YYYY|YY|MMMM|MMM|MM|M|dddd|ddd|DDDD|DD|D/g, (t) => replacements[t] ?? t);
@@ -65,8 +119,10 @@ export function dailyNotePath(date?: string): string {
   if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new VaultPathError(`Invalid date: ${date} (expected YYYY-MM-DD)`);
   }
-  const d = date ? new Date(date + "T00:00:00") : new Date();
-  if (isNaN(d.getTime())) throw new VaultPathError(`Invalid date: ${date} (expected YYYY-MM-DD)`);
+  const d = date ? partsFromISO(date) : todayInZone(new Date(), configuredTimeZone());
+  if (!Number.isFinite(d.year) || !Number.isFinite(d.month) || !Number.isFinite(d.day)) {
+    throw new VaultPathError(`Invalid date: ${date} (expected YYYY-MM-DD)`);
+  }
   const cfg = dailyConfig();
   const name = formatDate(d, cfg.format);
   const rel = cfg.folder ? `${cfg.folder.replace(/\/$/, "")}/${name}.md` : `${name}.md`;

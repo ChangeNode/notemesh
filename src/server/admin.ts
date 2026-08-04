@@ -10,6 +10,7 @@ import { env, detectOriginMismatch } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
+import { configuredTimeZone, isValidTimeZone } from "./vault/daily";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
 import { obLogin, looksLikeMfaRequired } from "./ob/cli";
@@ -113,6 +114,7 @@ export async function getSettingsPage() {
     deleteEnabled: getSetting("delete_enabled") === "true",
     dailyFolder: getSetting("daily_folder") ?? "",
     dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
+    timezone: configuredTimeZone(),
     syncLogs: syncLogFiles(),
     logTailLines: MAX_LOG_LINES,
     backend: syncKind(),
@@ -224,6 +226,19 @@ export async function setGitConflictStrategy(strategy: string) {
   await requireAdmin();
   const valid = strategy === "branch" || strategy === "inline" ? strategy : "file";
   setSetting("git_conflict_strategy", valid);
+  return { ok: true };
+}
+
+// Which timezone "today" means. The server runs in UTC, so without this a
+// daily note created in the American evening lands on tomorrow's date.
+export async function setTimezone(tz: string) {
+  "use server";
+  await requireAdmin();
+  const value = tz.trim();
+  if (!isValidTimeZone(value)) {
+    return { ok: false, message: `"${value}" isn't a timezone this server recognises.` };
+  }
+  setSetting("timezone", value);
   return { ok: true };
 }
 

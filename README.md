@@ -95,7 +95,7 @@ or as a commit pushed to your git remote.
    | --- | --- |
    | **Setup** | The MCP endpoint URL, copy-paste setup for each client, and API keys |
    | **Status** | Sync health, vault stats, live log tail, connected OAuth clients |
-   | **Settings** | The `delete_note` toggle, daily-note folder/format, and where logs are written |
+   | **Settings** | The `delete_note` toggle, timezone, daily-note folder/format, and where logs are written |
    | **Security** | Live posture of this instance — see [Security model](#security-model) |
 
 **Sizing the volume:** the vault copy includes synced attachments (images,

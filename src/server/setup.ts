@@ -25,6 +25,7 @@ export type SetupStage =
   | "obsidian-login" // Obsidian backend: account not linked
   | "vault" // Obsidian backend: logged in, vault not chosen
   | "git" // git backend: repo not linked
+  | "timezone" // vault works; "today" not yet pinned to a zone
   | "done";
 
 async function computeStage(): Promise<SetupStage> {
@@ -33,11 +34,35 @@ async function computeStage(): Promise<SetupStage> {
   const backend = getSetting("sync_backend");
   if (!backend) return "backend";
   if (backend === "git") {
-    return getSetting("vault_configured") === "true" ? "done" : "git";
+    if (getSetting("vault_configured") !== "true") return "git";
+  } else {
+    if (getSetting("obsidian_logged_in") !== "true") return "obsidian-login";
+    if (getSetting("vault_configured") !== "true") return "vault";
   }
-  if (getSetting("obsidian_logged_in") !== "true") return "obsidian-login";
-  if (getSetting("vault_configured") !== "true") return "vault";
+  // Asked last, because it is the only step that needs nothing else to work and
+  // the only one a deployer can skip without the vault breaking. The container
+  // runs in UTC, so leaving it unset silently files an evening daily note under
+  // tomorrow's date for anyone west of Greenwich.
+  //
+  // Keyed on the setting being absent rather than on its value: an instance that
+  // finished setup before this step existed reaches the dashboard normally
+  // (middleware gates on vault_configured, not on this), and only sees the step
+  // if it visits the wizard.
+  if (getSetting("timezone") === undefined) return "timezone";
   return "done";
+}
+
+// Same stage, plus the chosen backend, so the wizard can number its steps: the
+// Obsidian path has one more than the git path, and which one is in play isn't
+// derivable from a stage that both paths share.
+export async function getSetupProgress(): Promise<{
+  stage: SetupStage;
+  backend: "obsidian" | "git" | null;
+}> {
+  "use server";
+  const stage = await getSetupStage();
+  const backend = getSetting("sync_backend");
+  return { stage, backend: backend === "git" ? "git" : backend ? "obsidian" : null };
 }
 
 export async function setupChooseBackend(kind: "obsidian" | "git"): Promise<{ ok: boolean }> {

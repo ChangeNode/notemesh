@@ -11,8 +11,9 @@ import {
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
+import { setTimezone } from "~/server/admin";
 import {
-  getSetupStage,
+  getSetupProgress,
   setupObsidianLogin,
   setupListVaults,
   setupConfigureVault,
@@ -23,28 +24,23 @@ import {
 } from "~/server/setup";
 import { RepoFooter } from "~/components/AdminShell";
 
-// Both backends are three steps: claim, choose, configure. The Obsidian path
-// splits "configure" into login + vault picker, so it shows 3 of 4.
-const STEP_NUMBER: Record<SetupStage, number> = {
-  admin: 1,
-  backend: 2,
-  "obsidian-login": 3,
-  vault: 4,
-  git: 3,
-  done: 4,
-};
-const STEP_TOTAL: Record<SetupStage, number> = {
-  admin: 3,
-  backend: 3,
-  "obsidian-login": 4,
-  vault: 4,
-  git: 3,
-  done: 4,
-};
+// Claim, choose, configure, then set the timezone. The Obsidian path splits
+// "configure" into login + vault picker, so it runs one step longer than git.
+// Before a backend is chosen the longer path is assumed, which is why the total
+// can tick down rather than up.
+function stepsFor(backend: "obsidian" | "git" | null): SetupStage[] {
+  return backend === "git"
+    ? ["admin", "backend", "git", "timezone"]
+    : ["admin", "backend", "obsidian-login", "vault", "timezone"];
+}
 
 export default function Setup() {
-  const [stage, { refetch }] = createResource<SetupStage>(() => getSetupStage());
+  const [progress, { refetch }] = createResource(() => getSetupProgress());
   const navigate = useNavigate();
+
+  const stage = () => progress()?.stage;
+  const steps = () => stepsFor(progress()?.backend ?? null);
+  const stepNumber = () => steps().indexOf(stage()!) + 1;
 
   return (
     <main class="container">
@@ -52,12 +48,12 @@ export default function Setup() {
         <h2>Set up ob-sync</h2>
         <Show when={stage() && stage() !== "done"}>
           <p class="muted">
-            Step {STEP_NUMBER[stage()!]} of {STEP_TOTAL[stage()!]}
+            Step {stepNumber()} of {steps().length}
           </p>
         </Show>
       </hgroup>
       <Show when={stage() && stage() !== "done"}>
-        <progress value={STEP_NUMBER[stage()!] - 1} max={STEP_TOTAL[stage()!]} />
+        <progress value={stepNumber() - 1} max={steps().length} />
       </Show>
       <Show when={stage()} keyed>
         {(s) => (
@@ -76,6 +72,9 @@ export default function Setup() {
             </Match>
             <Match when={s === "vault"}>
               <VaultStep onDone={refetch} />
+            </Match>
+            <Match when={s === "timezone"}>
+              <TimezoneStep onDone={refetch} />
             </Match>
             <Match when={s === "done"}>
               <article>
@@ -566,6 +565,92 @@ function VaultStep(props: { onDone: () => void }) {
           {busy() ? "Connecting… (first sync may take a while)" : "Connect Vault & Start Sync"}
         </button>
       </form>
+    </article>
+  );
+}
+
+// Which zone "today" means. The container runs in UTC, so without this an
+// evening daily note in the Americas is filed under tomorrow's date. Asked here
+// rather than left to Settings because the failure is silent and only shows up
+// once someone is already relying on daily notes.
+function TimezoneStep(props: { onDone: () => void }) {
+  // The browser knows the answer, so offer it rather than asking for typing.
+  // Client-only: Intl on the server resolves to the container's zone, which is
+  // exactly the UTC we are trying to correct for.
+  const [tz, setTz] = createSignal("");
+  onMount(() => {
+    try {
+      setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+    } catch {
+      setTz("UTC");
+    }
+  });
+
+  const [error, setError] = createSignal<string | null>(null);
+  const [busy, setBusy] = createSignal(false);
+
+  // Rendered in the chosen zone so the choice can be checked at a glance —
+  // if the date shown isn't today where you are, the zone is wrong.
+  const preview = () => {
+    const zone = tz().trim();
+    if (!zone) return "";
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone,
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date());
+    } catch {
+      return "";
+    }
+  };
+
+  async function save(zone: string) {
+    setBusy(true);
+    setError(null);
+    const res = await setTimezone(zone);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.message ?? "That timezone wasn't accepted.");
+      return;
+    }
+    props.onDone();
+  }
+
+  return (
+    <article>
+      <header>
+        <strong>Set your timezone</strong>
+      </header>
+      <p class="muted">
+        This decides what "today" means for daily notes. The server itself runs on UTC, so without
+        it an evening note can land on tomorrow's date.
+      </p>
+      <label for="tz">Timezone</label>
+      <input
+        id="tz"
+        value={tz()}
+        onInput={(e) => setTz(e.currentTarget.value)}
+        placeholder="America/Los_Angeles"
+        autocomplete="off"
+      />
+      <Show when={preview()}>
+        <p class="muted">
+          Right now that reads as <b>{preview()}</b>.
+        </p>
+      </Show>
+      <Show when={error()}>
+        <p class="error">{error()}</p>
+      </Show>
+      <div class="actions">
+        <button aria-busy={busy()} disabled={busy() || !tz().trim()} onClick={() => save(tz())}>
+          {busy() ? "Saving…" : "Save Timezone"}
+        </button>
+        <button class="secondary" disabled={busy()} onClick={() => save("UTC")}>
+          Use UTC
+        </button>
+      </div>
+      <small class="muted">You can change this later under Settings.</small>
     </article>
   );
 }

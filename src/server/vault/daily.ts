@@ -85,6 +85,34 @@ export function todayInZone(now: Date, timeZone: string): DateParts {
   return { year, month, day, weekday: weekdayOf(year, month, day) };
 }
 
+/**
+ * `YYYYMMDDHHmm` for the given instant, read in the given zone.
+ *
+ * Zettelkasten-style unique notes are named after the minute they were created,
+ * so they need the wall clock and not just the calendar date that DateParts
+ * carries. Lives here rather than at the call site because this module owns
+ * every "what time is it where the user is" decision — the alternative, each
+ * caller reaching for `new Date()` and its local getters, is what left
+ * unique_note stamping UTC after daily notes had already been fixed.
+ *
+ * hourCycle "h23" rather than hour12:false: the latter is permitted to render
+ * midnight as 24, which would name a note for a day that has not started.
+ */
+export function timestampInZone(now: Date, timeZone: string): string {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const p: Record<string, string> = {};
+  for (const part of fmt.formatToParts(now)) p[part.type] = part.value;
+  return `${p.year}${p.month}${p.day}${p.hour}${p.minute}`;
+}
+
 /** An explicit YYYY-MM-DD is taken at face value — never re-interpreted. */
 export function partsFromISO(iso: string): DateParts {
   const [year, month, day] = iso.split("-").map(Number);

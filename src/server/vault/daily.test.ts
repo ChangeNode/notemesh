@@ -4,6 +4,7 @@ import {
   formatDate,
   isValidTimeZone,
   partsFromISO,
+  timestampInZone,
   todayInZone,
 } from "./daily";
 
@@ -135,5 +136,51 @@ describe("isValidTimeZone", () => {
   it("defaults to UTC", () => {
     expect(DEFAULT_TIMEZONE).toBe("UTC");
     expect(isValidTimeZone(DEFAULT_TIMEZONE)).toBe(true);
+  });
+});
+
+// unique_note names a Zettelkasten note after the minute it was created, so it
+// needs the wall clock and not just the calendar date. It used to format its
+// own stamp from Date's local getters, which in a UTC container meant every
+// note created after 5pm Pacific was named for tomorrow — the daily-note bug,
+// surviving in a second place because the formatting wasn't shared.
+describe("timestampInZone", () => {
+  it("stamps the local minute, not the server's", () => {
+    // 2026-08-04 06:58 UTC is 2026-08-03 23:58 in Los Angeles.
+    const instant = new Date("2026-08-04T06:58:00Z");
+    expect(timestampInZone(instant, "America/Los_Angeles")).toBe("202608032358");
+    expect(timestampInZone(instant, "UTC")).toBe("202608040658");
+  });
+
+  it("matches Obsidian's YYYYMMDDHHmm shape", () => {
+    expect(timestampInZone(new Date("2026-08-04T06:58:00Z"), "UTC")).toMatch(/^\d{12}$/);
+  });
+
+  it("renders midnight as 00, never 24", () => {
+    // hour12:false is permitted to produce 24, which would name a note for a
+    // day that hasn't started and sort before every note from the day before.
+    const midnight = new Date("2026-08-04T07:00:00Z"); // 00:00 PDT
+    expect(timestampInZone(midnight, "America/Los_Angeles")).toBe("202608040000");
+  });
+
+  it("agrees with the daily note about which day it is", () => {
+    // The two must never disagree: a unique note and a daily note created in
+    // the same second should carry the same date.
+    const instant = new Date("2026-08-04T06:58:00Z");
+    for (const tz of ["America/Los_Angeles", "UTC", "Asia/Tokyo", "Asia/Kolkata"]) {
+      const d = todayInZone(instant, tz);
+      const expected = `${d.year}${String(d.month).padStart(2, "0")}${String(d.day).padStart(2, "0")}`;
+      expect(timestampInZone(instant, tz).slice(0, 8)).toBe(expected);
+    }
+  });
+
+  it("pads single-digit months, days, hours and minutes", () => {
+    expect(timestampInZone(new Date("2026-01-05T09:07:00Z"), "UTC")).toBe("202601050907");
+  });
+
+  it("falls back to UTC rather than throwing on a bogus zone", () => {
+    expect(timestampInZone(new Date("2026-08-04T06:58:00Z"), "Mars/Olympus_Mons")).toBe(
+      "202608040658",
+    );
   });
 });

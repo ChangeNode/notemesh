@@ -4,7 +4,7 @@ import { db, getSetting } from "../db";
 import { env } from "../env";
 import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
 import { readNote, readNoteRange, createNote } from "./notes";
-import { dailyNotePath } from "./daily";
+import { dailyNotePath , timestampInZone, configuredTimeZone} from "./daily";
 
 export interface SearchHit {
   path: string;
@@ -190,9 +190,11 @@ export function randomNote() {
 
 // Zettelkasten-style unique note (Obsidian default format: YYYYMMDDHHmm).
 export function uniqueNote(content?: string): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+  // Stamped in the configured zone, not the server's. The container runs on
+  // UTC, so Date's local getters named every evening note in the Americas after
+  // tomorrow — the same bug daily notes had, in a second place that formatted
+  // its own timestamp instead of asking daily.ts.
+  const stamp = timestampInZone(new Date(), configuredTimeZone());
   let name = `${stamp}.md`;
   if (fs.existsSync(resolveNotePath(name))) {
     name = `${stamp}-${crypto.randomBytes(2).toString("hex")}.md`;

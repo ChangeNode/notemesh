@@ -29,7 +29,7 @@ let root: string;
 let vault: string;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-notes-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-notes-"));
   vault = path.join(root, "vault");
   fs.mkdirSync(path.join(vault, "Projects"), { recursive: true });
   process.env.DATA_DIR = root;

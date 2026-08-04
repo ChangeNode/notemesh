@@ -14,7 +14,7 @@ let vault: string;
 let outside: string;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-paths-sec-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-paths-sec-"));
   vault = path.join(root, "vault");
   outside = path.join(root, "outside");
   fs.mkdirSync(path.join(vault, "Projects"), { recursive: true });

@@ -1,4 +1,4 @@
-# ob-sync on Railway
+# notemesh on Railway
 
 Two guides in one file.
 
@@ -45,7 +45,7 @@ repo, but it is scoped to sharing inside your own Workspace or Organization
 rather than to the public marketplace. If you want a public listing with a
 private source, take route B.
 
-`ChangeNode/ob-sync` is private today, so this is a real decision rather than a
+`ChangeNode/notemesh` is private today, so this is a real decision rather than a
 formality — routes A and B both require action.
 
 Two things worth weighing beyond mechanics:
@@ -77,10 +77,10 @@ Railway workspace → **Settings → Templates → New Template**.
 
 1. **Add a service** — press <kbd>⌘</kbd>+<kbd>K</kbd> or click **Add New**, then
    pick the source that matches the route you chose above:
-   - *Route A* — **GitHub Repo**, pointed at `ChangeNode/ob-sync`. Append
+   - *Route A* — **GitHub Repo**, pointed at `ChangeNode/notemesh`. Append
      `/tree/<branch>` to pin a branch rather than track the default one.
    - *Route B* — **Docker Image**, pointed at your published image (e.g.
-     `ghcr.io/changenode/ob-sync:0.1.0`), with the registry credentials filled
+     `ghcr.io/changenode/notemesh:0.1.0`), with the registry credentials filled
      in under the service settings so Railway stores them hidden.
 2. **Attach a volume** — right-click the service → **Attach Volume**, mount path
    `/data`. This holds the vault copy, the SQLite database, and the sync
@@ -220,7 +220,7 @@ One quirk worth knowing: if nobody asks anything, you still receive the full
 25%. The bonus is not withheld for a quiet queue — it is withheld for an
 ignored one.
 
-Practical notes for answering ob-sync questions specifically:
+Practical notes for answering notemesh questions specifically:
 
 - **"I can't create the admin account"** is almost always the claim window
   having closed. Tell them to restart the service; see
@@ -280,7 +280,7 @@ deployments of the template will build from next. Two habits worth keeping:
 
 # Part B — Deploying and using it
 
-## What ob-sync does
+## What notemesh does
 
 It gives an AI assistant access to your Obsidian vault. The server joins your
 vault as another Obsidian Sync client, keeps a live copy, and exposes it over
@@ -364,7 +364,7 @@ brings you back to your own server to approve access.
 
 > Do not go looking for the *"drag .MCPB or .DXT files here"* box under
 > Settings → Extensions. Those bundles package a **local** MCP server that runs
-> on your own machine over stdio. ob-sync is a remote HTTP server, which is what
+> on your own machine over stdio. notemesh is a remote HTTP server, which is what
 > custom connectors are for. There is no bundle to install.
 >
 > This also means a connector **cannot reach `localhost`** — Anthropic's
@@ -374,15 +374,15 @@ brings you back to your own server to approve access.
 **Claude Code:**
 
 ```bash
-claude mcp add --transport http ob-sync https://<your-app>.up.railway.app/api/mcp
+claude mcp add --transport http notemesh https://<your-app>.up.railway.app/api/mcp
 ```
 
 Then run `/mcp` inside Claude Code to sign in.
 
-**Codex** — add to `~/.codex/config.toml`, then `codex mcp login ob-sync`:
+**Codex** — add to `~/.codex/config.toml`, then `codex mcp login notemesh`:
 
 ```toml
-[mcp_servers.ob-sync]
+[mcp_servers.notemesh]
 url = "https://<your-app>.up.railway.app/api/mcp"
 auth = "oauth"
 default_tools_approval_mode = "approve"
@@ -436,6 +436,6 @@ Common answers first:
 
 ---
 
-ob-sync is an independent, unofficial project. It is not affiliated with,
+notemesh is an independent, unofficial project. It is not affiliated with,
 endorsed by, or sponsored by Obsidian or Railway. "Obsidian" and "Obsidian Sync"
 are trademarks of their respective owners.

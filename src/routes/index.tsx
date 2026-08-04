@@ -70,7 +70,7 @@ export default function Setup() {
                 <details>
                   <summary>Claude Desktop, claude.ai, and Cowork</summary>
                   <p>
-                    Add ob-sync as a <b>custom connector</b>. Go to <b>Settings → Connectors</b>,
+                    Add notemesh as a <b>custom connector</b>. Go to <b>Settings → Connectors</b>,
                     click <b>Add custom connector</b>, and paste the endpoint URL. Configure it once
                     and it becomes available across your Claude apps. The OAuth flow will bring you
                     back here to approve access.
@@ -79,16 +79,16 @@ export default function Setup() {
                   <p class="muted">
                     Not to be confused with the <b>“drag .MCPB or .DXT files here”</b> box in
                     Settings → Extensions. Those bundles package a <i>local</i> MCP server that runs
-                    on your own machine over stdio; ob-sync is a remote HTTP server, which is what
+                    on your own machine over stdio; notemesh is a remote HTTP server, which is what
                     custom connectors are for. (<code>.dxt</code> was renamed to <code>.mcpb</code>,
-                    so you'll see both names around.) There is no bundle to install for ob-sync.
+                    so you'll see both names around.) There is no bundle to install for notemesh.
                   </p>
                 </details>
 
                 <details>
                   <summary>Claude Code</summary>
                   <p class="muted">Register the server, then run /mcp inside Claude Code to sign in.</p>
-                  <Snippet text={`claude mcp add --transport http ob-sync ${endpoint}`} />
+                  <Snippet text={`claude mcp add --transport http notemesh ${endpoint}`} />
                 </details>
 
                 <details>
@@ -98,7 +98,7 @@ export default function Setup() {
                     vault tools without prompting for each one.
                   </p>
                   <Snippet
-                    text={`[mcp_servers.ob-sync]\nurl = "${endpoint}"\ndefault_tools_approval_mode = "approve"`}
+                    text={`[mcp_servers.notemesh]\nurl = "${endpoint}"\ndefault_tools_approval_mode = "approve"`}
                   />
                 </details>
 

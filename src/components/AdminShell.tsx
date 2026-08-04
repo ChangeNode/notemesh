@@ -11,7 +11,7 @@ const TABS = [
   { href: "/security", label: "Security" },
 ];
 
-const REPO_URL = "https://github.com/ChangeNode/ob-sync";
+const REPO_URL = "https://github.com/ChangeNode/notemesh";
 
 // Sits at the bottom of every page, signed in or not, so the source is always
 // one click away from whatever the operator is looking at.
@@ -21,7 +21,7 @@ export function RepoFooter() {
       <hr />
       <p class="muted repo-footer">
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-          ob-sync on GitHub
+          notemesh on GitHub
         </a>
       </p>
     </>
@@ -48,7 +48,7 @@ export function AdminShell(props: { children: JSX.Element }) {
         <ul>
           <li>
             <a class="brand" href={REPO_URL} target="_blank" rel="noopener noreferrer">
-              <strong>ob-sync</strong>
+              <strong>notemesh</strong>
             </a>
           </li>
         </ul>

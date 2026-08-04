@@ -12,7 +12,7 @@ import { isBinaryFile, isLfsPointer, formatBytes } from "./paths";
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-paths-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-paths-"));
 });
 
 afterEach(() => {

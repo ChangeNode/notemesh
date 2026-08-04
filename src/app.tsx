@@ -10,7 +10,7 @@ export default function App() {
     <Router
       root={(props) => (
         <MetaProvider>
-          <Title>ob-sync</Title>
+          <Title>notemesh</Title>
           <Suspense>{props.children}</Suspense>
         </MetaProvider>
       )}

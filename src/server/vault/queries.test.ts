@@ -21,7 +21,7 @@ let timestampInZone: typeof import("./daily").timestampInZone;
 let setSetting: typeof import("../db").setSetting;
 
 beforeAll(async () => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-unique-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-unique-"));
   vault = path.join(root, "vault");
   fs.mkdirSync(vault, { recursive: true });
   process.env.DATA_DIR = root;

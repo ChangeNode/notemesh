@@ -15,7 +15,7 @@ import path from "node:path";
 let root: string;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-mcp-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-mcp-"));
   process.env.DATA_DIR = root;
   // db.ts caches its handle at module scope, so without this every test in the
   // file would share the first test's database — and these cases differ

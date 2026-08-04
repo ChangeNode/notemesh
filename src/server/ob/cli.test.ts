@@ -23,7 +23,7 @@ import {
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-cli-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-cli-"));
   process.env.DATA_DIR = dir;
 });
 

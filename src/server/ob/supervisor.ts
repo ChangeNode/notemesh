@@ -225,7 +225,7 @@ class SyncSupervisor implements SyncBackend {
 }
 
 // Module-level singleton; survives across requests within one server process.
-const globalKey = "__obSyncSupervisor";
+const globalKey = "__notemeshSupervisor";
 export function supervisor(): SyncSupervisor {
   const g = globalThis as any;
   if (!g[globalKey]) g[globalKey] = new SyncSupervisor();

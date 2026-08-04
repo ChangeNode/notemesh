@@ -53,7 +53,7 @@ interface ResetProcessState {
 }
 
 // Module-level, so the PIN and the attempt count live and die with the process.
-const globalKey = "__obSyncAdminReset";
+const globalKey = "__notemeshAdminReset";
 function state(): ResetProcessState {
   const g = globalThis as unknown as Record<string, ResetProcessState | undefined>;
   if (!g[globalKey]) {

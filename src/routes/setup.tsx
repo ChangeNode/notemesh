@@ -45,7 +45,7 @@ export default function Setup() {
   return (
     <main class="container">
       <hgroup>
-        <h2>Set up ob-sync</h2>
+        <h2>Set up notemesh</h2>
         <Show when={stage() && stage() !== "done"}>
           <p class="muted">
             Step {stepNumber()} of {steps().length}
@@ -251,7 +251,7 @@ function BackendStep(props: { onDone: () => void }) {
         <strong>How does your vault sync?</strong>
       </header>
       <p class="muted">
-        ob-sync keeps its own copy of your vault and needs a way to stay in step with your other
+        notemesh keeps its own copy of your vault and needs a way to stay in step with your other
         devices. Pick whichever you already use — this can't be changed later without starting
         over.
       </p>

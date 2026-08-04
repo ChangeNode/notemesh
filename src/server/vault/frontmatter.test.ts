@@ -9,7 +9,7 @@ let root: string;
 let vault: string;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-fm-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-fm-"));
   vault = path.join(root, "vault");
   fs.mkdirSync(vault, { recursive: true });
   process.env.DATA_DIR = root;

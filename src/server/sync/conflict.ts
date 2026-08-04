@@ -60,14 +60,14 @@ export async function probeMerge(
   return { clean: false, paths: lines.slice(1) };
 }
 
-// `Daily/2026-08-03.md` -> `Daily/2026-08-03 (Conflicted copy ob-sync 202608031958).md`
-// Deliberately Obsidian Sync's convention, with ob-sync where it puts the
+// `Daily/2026-08-03.md` -> `Daily/2026-08-03 (Conflicted copy notemesh 202608031958).md`
+// Deliberately Obsidian Sync's convention, with notemesh where it puts the
 // device name — because that is what this is: another device that edited the note.
 export function conflictCopyPath(relPath: string, stamp: string): string {
   const dir = path.dirname(relPath);
   const ext = path.extname(relPath);
   const base = path.basename(relPath, ext);
-  const name = `${base} (Conflicted copy ob-sync ${stamp})${ext}`;
+  const name = `${base} (Conflicted copy notemesh ${stamp})${ext}`;
   return dir === "." ? name : path.posix.join(dir, name);
 }
 
@@ -144,12 +144,12 @@ async function writeConflictCopies(
     await runGit(
       [
         "-c",
-        "user.name=ob-sync",
+        "user.name=notemesh",
         "-c",
-        "user.email=ob-sync@localhost",
+        "user.email=notemesh@localhost",
         "commit",
         "-m",
-        `ob-sync: conflict ${copies.length === 1 ? "copy" : "copies"}\n\n${copies.join("\n")}`,
+        `notemesh: conflict ${copies.length === 1 ? "copy" : "copies"}\n\n${copies.join("\n")}`,
       ],
       { cwd: dir },
     );
@@ -175,7 +175,7 @@ async function parkOnBranch(
   paths: string[],
   now: Date,
 ): Promise<ConflictOutcome> {
-  const branch = `ob-sync/conflict-${now.toISOString().replace(/[:.]/g, "-")}`;
+  const branch = `notemesh/conflict-${now.toISOString().replace(/[:.]/g, "-")}`;
   const made = await runGit(["branch", branch], { cwd: dir });
   if (!made.ok) {
     return {
@@ -217,13 +217,13 @@ async function inlineMerge(
   const committed = await runGit(
     [
       "-c",
-      "user.name=ob-sync",
+      "user.name=notemesh",
       "-c",
-      "user.email=ob-sync@localhost",
+      "user.email=notemesh@localhost",
       "commit",
       "--no-edit",
       "-m",
-      `ob-sync: merge with conflict markers\n\n${paths.join("\n")}`,
+      `notemesh: merge with conflict markers\n\n${paths.join("\n")}`,
     ],
     { cwd: dir },
   );

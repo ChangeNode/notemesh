@@ -222,12 +222,12 @@ class GitBackend implements SyncBackend {
     await runGit(["add", "-A"]);
     const message = this.commitMessage(changed);
     // Identity is set per-invocation rather than in .git/config so `git log
-    // --author=ob-sync` cleanly separates assistant edits from the operator's.
+    // --author=notemesh` cleanly separates assistant edits from the operator's.
     const res = await runGit([
       "-c",
-      "user.name=ob-sync",
+      "user.name=notemesh",
       "-c",
-      "user.email=ob-sync@localhost",
+      "user.email=notemesh@localhost",
       "commit",
       "-m",
       message,
@@ -247,8 +247,8 @@ class GitBackend implements SyncBackend {
   private commitMessage(changed: number): string {
     const tools = [...new Set(this.pending.map((p) => p.tool))];
     const paths = [...new Set(this.pending.map((p) => p.path))];
-    if (!tools.length) return `ob-sync: ${changed} file${changed === 1 ? "" : "s"} changed`;
-    const head = `ob-sync: ${tools.join(", ")}`;
+    if (!tools.length) return `notemesh: ${changed} file${changed === 1 ? "" : "s"} changed`;
+    const head = `notemesh: ${tools.join(", ")}`;
     const shown = paths.slice(0, 10).join("\n");
     const more = paths.length > 10 ? `\n…and ${paths.length - 10} more` : "";
     return `${head}\n\n${shown}${more}`;
@@ -288,9 +288,9 @@ class GitBackend implements SyncBackend {
     if (probe.clean) {
       const merged = await runGit([
         "-c",
-        "user.name=ob-sync",
+        "user.name=notemesh",
         "-c",
-        "user.email=ob-sync@localhost",
+        "user.email=notemesh@localhost",
         "merge",
         "--no-edit",
         remote,

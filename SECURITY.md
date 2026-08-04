@@ -1,6 +1,6 @@
 # Security
 
-ob-sync holds credentials and has full read/write access to a personal notes
+notemesh holds credentials and has full read/write access to a personal notes
 vault, so security reports are taken seriously.
 
 ## Reporting a vulnerability
@@ -8,7 +8,7 @@ vault, so security reports are taken seriously.
 **Please do not open a public issue for a security problem.**
 
 Report it through <https://changenode.com/contact/>, or use GitHub's private
-[security advisory](https://github.com/ChangeNode/ob-sync/security/advisories/new)
+[security advisory](https://github.com/ChangeNode/notemesh/security/advisories/new)
 form. Include what you found, how to reproduce it, and what an attacker could
 achieve.
 

@@ -19,13 +19,13 @@ async function load(env: Record<string, string | undefined> = {}) {
   }
   // Each load gets a fresh module registry, so the PIN and attempt counter
   // start clean — the same state a restart produces.
-  delete (globalThis as Record<string, unknown>).__obSyncAdminReset;
+  delete (globalThis as Record<string, unknown>).__notemeshAdminReset;
   mod = await import("./reset");
   return mod;
 }
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-reset-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-reset-"));
   process.env.DATA_DIR = root;
   process.env.ENCRYPTION_KEY ??= Buffer.alloc(32, 9).toString("base64");
 });
@@ -34,7 +34,7 @@ afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
   delete process.env.DATA_DIR;
   delete process.env.RESET_ADMIN_FLOW;
-  delete (globalThis as Record<string, unknown>).__obSyncAdminReset;
+  delete (globalThis as Record<string, unknown>).__notemeshAdminReset;
 });
 
 describe("the flow is off unless deliberately armed", () => {

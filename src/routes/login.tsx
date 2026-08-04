@@ -54,7 +54,7 @@ export default function Login() {
     <main class="container">
       <article>
         <header>
-          <strong>Sign in — ob-sync</strong>
+          <strong>Sign in — notemesh</strong>
         </header>
         <form onSubmit={submit}>
           <label for="email">Email</label>

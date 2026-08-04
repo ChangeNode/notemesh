@@ -52,7 +52,7 @@ export default function Settings() {
                   <br />
                   <b>Conflict file</b> keeps your other devices' version at the original filename
                   and saves the assistant's alongside as{" "}
-                  <code>Note (Conflicted copy ob-sync …).md</code>, the way Obsidian Sync does — it
+                  <code>Note (Conflicted copy notemesh …).md</code>, the way Obsidian Sync does — it
                   syncs to all your devices, so you'll see it.{" "}
                   <b>Branch</b> leaves the vault untouched and keeps the assistant's version in git
                   only, visible here and in a git client.{" "}

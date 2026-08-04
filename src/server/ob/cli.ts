@@ -173,7 +173,7 @@ export function parseVaultListText(stdout: string): RemoteVault[] {
 // originated from parsed ob JSON — validate it can't be read as a flag.
 export async function obSyncSetup(vault: string, encryptionPassword?: string): Promise<ObResult> {
   assertSafeArg(vault, "Vault");
-  const args = ["sync-setup", "--vault", vault, "--path", env.vaultDir, "--device-name", "ob-sync"];
+  const args = ["sync-setup", "--vault", vault, "--path", env.vaultDir, "--device-name", "notemesh"];
   // E2E password via stdin (ob prompts when --password omitted) so it stays
   // out of argv.
   const stdinInput = encryptionPassword ? encryptionPassword + "\n" : undefined;

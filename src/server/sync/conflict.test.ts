@@ -17,7 +17,7 @@ import {
 // never leaves markers in the vault.
 
 let root: string;
-let server: string; // the ob-sync side
+let server: string; // the notemesh side
 let device: string; // stands in for the user's phone/laptop
 let remote: string;
 
@@ -75,7 +75,7 @@ function filesWithMarkers(dir: string): string[] {
 }
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-conflict-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-conflict-"));
   remote = path.join(root, "remote.git");
   server = path.join(root, "server");
   device = path.join(root, "device");
@@ -205,7 +205,7 @@ describe("conflict strategies", () => {
       now: new Date(2026, 7, 3, 19, 58),
     });
 
-    const copy = "Daily/2026-08-03 (Conflicted copy ob-sync 202608031958).md";
+    const copy = "Daily/2026-08-03 (Conflicted copy notemesh 202608031958).md";
     expect(out.copies).toEqual([copy]);
     expect(read(server, copy)).toContain("ASSISTANT");
     expect(filesWithMarkers(server)).toEqual([]);
@@ -223,7 +223,7 @@ describe("conflict strategies", () => {
 
     // Nothing left uncommitted, and the copy is in the tree that gets pushed.
     expect(git(server, "status", "--porcelain").trim()).toBe("");
-    expect(git(server, "ls-tree", "-r", "--name-only", "HEAD")).toContain("Conflicted copy ob-sync");
+    expect(git(server, "ls-tree", "-r", "--name-only", "HEAD")).toContain("Conflicted copy notemesh");
   });
 
   it("branch: leaves the vault matching the remote with the copy only in git", async () => {
@@ -236,7 +236,7 @@ describe("conflict strategies", () => {
     });
 
     expect(out.ok).toBe(true);
-    expect(out.branch).toMatch(/^ob-sync\/conflict-/);
+    expect(out.branch).toMatch(/^notemesh\/conflict-/);
     expect(read(server, "Daily/2026-08-03.md")).toContain("DEVICE");
     // Nothing added to the notes folder at all.
     expect(fs.readdirSync(path.join(server, "Daily"))).toEqual(["2026-08-03.md"]);
@@ -267,7 +267,7 @@ describe("conflict strategies", () => {
     for (const strategy of ["file", "branch", "inline"] as const) {
       // Fresh repos per strategy — beforeEach only runs once per test.
       fs.rmSync(root, { recursive: true, force: true });
-      root = fs.mkdtempSync(path.join(os.tmpdir(), "ob-sync-conflict-"));
+      root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-conflict-"));
       remote = path.join(root, "remote.git");
       server = path.join(root, "server");
       device = path.join(root, "device");
@@ -328,19 +328,19 @@ describe("binary attachments", () => {
 describe("naming", () => {
   it("mirrors Obsidian Sync's conflicted-copy convention", () => {
     expect(conflictCopyPath("Daily/2026-08-03.md", "202608031958")).toBe(
-      "Daily/2026-08-03 (Conflicted copy ob-sync 202608031958).md",
+      "Daily/2026-08-03 (Conflicted copy notemesh 202608031958).md",
     );
   });
 
   it("handles a note at the vault root", () => {
     expect(conflictCopyPath("Index.md", "202608031958")).toBe(
-      "Index (Conflicted copy ob-sync 202608031958).md",
+      "Index (Conflicted copy notemesh 202608031958).md",
     );
   });
 
   it("keeps the extension on attachments", () => {
     expect(conflictCopyPath("assets/diagram.excalidraw.png", "202601020304")).toBe(
-      "assets/diagram.excalidraw (Conflicted copy ob-sync 202601020304).png",
+      "assets/diagram.excalidraw (Conflicted copy notemesh 202601020304).png",
     );
   });
 

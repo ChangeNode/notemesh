@@ -6,6 +6,7 @@ import {
   appendToNote,
   createNote,
   deleteNote,
+  listAttachments,
   listFolders,
   listNotes,
   moveNote,
@@ -307,5 +308,98 @@ describe("listNotes / listFolders", () => {
     put(".obsidian/x.md", "x");
     expect(listFolders()).toContain("Projects");
     expect(listFolders().some((f) => f.startsWith("."))).toBe(false);
+  });
+});
+
+// Obsidian writes embeds by filename — ![[screen.png]] — while the file itself
+// lives wherever it was filed, often several folders away. A caller reading a
+// note therefore has a name and no path. Before these, the only move was to
+// guess plausible folders; every guess returned an honest "not found" and the
+// image was never readable at all.
+describe("finding attachments", () => {
+  const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+
+  it("lists non-markdown files and excludes notes", () => {
+    put("Notes/Ideas.md", "# Ideas");
+    put("Archive/Reference/Attachments/screen.png", PNG);
+    put("Archive/Reference/Attachments/notes.pdf", PNG);
+    const paths = listAttachments().map((a) => a.path);
+    expect(paths).toEqual([
+      "Archive/Reference/Attachments/notes.pdf",
+      "Archive/Reference/Attachments/screen.png",
+    ]);
+    expect(paths).not.toContain("Notes/Ideas.md");
+  });
+
+  it("scopes the listing to a folder", () => {
+    put("A/one.png", PNG);
+    put("B/two.png", PNG);
+    expect(listAttachments("A").map((a) => a.path)).toEqual(["A/one.png"]);
+  });
+
+  it("reads an attachment by its bare filename", () => {
+    // The case from the vault: the note says ![[screen.png]] and the file is
+    // four folders deep.
+    put("Archive/Reference/Attachments/screen.png", PNG);
+    const a = readAttachment("screen.png");
+    expect(a.path).toBe("Archive/Reference/Attachments/screen.png");
+    expect(a.bytes).toBe(PNG.length);
+    expect(a.mimeType).toBe("image/png");
+  });
+
+  it("still prefers an exact path when one exists", () => {
+    put("screen.png", PNG);
+    put("Deep/Folder/screen.png", Buffer.concat([PNG, Buffer.from("xx")]));
+    expect(readAttachment("screen.png").path).toBe("screen.png");
+  });
+
+  it("recovers when the caller guessed the wrong folder", () => {
+    put("Archive/Attachments/diagram.png", PNG);
+    expect(readAttachment("Attachments/diagram.png").path).toBe("Archive/Attachments/diagram.png");
+  });
+
+  it("matches the filename case-insensitively", () => {
+    put("Files/Screen.PNG", PNG);
+    expect(readAttachment("screen.png").path).toBe("Files/Screen.PNG");
+  });
+
+  it("refuses to guess between duplicates and names them", () => {
+    put("A/screen.png", PNG);
+    put("B/screen.png", PNG);
+    expect(() => readAttachment("screen.png")).toThrow(/2 attachments are named screen\.png/);
+    expect(() => readAttachment("screen.png")).toThrow(/A\/screen\.png/);
+  });
+
+  it("points at the discovery tools when there is genuinely no such file", () => {
+    put("Files/other.png", PNG);
+    expect(() => readAttachment("missing.png")).toThrow(/Attachment not found: missing\.png/);
+    expect(() => readAttachment("missing.png")).toThrow(/list_attachments/);
+  });
+
+  it("does not let the fallback reach outside the vault", () => {
+    // A name that resolves to nothing inside the vault must stay a miss, not
+    // walk up into the parent directory.
+    fs.writeFileSync(path.join(root, "outside.png"), PNG);
+    expect(() => readAttachment("../outside.png")).toThrow(VaultPathError);
+    expect(() => readAttachment("outside.png")).toThrow(/not found/);
+  });
+
+  it("does not resolve a markdown note through the filename fallback", () => {
+    put("Notes/Ideas.md", "# Ideas");
+    expect(() => readAttachment("Ideas.md")).toThrow(/not found/);
+  });
+});
+
+describe("modified times", () => {
+  it("reports whole milliseconds", () => {
+    // statSync carries sub-millisecond precision, so mtimeMs is a float like
+    // 1761764371279.999. Callers sort and compare these, and a fractional tail
+    // makes both unreliable.
+    put("a.md", "one");
+    put("Projects/b.md", "two");
+    put("c.png", Buffer.from("89504e470d0a1a0a", "hex"));
+    for (const entry of [...listNotes(), ...listAttachments()]) {
+      expect(Number.isInteger(entry.mtime)).toBe(true);
+    }
   });
 });

@@ -63,7 +63,9 @@ function syncLogFiles(): { path: string; size: string; modified: number | null }
     const file = path.join(base, dir, "sync.log");
     try {
       const st = fs.statSync(file);
-      found.push({ path: file, size: formatBytes(st.size), modified: st.mtimeMs });
+      // Rounded for the same reason as listNotes: mtimeMs carries a fractional
+      // millisecond, and this is rendered as a timestamp.
+      found.push({ path: file, size: formatBytes(st.size), modified: Math.round(st.mtimeMs) });
     } catch {
       // no log in this vault dir
     }

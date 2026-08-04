@@ -16,6 +16,7 @@ import {
   deleteNote,
   listNotes,
   listFolders,
+  listAttachments,
 } from "../vault/notes";
 import { readProperties, setProperty, removeProperty, listVaultProperties } from "../vault/frontmatter";
 import { dailyNotePath, dailyRead, dailyAppend, dailyPrepend } from "../vault/daily";
@@ -151,6 +152,24 @@ export function createMcpServer(access: McpAccess): McpServer {
     },
     safe(({ folder, limit, offset }: { folder?: string; limit?: number; offset?: number }) =>
       page(listNotes(folder), limit, offset),
+    ),
+  );
+
+  server.registerTool(
+    "list_attachments",
+    {
+      title: "List attachments",
+      description:
+        "List non-markdown vault files (images, PDFs, audio…), with modified time and size. " +
+        "Embeds are written by filename (![[screen.png]]) while the file lives in its own " +
+        "folder — use this to find the path read_attachment wants.",
+      inputSchema: {
+        folder: z.string().optional().describe("Folder to list; omit for the whole vault"),
+        ...PAGE_ARGS,
+      },
+    },
+    safe(({ folder, limit, offset }: { folder?: string; limit?: number; offset?: number }) =>
+      page(listAttachments(folder), limit, offset),
     ),
   );
 

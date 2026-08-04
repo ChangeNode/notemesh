@@ -88,6 +88,41 @@ const MIME_BY_EXT: Record<string, string> = {
   canvas: "application/json",
 };
 
+/**
+ * Second chance for a path that doesn't exist as given: find the attachment by
+ * filename alone.
+ *
+ * Obsidian writes embeds as bare names — `![[screen.png]]` — while the file
+ * lives wherever it was filed, often several folders away. A caller reading a
+ * note therefore has a name and no path, and guessing plausible folders is the
+ * only move available; every guess produces an honest "not found" and the file
+ * is never read. This is the same shortest-name resolution the indexer already
+ * does for links, applied at read time.
+ *
+ * The match is re-resolved through resolveNotePath so a hit is subject to the
+ * same containment and traversal checks as a directly supplied path.
+ */
+function resolveByFilename(requested: string): string {
+  const wanted = path.basename(requested).toLowerCase();
+  const matches = listAttachments()
+    .map((a) => a.path)
+    .filter((p) => path.basename(p).toLowerCase() === wanted);
+
+  if (matches.length === 1) return resolveNotePath(matches[0]);
+  if (matches.length > 1) {
+    throw new VaultPathError(
+      `${matches.length} attachments are named ${path.basename(requested)}. ` +
+        `Ask for one of these paths: ${matches.slice(0, 10).join(", ")}` +
+        (matches.length > 10 ? ", …" : ""),
+    );
+  }
+  throw new VaultPathError(
+    `Attachment not found: ${requested}. Vault attachments are stored under their own ` +
+      `folders — use list_attachments to see them, or get_links on the note that embeds ` +
+      `this file to get its resolved path.`,
+  );
+}
+
 export function readAttachment(notePath: string): {
   path: string;
   mimeType: string;
@@ -95,8 +130,8 @@ export function readAttachment(notePath: string): {
   isImage: boolean;
   base64: string;
 } {
-  const abs = resolveNotePath(notePath, { allowMissingExt: true });
-  if (!fs.existsSync(abs)) throw new VaultPathError(`Attachment not found: ${notePath}`);
+  let abs = resolveNotePath(notePath, { allowMissingExt: true });
+  if (!fs.existsSync(abs)) abs = resolveByFilename(notePath);
   const st = fs.lstatSync(abs);
   if (st.isSymbolicLink()) throw new VaultPathError("Symlinks are not accessible");
   if (!st.isFile()) throw new VaultPathError("Not a file");
@@ -213,10 +248,28 @@ export function deleteNote(notePath: string): string {
 }
 
 export function listNotes(folder?: string): NoteInfo[] {
+  return listFiles(folder, isMarkdown);
+}
+
+// Everything in the vault that isn't a note: images, PDFs, audio, canvases.
+//
+// Attachments need their own listing because embeds are written by name
+// (`![[screen.png]]`) while the file itself lives wherever Obsidian filed it
+// (`Archive/Reference/Attachments/screen.png`). Without a way to enumerate
+// them, the only way to turn an embed into a readable path is to guess.
+export function listAttachments(folder?: string): NoteInfo[] {
+  return listFiles(folder, (name) => !isMarkdown(name));
+}
+
+function isMarkdown(name: string): boolean {
+  return name.toLowerCase().endsWith(".md");
+}
+
+function listFiles(folder: string | undefined, include: (name: string) => boolean): NoteInfo[] {
   const root = folder ? resolveFolderPath(folder) : env.vaultDir;
   if (!fs.existsSync(root)) throw new VaultPathError(`Folder not found: ${folder}`);
   const out: NoteInfo[] = [];
-  walk(root, out);
+  walk(root, out, 0, include);
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
@@ -224,17 +277,27 @@ export function listNotes(folder?: string): NoteInfo[] {
 // Bounded so a pathologically deep synced tree can't blow the stack (A10).
 const MAX_WALK_DEPTH = 32;
 
-function walk(dir: string, out: NoteInfo[], depth = 0) {
+function walk(
+  dir: string,
+  out: NoteInfo[],
+  depth = 0,
+  include: (name: string) => boolean = isMarkdown,
+) {
   if (depth > MAX_WALK_DEPTH) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith(".")) continue;
     const abs = path.join(dir, entry.name);
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
-      walk(abs, out, depth + 1);
-    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+      walk(abs, out, depth + 1, include);
+    } else if (entry.isFile() && include(entry.name)) {
       const st = fs.statSync(abs);
-      out.push({ path: toVaultRelative(abs), mtime: st.mtimeMs, size: st.size });
+      // Round: statSync reports sub-millisecond precision, so mtimeMs is a
+      // float (1761764371279.999). Callers treat these as timestamps — sorting
+      // and comparing them for equality — and a fractional tail makes both
+      // unreliable. The indexer already rounds at its own two ingestion points,
+      // so this keeps the value a caller sees consistent with the stored one.
+      out.push({ path: toVaultRelative(abs), mtime: Math.round(st.mtimeMs), size: st.size });
     }
   }
 }

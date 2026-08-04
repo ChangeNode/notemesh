@@ -35,18 +35,35 @@ export default function Consent() {
   });
 
   const [error, setError] = createSignal<string | null>(null);
-  const [busy, setBusy] = createSignal(false);
+  // Which decision is in flight, so the spinner lands on the button that was
+  // actually pressed rather than always on Approve.
+  const [pending, setPending] = createSignal<"approve" | "deny" | null>(null);
+  const busy = () => pending() !== null;
 
   async function decide(accept: boolean) {
-    setBusy(true);
+    // Belt and braces alongside the disabled attribute: a second click
+    // dispatched before the re-render must not start a second grant.
+    if (busy()) return;
+    setPending(accept ? "approve" : "deny");
     setError(null);
     const { data, error } = await (authClient as any).oauth2.consent({ accept });
-    setBusy(false);
     if (error) {
+      // Only re-enable when we are staying on this page.
+      setPending(null);
       setError(error.message ?? "Something went wrong.");
       return;
     }
-    if (data?.url) window.location.href = data.url;
+    if (data?.url) {
+      // Deliberately stay busy. Assigning location starts a navigation but does
+      // not stop this page rendering or responding, so clearing the flag here
+      // would leave both buttons live for as long as the redirect takes — long
+      // enough that a user who sees nothing happen clicks Approve again and
+      // submits a second consent for an already-granted request.
+      window.location.href = data.url;
+      return;
+    }
+    setPending(null);
+    setError("The server did not return a redirect. Try again.");
   }
 
   return (
@@ -71,10 +88,19 @@ export default function Consent() {
         </Show>
         <footer>
           <div role="group">
-            <button aria-busy={busy()} disabled={busy()} onClick={() => decide(true)}>
-              Approve
+            <button
+              aria-busy={pending() === "approve"}
+              disabled={busy()}
+              onClick={() => decide(true)}
+            >
+              {pending() === "approve" ? "Authorizing…" : "Approve"}
             </button>
-            <button class="secondary" disabled={busy()} onClick={() => decide(false)}>
+            <button
+              class="secondary"
+              aria-busy={pending() === "deny"}
+              disabled={busy()}
+              onClick={() => decide(false)}
+            >
               Deny
             </button>
           </div>

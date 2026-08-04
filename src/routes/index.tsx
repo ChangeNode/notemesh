@@ -1,19 +1,9 @@
-import { createSignal, createResource, Show, For } from "solid-js";
-import { getSetupPage, createApiKey, deleteApiKey } from "~/server/admin";
+import { createResource, Show } from "solid-js";
+import { getSetupPage } from "~/server/admin";
 import { AdminShell, Snippet } from "~/components/AdminShell";
 
 export default function Setup() {
-  const [data, { refetch }] = createResource(() => getSetupPage());
-  const [newKeyName, setNewKeyName] = createSignal("");
-  const [freshKey, setFreshKey] = createSignal<string | null>(null);
-
-  async function createKey(e: Event) {
-    e.preventDefault();
-    const res = await createApiKey(newKeyName());
-    setFreshKey(res.key);
-    setNewKeyName("");
-    refetch();
-  }
+  const [data] = createResource(() => getSetupPage());
 
   return (
     <AdminShell>
@@ -28,20 +18,6 @@ export default function Setup() {
 
           return (
             <>
-              <article>
-                <header>
-                  <strong>Connect an MCP client</strong>
-                </header>
-                <p class="muted">
-                  Point any MCP client at this endpoint (Streamable HTTP transport):
-                </p>
-                <Snippet text={endpoint} />
-                <p class="muted">
-                  Clients authenticate one of two ways: the <b>OAuth</b> flow, which sends you back
-                  here to approve access, or an <b>API key</b> from the section below.
-                </p>
-              </article>
-
               <article>
                 <header>
                   <strong>Set up your client</strong>
@@ -75,7 +51,23 @@ export default function Setup() {
                   </div>
                 </Show>
 
+                {/* First entry, and the only one open by default: nearly every
+                    client needs just this URL, and the per-client sections
+                    below are for the ones that want the exact incantation. */}
                 <details open>
+                  <summary>TL;DR Connect An MCP Client</summary>
+                  <p class="muted">
+                    Point any MCP client at this endpoint (Streamable HTTP transport):
+                  </p>
+                  <Snippet text={endpoint} />
+                  <p class="muted">
+                    Clients authenticate one of two ways: the <b>OAuth</b> flow, which sends you
+                    back here to approve access, or an <b>API key</b> from the <b>Keys</b> tab.
+                    OAuth is the better option wherever the client supports it.
+                  </p>
+                </details>
+
+                <details>
                   <summary>Claude Desktop, claude.ai, and Cowork</summary>
                   <p>
                     Add ob-sync as a <b>custom connector</b>. Go to <b>Settings → Connectors</b>,
@@ -113,67 +105,14 @@ export default function Setup() {
                 <details>
                   <summary>Any other client (API key)</summary>
                   <p class="muted">
-                    For clients without an OAuth flow, create a key below and send it on every
-                    request as either header:
+                    For command-line tools and anything else with no browser to complete a sign-in,
+                    create a key on the <b>Keys</b> tab and send it on every request as either
+                    header:
                   </p>
                   <Snippet text={"Authorization: Bearer <key>\nx-api-key: <key>"} />
                 </details>
               </article>
 
-              <article>
-                <header>
-                  <strong>API keys</strong>
-                </header>
-                <Show when={freshKey()}>
-                  <p>New key — copy it now, it won't be shown again:</p>
-                  <Snippet text={freshKey()!} />
-                </Show>
-                <Show when={d.apiKeys.length > 0} fallback={<p class="muted">No API keys yet.</p>}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Key</th>
-                        <th>Created</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <For each={d.apiKeys}>
-                        {(k) => (
-                          <tr>
-                            <td>{k.name}</td>
-                            <td>
-                              <code>{k.start ? `${k.start}…` : "•••"}</code>
-                            </td>
-                            <td class="muted">{new Date(k.createdAt).toLocaleDateString()}</td>
-                            <td>
-                              <button
-                                class="danger"
-                                onClick={() => deleteApiKey(k.id).then(() => refetch())}
-                              >
-                                Revoke
-                              </button>
-                            </td>
-                          </tr>
-                        )}
-                      </For>
-                    </tbody>
-                  </table>
-                </Show>
-                <form onSubmit={createKey}>
-                  <fieldset role="group">
-                    <input
-                      type="text"
-                      placeholder="Key name, e.g. chatgpt"
-                      aria-label="Key name"
-                      value={newKeyName()}
-                      onInput={(e) => setNewKeyName(e.currentTarget.value)}
-                    />
-                    <button type="submit">Create Key</button>
-                  </fieldset>
-                </form>
-              </article>
             </>
           );
         }}

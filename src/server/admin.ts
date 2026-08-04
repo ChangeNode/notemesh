@@ -73,15 +73,25 @@ function syncLogFiles(): { path: string; size: string; modified: number | null }
   return found;
 }
 
-// Setup tab: how to point an MCP client at this server, plus API keys.
+// Setup tab: how to point an MCP client at this server.
 export async function getSetupPage() {
   "use server";
   await requireAdmin();
   ensureIndexerStarted();
-  const keys = await auth.api.listApiKeys({ headers: headers() }).catch(() => []);
   return {
     baseUrl: env.baseUrl,
     originMismatch: originMismatch(),
+  };
+}
+
+// Keys tab. Its own loader rather than part of getSetupPage: listing keys hits
+// Better Auth, and the Setup tab no longer shows them.
+export async function getKeysPage() {
+  "use server";
+  await requireAdmin();
+  const keys = await auth.api.listApiKeys({ headers: headers() }).catch(() => []);
+  return {
+    baseUrl: env.baseUrl,
     apiKeys: (Array.isArray(keys) ? keys : ((keys as any)?.apiKeys ?? [])).map((k: any) => ({
       id: k.id,
       name: k.name ?? "(unnamed)",

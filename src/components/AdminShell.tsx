@@ -6,6 +6,7 @@ import { getSetupStage } from "~/server/setup";
 const TABS = [
   { href: "/", label: "Setup" },
   { href: "/status", label: "Status" },
+  { href: "/keys", label: "Keys" },
   { href: "/settings", label: "Settings" },
   { href: "/security", label: "Security" },
 ];
@@ -27,7 +28,7 @@ export function RepoFooter() {
   );
 }
 
-// Shared chrome for the four admin tabs. Each page renders its own cards
+// Shared chrome for the admin tabs. Each page renders its own cards
 // inside this so the nav stays identical and client-side navigation between
 // tabs doesn't remount the whole document.
 export function AdminShell(props: { children: JSX.Element }) {

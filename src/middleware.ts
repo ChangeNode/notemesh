@@ -5,7 +5,7 @@ import { discoveryEndpoint } from "./server/discovery";
 
 // Pages that require a signed-in admin. Everything else (login, setup, the
 // OAuth consent page, API routes) handles its own access rules.
-const PROTECTED_PAGES = new Set(["/", "/status", "/settings", "/security"]);
+const PROTECTED_PAGES = new Set(["/", "/status", "/keys", "/settings", "/security"]);
 
 function redirectTo(path: string): Response {
   return new Response(null, { status: 302, headers: { Location: path } });

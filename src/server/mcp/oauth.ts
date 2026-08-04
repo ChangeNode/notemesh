@@ -21,6 +21,10 @@ function getHandler() {
         verifyOptions: {
           // Matches the oauth-provider's issuer: baseURL + basePath.
           issuer: `${env.baseUrl}/api/auth`,
+          // Deliberately the same two values as validAudiences in auth.ts, and
+          // both name this endpoint: this is the only resource server, so a
+          // token issued for either is equally valid here. Keep the two lists in
+          // step — see the security note beside validAudiences and issue #10.
           audience: [env.baseUrl, `${env.baseUrl}/api/mcp`],
         },
       },

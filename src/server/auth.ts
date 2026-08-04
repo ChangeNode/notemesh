@@ -159,6 +159,16 @@ export const auth = betterAuth({
       // like Codex that request `profile`/`email` are rejected (invalid_scope).
       clientRegistrationAllowedScopes: ["profile", "email"],
       // MCP clients pass the endpoint URL as the RFC 8707 resource indicator.
+      //
+      // SECURITY: every entry here must name the SAME resource server. On the
+      // 1.6.x line this plugin lets a client pick its token's audience from
+      // this list at the token endpoint, unbound to what the user actually
+      // authorised (GHSA-p2fr-6hmx-4528). That is harmless today only because
+      // both entries below are this server's own MCP endpoint, which accepts
+      // either — so choosing between them changes nothing, and privilege comes
+      // from scopes rather than `aud`. Adding a genuinely distinct resource
+      // server to this list, before the 1.7.0 upgrade lands, turns that into a
+      // real cross-audience escalation. See issue #10.
       validAudiences: [env.baseUrl, `${env.baseUrl}/api/mcp`],
       silenceWarnings: {
         // The plugin warns on every boot that

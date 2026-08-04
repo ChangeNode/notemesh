@@ -2,10 +2,7 @@ import { createMiddleware } from "@solidjs/start/middleware";
 import { ensureSyncStarted } from "./server/sync";
 import { ensureIndexerStarted } from "./server/vault/indexer";
 import { discoveryEndpoint } from "./server/discovery";
-
-// Pages that require a signed-in admin. Everything else (login, setup, the
-// OAuth consent page, API routes) handles its own access rules.
-const PROTECTED_PAGES = new Set(["/", "/status", "/keys", "/settings", "/security"]);
+import { pageAccess } from "./server/pages";
 
 function redirectTo(path: string): Response {
   return new Response(null, { status: 302, headers: { Location: path } });
@@ -64,6 +61,9 @@ export default createMiddleware({
       ensureIndexerStarted();
 
       const url = new URL(event.request.url);
+      // Default closed — see server/pages.ts. A route added without being
+      // listed as public is protected, rather than open until noticed.
+      const access = pageAccess(url.pathname);
 
       // Unknown /api/* path, or a JSON-shaped request to a non-page path.
       if (url.pathname.startsWith("/api/") && !isKnownApiPath(url.pathname)) {
@@ -76,10 +76,7 @@ export default createMiddleware({
         // Real page routes are never bogus API paths, whatever they're posted
         // with. (Server-function RPC goes to /_server as text/plain, so it
         // doesn't reach this check at all.)
-        const isPageRoute =
-          PROTECTED_PAGES.has(url.pathname) ||
-          ["/login", "/setup", "/oauth/consent"].includes(url.pathname);
-        if (wantsJson && !isPageRoute && event.request.method !== "GET") {
+        if (wantsJson && access === "not-a-page" && event.request.method !== "GET") {
           return notFoundJson(url.pathname);
         }
       }
@@ -89,7 +86,7 @@ export default createMiddleware({
       // Solid and surfaces as a 500 instead of a redirect. The server
       // functions still call requireAdmin() themselves — this is the
       // navigation-level guard, not the security boundary.
-      if (PROTECTED_PAGES.has(url.pathname)) {
+      if (access === "protected") {
         const { auth, isSetupComplete, runAuthMigrations } = await import("./server/auth");
         await runAuthMigrations();
         if (!(await isSetupComplete())) return redirectTo("/setup");

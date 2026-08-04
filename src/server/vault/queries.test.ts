@@ -160,3 +160,36 @@ describe("splitHighlights", () => {
     }
   });
 });
+
+// vaultInfo's syncNote told every deployment its writes propagate "via Obsidian
+// Sync", including git-backed ones that have never touched Obsidian. Found by
+// running the git backend against a real GitHub repo and reading the tool
+// output, not by a test — nothing asserted the sentence at all.
+describe("vaultInfo sync note", () => {
+  let vaultInfo: typeof import("./queries").vaultInfo;
+
+  beforeAll(async () => {
+    ({ vaultInfo } = await import("./queries"));
+  });
+
+  it("names git when that is the backend", () => {
+    setSetting("sync_backend", "git");
+    const note = vaultInfo().syncNote;
+    expect(note).toMatch(/commit and push/i);
+    expect(note).not.toMatch(/Obsidian Sync/i);
+  });
+
+  it("names Obsidian Sync when that is the backend", () => {
+    setSetting("sync_backend", "obsidian");
+    expect(vaultInfo().syncNote).toMatch(/Obsidian Sync/i);
+  });
+
+  it("still says writes land immediately either way", () => {
+    // The part that stops someone checking another copy of the vault and
+    // concluding the write was lost.
+    for (const backend of ["git", "obsidian"]) {
+      setSetting("sync_backend", backend);
+      expect(vaultInfo().syncNote).toMatch(/immediately/i);
+    }
+  });
+});

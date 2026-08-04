@@ -175,11 +175,22 @@ export function vaultInfo() {
     // verifying a write against a *different* vault copy and concluding the
     // write was lost.
     vaultPath: env.vaultDir,
-    syncNote:
-      "Writes land in this server's vault immediately; propagation to other devices is via Obsidian Sync and is not instant.",
+    syncNote: syncNote(),
     noteCount,
     totalWords,
   };
+}
+
+// Named the backend that is actually configured. This used to say "Obsidian
+// Sync" unconditionally, which told every git-backed deployment that its writes
+// propagate through a product it does not use — and the two propagate
+// differently enough for that to matter: Obsidian Sync pushes continuously,
+// while git waits for a debounce and then a commit.
+function syncNote(): string {
+  const immediate = "Writes land in this server's vault immediately";
+  return getSetting("sync_backend") === "git"
+    ? `${immediate}; they reach your other devices after the next commit and push, not instantly.`
+    : `${immediate}; propagation to other devices is via Obsidian Sync and is not instant.`;
 }
 
 export function wordCount(notePath?: string): { path: string | null; words: number; characters: number } {

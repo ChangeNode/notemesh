@@ -65,7 +65,11 @@ or as a commit pushed to your git remote.
      at rest and derives the session secret, so it must be real random key
      material, not a passphrase. **Changing it later locks the stored
      credentials out.**
-   - `DATA_DIR=/data`
+
+   That is the only one you need. `DATA_DIR` already points at `/data` from the
+   Dockerfile — do not set it by hand, because a relative value like `./data`
+   resolves against the container's working directory rather than the volume,
+   and every redeploy then discards the vault and database.
 4. Under **Settings → Networking**, generate a public domain, **then restart
    the service.**
 
@@ -76,8 +80,9 @@ or as a commit pushed to your git remote.
    believes it has. The setup page detects this and says so rather than leaving
    you with the bare error. Nothing is lost by restarting.
 
-   Setting `BASE_URL` to `https://<your-domain>` also fixes it, and is what the
-   published template does via a variable reference.
+   Restarting is the fix. Setting `BASE_URL` to `https://<your-domain>` works
+   too, but only as a complete literal origin — see the variable notes below
+   before reaching for it.
 5. Open the service URL **within 30 minutes of the deploy** and follow the
    setup wizard:
    1. Choose your admin email/password — no token to look up.
@@ -180,15 +185,19 @@ own secrets.
 | Variable | Value |
 | --- | --- |
 | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
-| `DATA_DIR` | `/data` |
 | `PORT` | `3000` |
-| `BASE_URL` | `https://${{ RAILWAY_PUBLIC_DOMAIN }}` |
 
 The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the 32 bytes
 of key material the server requires. A plain `${{secret()}}` is rejected at boot:
 it isn't valid base64 or hex. `PORT` must be pinned because Railway assigns one
 dynamically and the app follows it, which otherwise leaves the domain pointing at
 a port nothing is listening on.
+
+`DATA_DIR` and `BASE_URL` are deliberately not in that table. Both already have
+correct defaults — `/data` from the Dockerfile, and the public origin derived
+from `RAILWAY_PUBLIC_DOMAIN` — and setting either by hand is how they get set
+wrong. See the notes in [TEMPLATE.md](TEMPLATE.md) for what each failure looks
+like.
 
 Deployers bring their own vault — an Obsidian Sync subscription or a git repo —
 and each deployment is a **single-user** instance — the first person to create an account claims it,

@@ -86,15 +86,13 @@ Railway workspace → **Settings → Templates → New Template**.
    `/data`. This holds the vault copy, the SQLite database, and the sync
    client's state. Without it, every redeploy wipes the instance and the user
    has to run the whole wizard again.
-3. **Set the variables.** All four, exactly these — the goal is that a deployer
-   never opens this panel:
+3. **Set the variables.** Only these two — the goal is that a deployer never
+   opens this panel:
 
    | Variable | Value | Why |
    | --- | --- | --- |
    | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` | 64 hex characters — exactly the 32 bytes of key material the server demands |
-   | `DATA_DIR` | `/data` | Must match the volume mount path |
    | `PORT` | `3000` | Pins the listening port to the domain's target port |
-   | `BASE_URL` | `https://${{ RAILWAY_PUBLIC_DOMAIN }}` | Gives the OAuth issuer the real domain from first boot |
 
    **`ENCRYPTION_KEY` must be the generator function, never a literal.** A fixed
    value in a published template would ship the same encryption key to every
@@ -107,13 +105,27 @@ Railway workspace → **Settings → Templates → New Template**.
    listening somewhere the generated domain isn't pointing — which presents as a
    502 with `connection refused` and no error in the logs.
 
-   **`BASE_URL` uses a reference, not a literal.** `${{ RAILWAY_PUBLIC_DOMAIN }}`
-   resolves at deploy time to this service's own domain. The server would also
-   read `RAILWAY_PUBLIC_DOMAIN` directly, so this is belt-and-braces — but it
-   makes the dependency explicit in the template, and it is the pattern Railway
-   documents for building a URL from a domain. Never set it to a literal: a
-   hardcoded `http://localhost:3000` would pin every deployment's OAuth issuer to
-   localhost.
+   **Do not set `DATA_DIR`.** The Dockerfile already sets it to `/data`, matching
+   the volume mount. Setting it by hand is how it gets set *wrong*: a relative
+   path like `./data` resolves against the container's working directory instead
+   of the volume, so the vault and database land on the ephemeral layer and every
+   redeploy discards them. The symptom is not an obvious data-loss error — it is
+   the claim screen reappearing, because an empty database really does mean an
+   unclaimed server.
+
+   **Do not set `BASE_URL` either.** The server derives the origin from
+   `RAILWAY_PUBLIC_DOMAIN` on its own. The tempting value,
+   `https://${{ RAILWAY_PUBLIC_DOMAIN }}`, is worse than leaving it unset: if the
+   service has no domain at the moment Railway resolves the reference, it becomes
+   the bare string `https://`, which is non-empty and so takes precedence over
+   the built-in fallback. That pins the OAuth issuer to something no URL parser
+   accepts, and the provider plugin throws during startup — the server comes up
+   and then 500s every request. With the variable absent, the same situation
+   degrades to `http://localhost:3000`, which is at least valid and trips the
+   origin-mismatch notice that tells the operator to restart.
+
+   Set `BASE_URL` only to pin a **custom domain** the server should advertise
+   instead of its generated one, and only as a full literal origin.
 
 4. **Settings** — healthcheck path `/api/health`. This is already in
    [`railway.json`](railway.json) along with the Dockerfile builder and restart

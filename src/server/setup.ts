@@ -1,4 +1,6 @@
+import { getRequestEvent } from "solid-js/web";
 import { getSetting, setSetting } from "./db";
+import { env, detectOriginMismatch, type OriginMismatch } from "./env";
 import { isSetupComplete, runAuthMigrations } from "./auth";
 import { claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
 import {
@@ -111,6 +113,13 @@ export interface ClaimState {
   claimable: boolean;
   secondsLeft: number;
   windowMinutes: number;
+  /**
+   * Set when the server was reached at an origin it wasn't configured with.
+   * Surfaced here specifically because this is the page where it bites: the
+   * auth layer refuses sign-up with "Invalid origin" before there is any
+   * account to sign in with, so the warnings on the admin tabs are unreachable.
+   */
+  originMismatch: OriginMismatch | null;
 }
 
 // Public by necessity: this drives the very first screen, before any account
@@ -120,14 +129,24 @@ export interface ClaimState {
 export async function getClaimState(): Promise<ClaimState> {
   "use server";
   await runAuthMigrations();
+  const mismatch = detectOriginMismatch(
+    env.baseUrl,
+    getRequestEvent()?.request.headers.get("host"),
+  );
   if (await isSetupComplete()) {
-    return { claimable: false, secondsLeft: 0, windowMinutes: CLAIM_WINDOW_MINUTES };
+    return {
+      claimable: false,
+      secondsLeft: 0,
+      windowMinutes: CLAIM_WINDOW_MINUTES,
+      originMismatch: mismatch,
+    };
   }
   const remaining = claimWindowRemainingMs();
   return {
     claimable: remaining > 0,
     secondsLeft: Math.ceil(remaining / 1000),
     windowMinutes: CLAIM_WINDOW_MINUTES,
+    originMismatch: mismatch,
   };
 }
 

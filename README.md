@@ -66,14 +66,18 @@ or as a commit pushed to your git remote.
      material, not a passphrase. **Changing it later locks the stored
      credentials out.**
    - `DATA_DIR=/data`
-4. Under **Settings → Networking**, generate a public domain.
+4. Under **Settings → Networking**, generate a public domain, **then restart
+   the service.**
 
-   The OAuth issuer is read from `RAILWAY_PUBLIC_DOMAIN` when the process
-   starts, so a service that booted *before* it had a domain advertises the
-   wrong one until it restarts. If that happens the dashboard says so on the
-   Setup and Security tabs and tells you to restart — you don't have to know
-   this in advance, and nothing is lost. (Setting `BASE_URL` explicitly also
-   works.)
+   Railway does not restart a running service when you add a domain, and the
+   public origin is read from `RAILWAY_PUBLIC_DOMAIN` at process start. Until it
+   restarts the server still thinks it is on `localhost`, and sign-up fails with
+   *"Invalid origin"* — the auth layer only accepts the address the server
+   believes it has. The setup page detects this and says so rather than leaving
+   you with the bare error. Nothing is lost by restarting.
+
+   Setting `BASE_URL` to `https://<your-domain>` also fixes it, and is what the
+   published template does via a variable reference.
 5. Open the service URL **within 30 minutes of the deploy** and follow the
    setup wizard:
    1. Choose your admin email/password — no token to look up.

@@ -151,6 +151,33 @@ function AdminStep(props: { onDone: () => void }) {
     <Show when={claim()} keyed>
       {(c) => (
         <Show
+          when={!c.originMismatch}
+          fallback={
+            <article>
+              <header>
+                <strong>⚠️ This server needs a restart before you can claim it</strong>
+              </header>
+              <p>
+                It started before it had a public domain, so it is still configured as{" "}
+                <code>{c.originMismatch!.configured}</code> even though you reached it at{" "}
+                <code>{c.originMismatch!.reachedAt}</code>. Creating an account now fails with{" "}
+                <b>“Invalid origin”</b>, because sign-in only accepts the address the server
+                thinks it has.
+              </p>
+              <p class="muted">
+                <b>On Railway:</b> your service → <b>Deployments</b> → <b>Restart</b>. It will pick
+                the domain up on the next boot. If it still shows this afterwards, set a{" "}
+                <code>BASE_URL</code> variable to <code>https://{c.originMismatch!.reachedAt}</code>{" "}
+                and redeploy.
+              </p>
+              <p class="muted">
+                Nothing is lost by restarting, and the {c.windowMinutes}-minute claim window
+                restarts with the server.
+              </p>
+            </article>
+          }
+        >
+        <Show
           when={open()}
           fallback={
             <article>
@@ -202,6 +229,7 @@ function AdminStep(props: { onDone: () => void }) {
               </button>
             </form>
           </article>
+        </Show>
         </Show>
       )}
     </Show>

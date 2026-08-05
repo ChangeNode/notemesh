@@ -9,6 +9,7 @@
     "dev": "vinxi dev",
     "build": "vinxi build && node scripts/check-client-bundle.mjs",
     "check:client": "node scripts/check-client-bundle.mjs",
+    "icons": "node scripts/generate-icons.mjs",
     "test:e2e": "playwright test",
     "start": "vinxi start",
     "typecheck": "tsc --noEmit",

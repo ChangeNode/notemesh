@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="notemesh">
+  <title>notemesh</title>
+  <!--
+    Wikilink brackets around two connected nodes: the syntax that makes a note
+    a link, and the mesh those links form.
+
+    A filled tile rather than a transparent mark, and one fixed colour rather
+    than a prefers-color-scheme pair. A theme-aware favicon follows the
+    operating system, not the surface it is drawn on, so a light-inked mark on
+    a light tab strip disappears whenever those two disagree — which is common
+    enough to see in a five-minute check. The tile carries its own background,
+    so contrast is the same everywhere, and it matches the raster fallbacks and
+    the apple-touch icon, which cannot adapt at all.
+
+    Proportions are set by the 16px case: strokes heavy enough to survive, and
+    the two nodes far enough apart that they do not merge into one blob.
+  -->
+  <rect width="32" height="32" rx="7" fill="#7540bf" />
+  <g stroke="#fff" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+    <!-- [ -->
+    <path d="M11 7 H6.5 V25 H11" />
+    <!-- ] -->
+    <path d="M21 7 H25.5 V25 H21" />
+    <!-- the edge, under the nodes -->
+    <path d="M13.4 12.6 L18.6 19.4" />
+  </g>
+  <circle cx="13.4" cy="12.6" r="2.9" fill="#fff" />
+  <circle cx="18.6" cy="19.4" r="2.9" fill="#fff" />
+</svg>

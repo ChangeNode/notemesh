@@ -386,3 +386,57 @@ describe("the RPC surface is fully accounted for", () => {
     expect(handlers.length).toBe(listed.size);
   });
 });
+
+// Icons are the classic thing that silently stops working: nothing fails, a
+// browser just shows a blank square. Worth asserting because /favicon.ico is
+// requested whether or not it is declared, and before these files existed it
+// fell through to the SPA catch-all and answered with HTML under a 200.
+describe("icons and manifest", () => {
+  it.each([
+    ["/favicon.svg", "image/svg+xml"],
+    ["/favicon.ico", "image/"],
+    ["/apple-touch-icon.png", "image/png"],
+    ["/icon-192.png", "image/png"],
+    ["/icon-512.png", "image/png"],
+    ["/site.webmanifest", "json"],
+  ])("serves %s as %s", async (path, type) => {
+    const res = await fetch(`${server.url}${path}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain(type);
+  });
+
+  it("does not answer an icon request with HTML", async () => {
+    // The failure this replaces: a browser asking for an icon and being handed
+    // the application shell, which it renders as a broken image forever.
+    for (const path of ["/favicon.ico", "/favicon.svg", "/apple-touch-icon.png"]) {
+      const res = await fetch(`${server.url}${path}`);
+      expect(res.headers.get("content-type")).not.toContain("text/html");
+    }
+  });
+
+  it("declares them in the page the browser actually loads", async () => {
+    const html = await (await fetch(`${server.url}/login`)).text();
+    expect(html).toContain('rel="icon"');
+    expect(html).toContain("/favicon.svg");
+    expect(html).toContain("apple-touch-icon");
+    expect(html).toContain("site.webmanifest");
+  });
+
+  it("ships an ico containing the three sizes a browser picks between", async () => {
+    const buf = Buffer.from(await (await fetch(`${server.url}/favicon.ico`)).arrayBuffer());
+    expect(buf.readUInt16LE(0)).toBe(0); // reserved
+    expect(buf.readUInt16LE(2)).toBe(1); // type: icon
+    expect(buf.readUInt16LE(4)).toBe(3); // 16, 32, 48
+    const widths = [0, 1, 2].map((i) => buf.readUInt8(6 + i * 16));
+    expect(widths).toEqual([16, 32, 48]);
+  });
+
+  it("manifest points only at files that exist", async () => {
+    const manifest = await (await fetch(`${server.url}/site.webmanifest`)).json();
+    expect(manifest.icons.length).toBeGreaterThan(0);
+    for (const icon of manifest.icons) {
+      const res = await fetch(`${server.url}${icon.src}`);
+      expect(res.status, `${icon.src} is listed in the manifest`).toBe(200);
+    }
+  });
+});

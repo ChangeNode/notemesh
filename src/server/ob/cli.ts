@@ -198,12 +198,18 @@ export async function obSyncStatus(): Promise<ObResult> {
  */
 export async function obSyncConfigured(): Promise<boolean> {
   const res = await obSyncStatus();
+  // Positive evidence only. "Not configured" is acted on — it stops the daemon
+  // and sends the operator back to the wizard — so it must not be concluded
+  // from a command that simply failed. A missing binary, a timeout or any
+  // other error produces output that is neither the no-config sentence nor
+  // JSON, and reading that as "unlinked" would unlink a working vault.
   if (/no sync configuration found|run ['"]?ob sync-setup/i.test(res.combined)) return false;
+  if (!res.ok) return true;
   try {
     const data = JSON.parse(res.stdout);
     return typeof data === "object" && data !== null;
   } catch {
-    return false;
+    return true;
   }
 }
 

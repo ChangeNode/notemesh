@@ -1,5 +1,5 @@
 import { getRequestEvent } from "solid-js/web";
-import { getSetting, setSetting } from "./db";
+import { deleteSetting, getSetting, setSetting } from "./db";
 import { env, detectOriginMismatch, type OriginMismatch } from "./env";
 import { runAuthMigrations } from "./auth";
 import { isSetupComplete, claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
@@ -63,6 +63,27 @@ export async function getSetupProgress(): Promise<{
   const stage = await getSetupStage();
   const backend = getSetting("sync_backend");
   return { stage, backend: backend === "git" ? "git" : backend ? "obsidian" : null };
+}
+
+/**
+ * Reopen the vault step of the wizard.
+ *
+ * The stage is computed from settings alone, so an instance whose
+ * vault_configured says "true" reports setup as finished even when the sync
+ * client has no configuration for that vault — which left the Status tab
+ * correctly reporting an unlinked vault and its own button leading to a page
+ * saying setup was complete.
+ *
+ * Clearing the flag here rather than automatically when the supervisor
+ * notices: it sends every admin page to the wizard, so it should be something
+ * the operator chose, not something a background check did to them.
+ */
+export async function relinkVault(): Promise<{ ok: boolean }> {
+  "use server";
+  await requireAdmin();
+  deleteSetting("vault_configured");
+  syncBackend().note("[admin] Vault unlinked — finish the wizard to link it again.");
+  return { ok: true };
 }
 
 export async function setupChooseBackend(kind: "obsidian" | "git"): Promise<{ ok: boolean }> {

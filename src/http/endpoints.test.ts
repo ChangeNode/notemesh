@@ -58,6 +58,7 @@ const PROTECTED_RPC = [
   "setTimezone",
   "setDeleteEnabled",
   "setDailyConfig",
+  "relinkVault",
   "syncNow",
   "stopSync",
   "restartSync",

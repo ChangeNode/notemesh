@@ -1,5 +1,4 @@
 import { createSignal, createResource, createEffect, onMount, onCleanup, Show, For } from "solid-js";
-import { A } from "@solidjs/router";
 import { AdminShell } from "~/components/AdminShell";
 import { api } from "~/lib/api";
 
@@ -37,6 +36,7 @@ export default function Status() {
   // Set when the server says it has no usable stored credentials, which opens
   // the fields needed to supply them.
   const [needCreds, setNeedCreds] = createSignal(false);
+  const [relinking, setRelinking] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
 
   // Which daemon action is in flight, if any. All three act on the same sync
@@ -222,9 +222,21 @@ export default function Status() {
                     Sign in and pick the vault again from the setup wizard. Nothing is lost: the
                     files already here stay where they are, and linking re-attaches them.
                   </p>
-                  <A href="/setup" role="button">
-                    Go to Setup
-                  </A>
+                  <button
+                    aria-busy={relinking()}
+                    disabled={relinking()}
+                    onClick={async () => {
+                      // Clear the stale "configured" flag before navigating,
+                      // or the wizard computes its stage from that flag and
+                      // greets you with "Setup complete" on a vault it has
+                      // just been told is not linked.
+                      setRelinking(true);
+                      await api.relinkVault().catch(() => undefined);
+                      window.location.href = "/setup";
+                    }}
+                  >
+                    {relinking() ? "Opening setup…" : "Link the vault again"}
+                  </button>
                 </div>
               </Show>
               <Show when={d.sync.state === "needs-reauth"}>

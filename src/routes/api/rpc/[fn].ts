@@ -62,6 +62,22 @@ async function resolve(fn: string): Promise<Handler | null> {
   return null;
 }
 
+// Without these the file-router has no handler for the method, the request
+// falls through to the catch-all, and the caller gets the SPA shell under a
+// 200 — the same "HTML where JSON was expected" failure the middleware already
+// guards against for unknown /api paths.
+function methodNotAllowed() {
+  return json(
+    { error: "method_not_allowed", message: "Procedures are called with POST." },
+    { status: 405, headers: { Allow: "POST" } },
+  );
+}
+
+export const GET = methodNotAllowed;
+export const PUT = methodNotAllowed;
+export const PATCH = methodNotAllowed;
+export const DELETE = methodNotAllowed;
+
 export async function POST(event: APIEvent) {
   const fn = event.params.fn;
   if (!fn || !/^[a-zA-Z][a-zA-Z0-9]*$/.test(fn)) {

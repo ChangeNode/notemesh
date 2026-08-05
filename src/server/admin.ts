@@ -280,6 +280,16 @@ export async function syncNow() {
   return syncBackend().syncNow();
 }
 
+export async function stopSync() {
+  "use server";
+  const session = await requireAdmin();
+  audit("sync.stop", { user: session.user.id });
+  const sup = syncBackend();
+  sup.stop();
+  sup.note("[admin] Sync stopped by the operator. Use Restart Daemon to resume.");
+  return { ok: true };
+}
+
 export async function restartSync() {
   "use server";
   await requireAdmin();

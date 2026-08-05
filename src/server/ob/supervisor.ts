@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
-import { obIsAuthenticated, obSyncOnce } from "./cli";
+import { obIsAuthenticated, obSyncConfigured, obSyncOnce } from "./cli";
 import {
   MAX_LOG_LINES,
   appendLogLine,
@@ -159,6 +159,22 @@ class SyncSupervisor implements SyncBackend {
         );
         return;
       }
+      // A vault that was never linked will fail identically forever: `ob sync`
+      // prints "Run 'ob sync-setup' first" and exits, and no amount of backoff
+      // changes that. Retrying it produced a log of nothing but the same three
+      // lines at 2, 4, 8, 16, 32 seconds, with the dashboard reporting
+      // "Retrying after an error" and never saying which error or that a human
+      // was needed. Checked by running sync-status rather than reading the
+      // daemon's output, for the same reason as the authentication check.
+      const configured = await obSyncConfigured().catch(() => true);
+      if (!configured) {
+        this.state = "needs-setup";
+        this.log(
+          `[supervisor] this vault has no Obsidian Sync configuration — link it again from Setup`,
+          "error",
+        );
+        return;
+      }
       this.state = "backoff";
       this.restartCount += 1;
       this.log(
@@ -189,7 +205,7 @@ class SyncSupervisor implements SyncBackend {
   resetAndStart() {
     this.backoffMs = 2_000;
     this.restartCount = 0;
-    if (this.state === "needs-reauth") this.state = "stopped";
+    if (this.state === "needs-reauth" || this.state === "needs-setup") this.state = "stopped";
     this.start();
   }
 

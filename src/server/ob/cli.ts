@@ -184,6 +184,29 @@ export async function obSyncStatus(): Promise<ObResult> {
   return runOb(["sync-status", "--path", env.vaultDir, "--json"], { timeoutMs: 30_000 });
 }
 
+/**
+ * Has `ob sync-setup` been run for this vault?
+ *
+ * Measured rather than inferred from the daemon's output: on an unconfigured
+ * vault `sync-status --json` prints "No sync configuration found for …" as
+ * plain text and **exits 0**, so neither the exit code nor a successful run
+ * means anything. A parseable JSON body does.
+ *
+ * Worth the extra command because the alternative is scraping the sync log,
+ * and log lines carry synced filenames — the same reason authentication is
+ * checked by running a command rather than reading output.
+ */
+export async function obSyncConfigured(): Promise<boolean> {
+  const res = await obSyncStatus();
+  if (/no sync configuration found|run ['"]?ob sync-setup/i.test(res.combined)) return false;
+  try {
+    const data = JSON.parse(res.stdout);
+    return typeof data === "object" && data !== null;
+  } catch {
+    return false;
+  }
+}
+
 export async function obSyncOnce(): Promise<ObResult> {
   return runOb(["sync", "--path", env.vaultDir], { timeoutMs: 600_000 });
 }

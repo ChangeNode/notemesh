@@ -260,3 +260,38 @@ describe("runOb", () => {
     expect(res.stdout.trim()).toBe("hunter2");
   });
 });
+
+// A vault that was never linked fails identically every time, so the supervisor
+// has to tell that apart from a crash worth retrying. `ob` makes that awkward:
+// on an unconfigured vault `sync-status --json` prints a prose sentence and
+// exits 0, so neither the exit code nor "the command ran" means anything.
+describe("detecting an unlinked vault", () => {
+  it("reads the prose ob actually prints", () => {
+    // Captured from obsidian-headless 0.0.14 against an empty directory:
+    //   $ ob sync-status --path /tmp/x --json
+    //   No sync configuration found for /tmp/x
+    //   $ echo $?   → 0
+    const observed = "No sync configuration found for /data/vault\nRun 'ob sync-setup' first.\n";
+    expect(/no sync configuration found|run ['"]?ob sync-setup/i.test(observed)).toBe(true);
+  });
+
+  it("does not mistake ordinary status output for a missing configuration", () => {
+    const configured = '{"vault":"Home","state":"synced","files":1200}';
+    expect(/no sync configuration found|run ['"]?ob sync-setup/i.test(configured)).toBe(false);
+    expect(() => JSON.parse(configured)).not.toThrow();
+  });
+
+  it("treats unparseable output as unconfigured rather than assuming success", () => {
+    // The exit code says 0 either way, so a JSON body is the only positive
+    // evidence available.
+    for (const output of ["No sync configuration found for /data/vault", "", "???"]) {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(output);
+      } catch {
+        parsed = null;
+      }
+      expect(typeof parsed === "object" && parsed !== null).toBe(false);
+    }
+  });
+});

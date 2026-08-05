@@ -9,6 +9,7 @@ export type SyncState =
   | "running"
   | "backoff" // failed, waiting to retry
   | "needs-reauth" // credentials rejected; won't retry until re-authenticated
+  | "needs-setup" // the vault was never linked, or its link is gone
   | "conflict"; // git only: local work parked on a branch, needs a human
 
 export interface LogLine {

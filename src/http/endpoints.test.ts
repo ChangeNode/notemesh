@@ -59,6 +59,7 @@ const PROTECTED_RPC = [
   "setDeleteEnabled",
   "setDailyConfig",
   "syncNow",
+  "stopSync",
   "restartSync",
   "rebuildIndex",
   "reauth",

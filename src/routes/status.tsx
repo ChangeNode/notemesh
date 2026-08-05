@@ -1,4 +1,5 @@
 import { createSignal, createResource, createEffect, onMount, onCleanup, Show, For } from "solid-js";
+import { A } from "@solidjs/router";
 import { AdminShell } from "~/components/AdminShell";
 import { api } from "~/lib/api";
 
@@ -22,6 +23,7 @@ const STATE_LABEL: Record<string, { cls: string; label: string }> = {
   stopped: { cls: "warn", label: "Stopped" },
   backoff: { cls: "warn", label: "Retrying after an error" },
   "needs-reauth": { cls: "err", label: "Needs re-authentication" },
+  "needs-setup": { cls: "err", label: "Vault not linked" },
   conflict: { cls: "err", label: "Conflicting edits parked" },
 };
 
@@ -40,7 +42,7 @@ export default function Status() {
   // Which daemon action is in flight, if any. All three act on the same sync
   // daemon, so running one disables the lot rather than just the button that
   // was clicked.
-  type Action = "sync" | "restart" | "rebuild";
+  type Action = "sync" | "stop" | "restart" | "rebuild";
   const [running, setRunning] = createSignal<Action | null>(null);
 
   async function run(kind: Action, fn: () => Promise<unknown>) {
@@ -164,6 +166,14 @@ export default function Status() {
                 <button
                   class="secondary"
                   disabled={running() !== null}
+                  aria-busy={running() === "stop"}
+                  onClick={() => run("stop", api.stopSync)}
+                >
+                  {running() === "stop" ? "Stopping…" : "Stop Sync"}
+                </button>
+                <button
+                  class="secondary"
+                  disabled={running() !== null}
                   aria-busy={running() === "restart"}
                   onClick={() => run("restart", api.restartSync)}
                 >
@@ -199,6 +209,22 @@ export default function Status() {
                       </p>
                     )}
                   </For>
+                </div>
+              </Show>
+              <Show when={(live()?.sync ?? d.sync).state === "needs-setup"}>
+                <div class="callout warn">
+                  <p>
+                    <b>This vault is not linked to Obsidian Sync.</b> The sync client has no
+                    configuration for it, so it exits immediately every time it starts — retrying
+                    cannot fix that, and the daemon has stopped rather than loop.
+                  </p>
+                  <p class="muted">
+                    Sign in and pick the vault again from the setup wizard. Nothing is lost: the
+                    files already here stay where they are, and linking re-attaches them.
+                  </p>
+                  <A href="/setup" role="button">
+                    Go to Setup
+                  </A>
                 </div>
               </Show>
               <Show when={d.sync.state === "needs-reauth"}>

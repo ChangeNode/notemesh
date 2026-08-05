@@ -90,6 +90,7 @@ export const api = {
     call("setDailyConfig", [folder, format])) as P<typeof Admin.setDailyConfig>,
 
   syncNow: (() => call("syncNow")) as P<typeof Admin.syncNow>,
+  stopSync: (() => call("stopSync")) as P<typeof Admin.stopSync>,
   restartSync: (() => call("restartSync")) as P<typeof Admin.restartSync>,
   rebuildIndex: (() => call("rebuildIndex")) as P<typeof Admin.rebuildIndex>,
   reauth: ((input: { email?: string; password?: string; mfa?: string }) =>

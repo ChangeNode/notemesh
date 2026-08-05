@@ -1,16 +1,8 @@
 import { createSignal, createResource, createEffect, onMount, onCleanup, Show, For } from "solid-js";
-import {
-  getStatusPage,
-  getSyncActivity,
-  revokeOAuthClient,
-  syncNow,
-  restartSync,
-  rebuildIndex,
-  reauth as reauthServer,
-} from "~/server/admin";
 import { AdminShell } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
-type LiveStatus = Awaited<ReturnType<typeof getSyncActivity>>;
+type LiveStatus = Awaited<ReturnType<typeof api.getSyncActivity>>;
 
 // Lines this app injects carry an explicit level. Everything else comes from
 // the sync client, which has no severity channel, so the only signal available
@@ -34,7 +26,7 @@ const STATE_LABEL: Record<string, { cls: string; label: string }> = {
 };
 
 export default function Status() {
-  const [data, { refetch }] = createResource(() => getStatusPage());
+  const [data, { refetch }] = createResource(() => api.getStatusPage());
 
   const [reauthMsg, setReauthMsg] = createSignal<string | null>(null);
   const [mfa, setMfa] = createSignal("");
@@ -68,7 +60,7 @@ export default function Status() {
       if (inFlight || document.hidden) return;
       inFlight = true;
       try {
-        setLive(await getSyncActivity());
+        setLive(await api.getSyncActivity());
       } catch {
         // transient — next tick retries
       } finally {
@@ -88,10 +80,10 @@ export default function Status() {
     if (nearBottom) logsEl.scrollTop = logsEl.scrollHeight;
   });
 
-  async function reauth() {
+  async function doReauth() {
     setBusy(true);
     setReauthMsg(null);
-    const res = await reauthServer({ mfa: mfa() || undefined });
+    const res = await api.reauth({ mfa: mfa() || undefined });
     setBusy(false);
     setReauthMsg(res.ok ? "Re-authenticated. Sync restarting." : (res.message ?? "Failed."));
     if (res.ok) refetch();
@@ -150,7 +142,7 @@ export default function Status() {
                 <button
                   disabled={running() !== null}
                   aria-busy={running() === "sync"}
-                  onClick={() => run("sync", syncNow)}
+                  onClick={() => run("sync", api.syncNow)}
                 >
                   {running() === "sync" ? "Syncing…" : "Sync Now"}
                 </button>
@@ -158,7 +150,7 @@ export default function Status() {
                   class="secondary"
                   disabled={running() !== null}
                   aria-busy={running() === "restart"}
-                  onClick={() => run("restart", restartSync)}
+                  onClick={() => run("restart", api.restartSync)}
                 >
                   {running() === "restart" ? "Restarting…" : "Restart Daemon"}
                 </button>
@@ -166,7 +158,7 @@ export default function Status() {
                   class="secondary"
                   disabled={running() !== null}
                   aria-busy={running() === "rebuild"}
-                  onClick={() => run("rebuild", rebuildIndex)}
+                  onClick={() => run("rebuild", api.rebuildIndex)}
                 >
                   {running() === "rebuild" ? "Rebuilding…" : "Rebuild Index"}
                 </button>
@@ -205,7 +197,7 @@ export default function Status() {
                   value={mfa()}
                   onInput={(e) => setMfa(e.currentTarget.value)}
                 />
-                <button aria-busy={busy()} disabled={busy()} onClick={reauth}>
+                <button aria-busy={busy()} disabled={busy()} onClick={doReauth}>
                   Re-authenticate
                 </button>
                 <Show when={reauthMsg()}>
@@ -268,7 +260,7 @@ export default function Status() {
                           <td>
                             <button
                               class="danger"
-                              onClick={() => revokeOAuthClient(c.clientId).then(() => refetch())}
+                              onClick={() => api.revokeOAuthClient(c.clientId).then(() => refetch())}
                             >
                               Revoke
                             </button>

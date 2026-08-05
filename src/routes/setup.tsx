@@ -11,18 +11,10 @@ import {
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
-import { setTimezone } from "~/server/admin";
-import {
-  getSetupProgress,
-  setupObsidianLogin,
-  setupListVaults,
-  setupConfigureVault,
-  getClaimState,
-  setupChooseBackend,
-  setupGitRepo,
-  type SetupStage,
-} from "~/server/setup";
 import { RepoFooter } from "~/components/AdminShell";
+import { api } from "~/lib/api";
+// Type-only: erased at compile time, so no server module reaches the browser.
+import type { SetupStage } from "~/server/setup";
 
 // Claim, choose, configure, then set the timezone. The Obsidian path splits
 // "configure" into login + vault picker, so it runs one step longer than git.
@@ -35,7 +27,7 @@ function stepsFor(backend: "obsidian" | "git" | null): SetupStage[] {
 }
 
 export default function Setup() {
-  const [progress, { refetch }] = createResource(() => getSetupProgress());
+  const [progress, { refetch }] = createResource(() => api.getSetupProgress());
   const navigate = useNavigate();
 
   const stage = () => progress()?.stage;
@@ -136,7 +128,7 @@ function formatCountdown(seconds: number): string {
 }
 
 function AdminStep(props: { onDone: () => void }) {
-  const [claim] = createResource(() => getClaimState());
+  const [claim] = createResource(() => api.getClaimState());
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [confirm, setConfirm] = createSignal("");
@@ -275,7 +267,7 @@ function BackendStep(props: { onDone: () => void }) {
 
   async function choose(kind: "obsidian" | "git") {
     setBusy(kind);
-    await setupChooseBackend(kind);
+    await api.setupChooseBackend(kind);
     setBusy(null);
     props.onDone();
   }
@@ -340,7 +332,7 @@ function GitStep(props: { onDone: () => void }) {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const res = await setupGitRepo(remote(), branch(), username(), token());
+    const res = await api.setupGitRepo(remote(), branch(), username(), token());
     setBusy(false);
     if (!res.ok) {
       setError(res.message ?? "Could not link the repository.");
@@ -420,7 +412,7 @@ function ObsidianStep(props: { onDone: () => void }) {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const res = await setupObsidianLogin(email(), password(), mfa() || undefined);
+    const res = await api.setupObsidianLogin(email(), password(), mfa() || undefined);
     setBusy(false);
     if (!res.ok) {
       if (res.mfaRequired) setMfaRequired(true);
@@ -474,7 +466,7 @@ function ObsidianStep(props: { onDone: () => void }) {
 }
 
 function VaultStep(props: { onDone: () => void }) {
-  const [list, { refetch }] = createResource(() => setupListVaults());
+  const [list, { refetch }] = createResource(() => api.setupListVaults());
   const [vault, setVault] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
@@ -493,7 +485,7 @@ function VaultStep(props: { onDone: () => void }) {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const res = await setupConfigureVault(vault(), password());
+    const res = await api.setupConfigureVault(vault(), password());
     setBusy(false);
     if (!res.ok) {
       setError(res.message ?? "Vault setup failed.");
@@ -643,7 +635,7 @@ function TimezoneStep(props: { onDone: () => void }) {
   async function save(zone: string) {
     setBusy(true);
     setError(null);
-    const res = await setTimezone(zone);
+    const res = await api.setTimezone(zone);
     setBusy(false);
     if (!res.ok) {
       setError(res.message ?? "That timezone wasn't accepted.");

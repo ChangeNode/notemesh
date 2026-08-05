@@ -1,9 +1,9 @@
 import { createResource, Show } from "solid-js";
-import { getSetupPage } from "~/server/admin";
 import { AdminShell, Snippet } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
 export default function Setup() {
-  const [data] = createResource(() => getSetupPage());
+  const [data] = createResource(() => api.getSetupPage());
 
   return (
     <AdminShell>

@@ -1,9 +1,9 @@
 import { createResource, Show } from "solid-js";
-import { getSecurityPage } from "~/server/admin";
 import { AdminShell, Check } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
 export default function Security() {
-  const [data] = createResource(() => getSecurityPage());
+  const [data] = createResource(() => api.getSecurityPage());
 
   return (
     <AdminShell>

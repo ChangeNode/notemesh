@@ -1,9 +1,9 @@
 import { createResource, For, Show } from "solid-js";
-import { getSettingsPage, setDeleteEnabled, setDailyConfig, setGitTiming, setGitConflictStrategy, setTimezone } from "~/server/admin";
 import { AdminShell, Check } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
 export default function Settings() {
-  const [data, { refetch }] = createResource(() => getSettingsPage());
+  const [data, { refetch }] = createResource(() => api.getSettingsPage());
 
   return (
     <AdminShell>
@@ -19,7 +19,7 @@ export default function Settings() {
                   type="checkbox"
                   role="switch"
                   checked={d.deleteEnabled}
-                  onChange={(e) => setDeleteEnabled(e.currentTarget.checked).then(() => refetch())}
+                  onChange={(e) => api.setDeleteEnabled(e.currentTarget.checked).then(() => refetch())}
                 />
                 Allow MCP clients to delete notes (<code>delete_note</code> tool)
               </label>
@@ -40,7 +40,7 @@ export default function Settings() {
                 <select
                   id="git-conflict"
                   value={d.gitConflictStrategy}
-                  onChange={(e) => setGitConflictStrategy(e.currentTarget.value).then(() => refetch())}
+                  onChange={(e) => api.setGitConflictStrategy(e.currentTarget.value).then(() => refetch())}
                 >
                   <option value="file">Generate conflict file (recommended)</option>
                   <option value="branch">Place conflicts on a branch</option>
@@ -71,7 +71,7 @@ export default function Settings() {
                     const pull = Number(
                       (form.elements.namedItem("git-pull") as HTMLInputElement).value,
                     );
-                    await setGitTiming(debounce, pull);
+                    await api.setGitTiming(debounce, pull);
                     refetch();
                   }}
                 >
@@ -120,7 +120,7 @@ export default function Settings() {
                   id="tz"
                   type="text"
                   value={d.timezone}
-                  onChange={(e) => setTimezone(e.currentTarget.value).then(() => refetch())}
+                  onChange={(e) => api.setTimezone(e.currentTarget.value).then(() => refetch())}
                 />
                 <button
                   type="button"
@@ -129,7 +129,7 @@ export default function Settings() {
                     const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
                     const el = document.getElementById("tz") as HTMLInputElement;
                     if (el) el.value = browser;
-                    setTimezone(browser).then(() => refetch());
+                    api.setTimezone(browser).then(() => refetch());
                   }}
                 >
                   Use This Device's
@@ -148,7 +148,7 @@ export default function Settings() {
                   const form = e.currentTarget as HTMLFormElement;
                   const folder = (form.elements.namedItem("daily-folder") as HTMLInputElement).value;
                   const format = (form.elements.namedItem("daily-format") as HTMLInputElement).value;
-                  await setDailyConfig(folder, format);
+                  await api.setDailyConfig(folder, format);
                   refetch();
                 }}
               >

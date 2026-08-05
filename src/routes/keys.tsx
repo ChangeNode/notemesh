@@ -1,15 +1,15 @@
 import { createSignal, createResource, Show, For } from "solid-js";
-import { getKeysPage, createApiKey, deleteApiKey } from "~/server/admin";
 import { AdminShell, Snippet } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
 export default function Keys() {
-  const [data, { refetch }] = createResource(() => getKeysPage());
+  const [data, { refetch }] = createResource(() => api.getKeysPage());
   const [newKeyName, setNewKeyName] = createSignal("");
   const [freshKey, setFreshKey] = createSignal<string | null>(null);
 
   async function createKey(e: Event) {
     e.preventDefault();
-    const res = await createApiKey(newKeyName());
+    const res = await api.createApiKey(newKeyName());
     setFreshKey(res.key);
     setNewKeyName("");
     refetch();
@@ -65,7 +65,7 @@ export default function Keys() {
                           <td>
                             <button
                               class="danger"
-                              onClick={() => deleteApiKey(k.id).then(() => refetch())}
+                              onClick={() => api.deleteApiKey(k.id).then(() => refetch())}
                             >
                               Revoke
                             </button>

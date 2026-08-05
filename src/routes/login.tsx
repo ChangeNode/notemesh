@@ -1,10 +1,9 @@
 import { createResource, createSignal, Show } from "solid-js";
 import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
-import { getSetupStage } from "~/server/setup";
-import { getResetState } from "~/server/reset-actions";
 import { resetBanner } from "~/lib/reset-view";
 import { RepoFooter } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
 export default function Login() {
   const [email, setEmail] = createSignal("");
@@ -13,7 +12,7 @@ export default function Login() {
   const [busy, setBusy] = createSignal(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [reset] = createResource(() => getResetState());
+  const [reset] = createResource(() => api.getResetState());
 
   async function submit(e: Event) {
     e.preventDefault();
@@ -37,7 +36,7 @@ export default function Login() {
     }
     // Send an unfinished instance to the wizard rather than to a dashboard
     // that has no vault behind it yet.
-    const stage = await getSetupStage().catch(() => "done" as const);
+    const stage = await api.getSetupStage().catch(() => "done" as const);
     if (stage !== "done") {
       navigate("/setup", { replace: true });
       return;

@@ -1,10 +1,10 @@
 import { createResource, createSignal, Show, Match, Switch } from "solid-js";
 import { A } from "@solidjs/router";
-import { getResetState, submitAdminReset } from "~/server/reset-actions";
 import { RepoFooter } from "~/components/AdminShell";
+import { api } from "~/lib/api";
 
 export default function Reset() {
-  const [state, { refetch }] = createResource(() => getResetState());
+  const [state, { refetch }] = createResource(() => api.getResetState());
   const [pin, setPin] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [confirm, setConfirm] = createSignal("");
@@ -20,7 +20,7 @@ export default function Reset() {
       return;
     }
     setBusy(true);
-    const res = await submitAdminReset(pin(), password());
+    const res = await api.submitAdminReset(pin(), password());
     setBusy(false);
     if (!res.ok) {
       setError(

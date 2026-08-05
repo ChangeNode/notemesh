@@ -1,7 +1,7 @@
 import { createEffect, createResource, createSignal, Show, type JSX } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
-import { getSetupStage } from "~/server/setup";
+import { api } from "~/lib/api";
 
 const TABS = [
   { href: "/", label: "Setup" },
@@ -37,7 +37,7 @@ export function AdminShell(props: { children: JSX.Element }) {
   // only runs on full page loads — a client-side navigation (signing in, or
   // any in-app link) skips it and would render admin tabs with no vault behind
   // them. Re-check here so every route into the dashboard is covered.
-  const [stage] = createResource(() => getSetupStage());
+  const [stage] = createResource(() => api.getSetupStage());
   createEffect(() => {
     if (stage() && stage() !== "done") navigate("/setup", { replace: true });
   });

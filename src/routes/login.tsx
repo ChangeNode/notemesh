@@ -3,7 +3,7 @@ import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
 import { getSetupStage } from "~/server/setup";
 import { getResetState } from "~/server/reset-actions";
-import { resetBanner } from "~/server/reset";
+import { resetBanner } from "~/lib/reset-view";
 import { RepoFooter } from "~/components/AdminShell";
 
 export default function Login() {

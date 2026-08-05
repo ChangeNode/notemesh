@@ -2,6 +2,12 @@ import crypto from "node:crypto";
 import { audit } from "./audit";
 import { db } from "./db";
 import { claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
+import type { ResetState } from "../lib/reset-view";
+
+// Re-exported so server callers need only this module; the definitions live
+// in lib/ because the sign-in page imports them and route imports are
+// bundled for the browser.
+export { resetBanner, type ResetBanner, type ResetState } from "../lib/reset-view";
 
 /**
  * Recovering an admin password without email, and without a shell.
@@ -101,12 +107,6 @@ export function announceResetFlow(): void {
   );
 }
 
-export type ResetState =
-  | { mode: "off" }
-  | { mode: "open"; secondsLeft: number; windowMinutes: number }
-  | { mode: "expired"; windowMinutes: number }
-  | { mode: "exhausted"; windowMinutes: number };
-
 // Safe to hand to an unauthenticated page: says whether the flow is armed and
 // how long is left, never the PIN.
 export function resetState(): ResetState {
@@ -122,36 +122,6 @@ export function resetState(): ResetState {
     secondsLeft: Math.floor(left / 1000),
     windowMinutes: CLAIM_WINDOW_MINUTES,
   };
-}
-
-/**
- * Which card the sign-in page should show.
- *
- * A pure mapping, and its own function, because the sign-in page originally
- * branched on "is the flow armed" — one bit for three states — and so told
- * someone whose window had closed that they could reset with the PIN from the
- * log. The bug is invisible on the happy path: reaching either bad state needs
- * a 30-minute wait or ten spent guesses. Deciding it here means the decision can
- * be checked against every mode without a browser.
- */
-export type ResetBanner =
-  /** Not armed: fold away the how-to. */
-  | "instructions"
-  /** Armed and usable: link to the reset page. */
-  | "armed"
-  /** Armed but out of window or attempts: say so, and do not offer the link. */
-  | "unusable";
-
-export function resetBanner(state: ResetState): ResetBanner {
-  switch (state.mode) {
-    case "off":
-      return "instructions";
-    case "open":
-      return "armed";
-    case "expired":
-    case "exhausted":
-      return "unusable";
-  }
 }
 
 // Length is not a secret — the PIN is always eight digits — so comparing it

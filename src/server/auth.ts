@@ -7,6 +7,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import crypto from "node:crypto";
 import { db } from "./db";
 import { env } from "./env";
+import { authLog } from "./auth-logger";
 import { userCount, withinClaimWindow, CLAIM_WINDOW_MINUTES } from "./claim";
 import { audit } from "./audit";
 
@@ -34,6 +35,9 @@ export const auth = betterAuth({
   baseURL: env.baseUrl,
   secret: authSecret(),
   database: db(),
+  // Filters one warning Better Auth emits about its own SQLite migration
+  // output on every boot — see auth-logger.ts. Everything else passes through.
+  logger: { log: authLog },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 10,

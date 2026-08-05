@@ -14,7 +14,7 @@ import { configuredTimeZone, isValidTimeZone } from "./vault/daily";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
 import { obLogin, looksLikeMfaRequired } from "./ob/cli";
-import { storeObsidianAccount, getObsidianAccount } from "./ob/credentials";
+import { storeObsidianAccount, obsidianAccountState } from "./ob/credentials";
 
 function headers(): Headers {
   return getRequestEvent()!.request.headers;
@@ -306,8 +306,20 @@ export async function reauth(input: { email?: string; password?: string; mfa?: s
     let email = input.email;
     let password = input.password;
     if (!email || !password) {
-      const stored = getObsidianAccount();
-      if (!stored) return { ok: false, message: "No stored credentials — enter them again." };
+      const stored = obsidianAccountState();
+      if (stored.state !== "ok") {
+        return {
+          ok: false,
+          // needCredentials tells the page to show the email and password
+          // fields: without them the operator was told to enter credentials
+          // with nowhere to enter them.
+          needCredentials: true,
+          message:
+            stored.state === "unreadable"
+              ? "The stored Obsidian credentials can no longer be decrypted, which happens when ENCRYPTION_KEY changes. Enter them again below."
+              : "No Obsidian credentials are stored on this server. Enter them below.",
+        };
+      }
       email = stored.email;
       password = stored.password;
     }

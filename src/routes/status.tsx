@@ -30,6 +30,11 @@ export default function Status() {
 
   const [reauthMsg, setReauthMsg] = createSignal<string | null>(null);
   const [mfa, setMfa] = createSignal("");
+  const [obEmail, setObEmail] = createSignal("");
+  const [obPassword, setObPassword] = createSignal("");
+  // Set when the server says it has no usable stored credentials, which opens
+  // the fields needed to supply them.
+  const [needCreds, setNeedCreds] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
 
   // Which daemon action is in flight, if any. All three act on the same sync
@@ -83,10 +88,20 @@ export default function Status() {
   async function doReauth() {
     setBusy(true);
     setReauthMsg(null);
-    const res = await api.reauth({ mfa: mfa() || undefined });
+    const res = await api.reauth({
+      email: obEmail() || undefined,
+      password: obPassword() || undefined,
+      mfa: mfa() || undefined,
+    });
     setBusy(false);
+    if ((res as { needCredentials?: boolean }).needCredentials) setNeedCreds(true);
     setReauthMsg(res.ok ? "Re-authenticated. Sync restarting." : (res.message ?? "Failed."));
-    if (res.ok) refetch();
+    if (res.ok) {
+      setObPassword("");
+      setMfa("");
+      setNeedCreds(false);
+      refetch();
+    }
   }
 
   return (
@@ -188,20 +203,51 @@ export default function Status() {
               </Show>
               <Show when={d.sync.state === "needs-reauth"}>
                 <p class="error">
-                  The Obsidian session expired. Re-authenticate with your stored credentials:
+                  The Obsidian session expired. Re-authenticate to restart sync.
                 </p>
                 <label for="mfa">Two-factor code (if your account uses one)</label>
                 <input
                   id="mfa"
                   type="text"
+                  autocomplete="one-time-code"
                   value={mfa()}
                   onInput={(e) => setMfa(e.currentTarget.value)}
                 />
+
+                {/* Usually the stored credentials plus a fresh code are all
+                    that is needed, so these stay folded away. They open on
+                    their own when the server reports it cannot use what it has
+                    — previously that answer said "enter them again" with
+                    nowhere to enter anything. */}
+                <details open={needCreds()}>
+                  <summary>Use different credentials</summary>
+                  <p class="muted">
+                    Leave these blank to reuse the credentials already stored. Fill them in if your
+                    Obsidian password changed, or if this server can no longer read what it saved.
+                  </p>
+                  <label for="ob-email">Obsidian email</label>
+                  <input
+                    id="ob-email"
+                    type="email"
+                    autocomplete="username"
+                    value={obEmail()}
+                    onInput={(e) => setObEmail(e.currentTarget.value)}
+                  />
+                  <label for="ob-password">Obsidian password</label>
+                  <input
+                    id="ob-password"
+                    type="password"
+                    autocomplete="current-password"
+                    value={obPassword()}
+                    onInput={(e) => setObPassword(e.currentTarget.value)}
+                  />
+                </details>
+
                 <button aria-busy={busy()} disabled={busy()} onClick={doReauth}>
-                  Re-authenticate
+                  {busy() ? "Re-authenticating…" : "Re-authenticate"}
                 </button>
                 <Show when={reauthMsg()}>
-                  <p class="muted">{reauthMsg()}</p>
+                  <p class={needCreds() ? "error" : "muted"}>{reauthMsg()}</p>
                 </Show>
               </Show>
             </article>

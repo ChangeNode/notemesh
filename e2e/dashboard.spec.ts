@@ -157,6 +157,45 @@ test.describe("creating an API key", () => {
   });
 });
 
+test.describe("branding", () => {
+  test("the header shows the mark beside the wordmark", async ({ page }) => {
+    const errors = watchForErrors(page);
+    await signIn(page);
+
+    const mark = page.locator("a.brand img.brand-mark");
+    await expect(mark).toBeVisible();
+
+    // Visible is not the same as loaded — a broken src still occupies a box and
+    // still passes toBeVisible. naturalWidth is 0 until the image decodes.
+    const loaded = await mark.evaluate((el) => (el as HTMLImageElement).naturalWidth > 0);
+    expect(loaded, "the brand mark resolved and decoded").toBe(true);
+
+    // Upper left, on the same line as the wordmark it belongs to.
+    const markBox = (await mark.boundingBox())!;
+    const wordBox = (await page.locator("a.brand strong").boundingBox())!;
+    expect(markBox.x).toBeLessThan(wordBox.x);
+    expect(Math.abs(markBox.height - markBox.width)).toBeLessThan(2); // still square
+    expect(markBox.y + markBox.height).toBeGreaterThan(wordBox.y);
+    expect(markBox.y).toBeLessThan(wordBox.y + wordBox.height);
+
+    expect(errors).toEqual([]);
+  });
+
+  test("the footer credits ChangeNode, signed in or not", async ({ page }) => {
+    // The footer is on the signed-out pages too, so check both — they render
+    // through different route trees.
+    await page.goto("/login");
+    const link = page.getByRole("link", { name: "ChangeNode", exact: true });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "https://changenode.com");
+    // Opens a new tab, so it needs the opener severed.
+    await expect(link).toHaveAttribute("rel", /noopener/);
+
+    await signIn(page);
+    await expect(page.getByRole("link", { name: "ChangeNode", exact: true })).toBeVisible();
+  });
+});
+
 test.describe("password reset", () => {
   test("is folded away when the flow is not armed", async ({ page }) => {
     await page.goto("/login");

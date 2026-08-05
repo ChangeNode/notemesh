@@ -44,10 +44,24 @@ nav ul li a.brand {
   color: inherit;
   text-decoration: none;
   background: none;
+  /* Flex rather than an inline image, so the mark sits on the wordmark's
+     optical centre instead of its text baseline. */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 nav ul li a.brand:hover {
   color: var(--pico-primary);
+}
+
+/* Fixed box: the tile is square, and letting it inherit the row's line-height
+   would stretch it. flex-shrink guards the narrow-viewport case, where the
+   wordmark would otherwise squeeze it. */
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
 }
 
 /* Tab bar under the header. */
@@ -164,6 +178,13 @@ nav.tabs ul li a.active {
 
 .repo-footer a:hover {
   color: var(--pico-primary);
+}
+
+/* Dot between the footer links. aria-hidden in the markup, since a screen
+   reader announcing "middle dot" between two links is noise. */
+.repo-footer .sep {
+  margin: 0 0.6rem;
+  opacity: 0.5;
 }
 
 /* Row of independent action buttons. Pico stretches a bare <button> to full

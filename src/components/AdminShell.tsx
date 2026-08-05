@@ -12,6 +12,7 @@ const TABS = [
 ];
 
 const REPO_URL = "https://github.com/ChangeNode/notemesh";
+const VENDOR_URL = "https://changenode.com";
 
 // Sits at the bottom of every page, signed in or not, so the source is always
 // one click away from whatever the operator is looking at.
@@ -22,6 +23,12 @@ export function RepoFooter() {
       <p class="muted repo-footer">
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
           notemesh on GitHub
+        </a>
+        <span class="sep" aria-hidden="true">
+          ·
+        </span>
+        <a href={VENDOR_URL} target="_blank" rel="noopener noreferrer">
+          ChangeNode
         </a>
       </p>
     </>
@@ -48,6 +55,11 @@ export function AdminShell(props: { children: JSX.Element }) {
         <ul>
           <li>
             <a class="brand" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+              {/* alt="" deliberately: the wordmark beside it already says
+                  "notemesh", so describing the image would make a screen
+                  reader announce the name twice. Width and height are set so
+                  the row does not reflow when the SVG arrives. */}
+              <img src="/favicon.svg" alt="" width="26" height="26" class="brand-mark" />
               <strong>notemesh</strong>
             </a>
           </li>

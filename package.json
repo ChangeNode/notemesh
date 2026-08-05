@@ -1,7 +1,7 @@
 {
   "name": "notemesh",
   "version": "0.1.0",
-  "description": "Personal Obsidian vault MCP server \u2014 Railway template",
+  "description": "Personal Obsidian vault MCP server — Railway template",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.16.0",
@@ -9,6 +9,7 @@
     "dev": "vinxi dev",
     "build": "vinxi build && node scripts/check-client-bundle.mjs",
     "check:client": "node scripts/check-client-bundle.mjs",
+    "test:e2e": "playwright test",
     "start": "vinxi start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -35,6 +36,7 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.0",
     "typescript": "^5.8.0",

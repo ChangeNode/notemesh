@@ -40,6 +40,24 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Only chromium: these check that pages render and forms work, which is
+      # not a cross-browser question, and the download dominates the job time.
+      - name: Install the browser for the end-to-end tests
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: pnpm test:e2e
+
+      - name: Keep the trace from a failed browser test
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   audit:
     runs-on: ubuntu-latest
     steps:

@@ -86,6 +86,14 @@ Railway workspace → **Settings → Templates → New Template**.
    `/data`. This holds the vault copy, the SQLite database, and the sync
    client's state. Without it, every redeploy wipes the instance and the user
    has to run the whole wizard again.
+
+   Size it for the largest vault you expect a deployer to bring, not the
+   smallest: volumes grow with no downtime but **cannot be shrunk**, and Hobby
+   caps at 5 GB. The README tells deployers to allow two to three times their
+   vault, and the setup wizard's final screen asks them to add a Railway disk
+   monitor. Neither is about protecting notes — the disk is a copy of Obsidian
+   Sync or their git remote — but a full disk stops writes and sync until
+   someone notices.
 3. **Set the variables.** Only these two — the goal is that a deployer never
    opens this panel:
 

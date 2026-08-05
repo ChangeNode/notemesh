@@ -84,6 +84,41 @@ export default function Setup() {
                 <p>Your vault is syncing and the MCP endpoint is live.</p>
                 <button onClick={() => navigate("/")}>Go to Dashboard</button>
               </article>
+
+              {/* Last thing on the way out, because it is the one piece of
+                  upkeep that lives outside this app and nothing here can do for
+                  the operator. Led with what happens if the disk is lost —
+                  which is much less than people assume — so the ask reads as
+                  ordinary housekeeping rather than a warning about their
+                  notes. */}
+              <article>
+                <header>
+                  <strong>One last thing: watch the disk</strong>
+                </header>
+                <p class="muted">
+                  This server's disk is a <b>copy</b>, not the original. Your notes live in{" "}
+                  {progress()?.backend === "git" ? "your git repository" : "Obsidian Sync"}, and
+                  everything here — the vault, the search index, the settings — is rebuilt from
+                  there. If the volume were wiped tomorrow you would redeploy, run this wizard
+                  again, and wait for the sync to finish. Nothing is lost that isn't already
+                  somewhere else.
+                </p>
+                <p class="muted">
+                  What a full disk does cost you is <i>service</i>: writes start failing and sync
+                  stops, until you notice. So it is worth being told before that happens.
+                </p>
+                <p>
+                  <b>Set a disk alert.</b> In Railway: your project →{" "}
+                  <b>Observability</b> → the disk usage widget → the <b>⋮</b> menu →{" "}
+                  <b>Add monitor</b>, and pick a threshold around 80%. Railway can notify you by
+                  email, in-app, or webhook. Monitors need a <b>Pro</b> plan.
+                </p>
+                <p class="muted">
+                  On Hobby there are no monitors, so size the volume generously instead — two to
+                  three times your vault. Volumes can be grown later with no downtime, but they{" "}
+                  <b>cannot be shrunk</b>, and Hobby caps at 5&nbsp;GB.
+                </p>
+              </article>
             </Match>
           </Switch>
         )}

@@ -103,12 +103,34 @@ or as a commit pushed to your git remote.
    | **Settings** | The `delete_note` toggle, timezone, daily-note folder/format, and where logs are written |
    | **Security** | Live posture of this instance — see [Security model](#security-model) |
 
-**Sizing the volume:** the vault copy includes synced attachments (images,
-audio, PDFs, video), so size the volume for your vault plus headroom, not just
-its markdown. You can narrow what syncs later with `ob sync-config --file-types`
-inside the container. The sync client also keeps its own append-only log on the
-volume, which grows without bound — the **Settings** tab shows its path and
-current size.
+### Sizing the volume, and what happens if it fills
+
+**Give it two to three times the size of your vault or repository, minimum.**
+
+The vault copy includes synced attachments (images, audio, PDFs, video), so size
+for the whole vault rather than its markdown — on a git-backed setup, size for
+the working tree *plus* the `.git` directory, which for a repo with binary
+history can be larger than the checkout. On top of that, the database holds a
+full-text index worth roughly twice the markdown it covers, and the Obsidian
+sync client keeps an append-only log that grows without bound. The **Settings**
+tab shows that log's path and current size, and you can narrow what syncs with
+`ob sync-config --file-types` inside the container.
+
+Volumes can be **grown** later with no downtime, but they **cannot be shrunk**,
+so erring large costs nothing but a little money and erring small means a
+migration. Railway caps volumes at 5 GB on Hobby and 50 GB on Pro.
+
+**If the disk fills or is lost, you do not lose notes.** Everything here is a
+copy: the vault of record is Obsidian Sync's or your git remote's, and the
+index, settings and credentials are rebuilt by redeploying and running the setup
+wizard again. What a full disk actually costs is availability — writes fail and
+sync stops until someone notices.
+
+Which is the argument for an alert rather than for headroom alone. On **Pro**,
+add one under your project's **Observability** dashboard: the disk usage widget
+→ **⋮** → **Add monitor**, threshold around 80%, delivered by email, in-app, or
+webhook. Monitors are a Pro feature; on Hobby, the sizing rule above is the whole
+defence.
 
 ## Git-backed vaults
 

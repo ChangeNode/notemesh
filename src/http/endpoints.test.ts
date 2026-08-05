@@ -440,3 +440,17 @@ describe("icons and manifest", () => {
     }
   });
 });
+
+// The theme is pinned in the document shell rather than left to the visitor's
+// system preference. Asserted at the HTML level because that is where it has to
+// be: with ssr disabled the component tree renders in the browser, so anything
+// that sets the theme from inside the app would land after first paint.
+describe("theme", () => {
+  it("pins dark on the served shell", async () => {
+    const html = await (await fetch(`${server.url}/login`)).text();
+    expect(html).toContain('data-theme="dark"');
+    // Without this the browser paints its own white background before the CSS
+    // lands, and draws form controls light regardless of what Pico says.
+    expect(html).toContain('name="color-scheme" content="dark"');
+  });
+});

@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./server";
+import { expect, request, test, type Cookie, type Page } from "@playwright/test";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL } from "./server";
 
 /**
  * The failures a browser sees and nothing else does.
@@ -24,7 +24,10 @@ function watchForErrors(page: Page): string[] {
   return errors;
 }
 
-async function signIn(page: Page) {
+/**
+ * Sign in the way a person does. For the tests that are *about* signing in.
+ */
+async function signInThroughTheForm(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(ADMIN_EMAIL);
   await page.getByLabel("Password").fill(ADMIN_PASSWORD);
@@ -32,13 +35,44 @@ async function signIn(page: Page) {
   await page.waitForURL("**/", { timeout: 15_000 });
 }
 
+let sessionCookies: Cookie[] | null = null;
+
+/**
+ * Arrive already signed in. For every test whose subject is a page behind the
+ * login, not the login itself.
+ *
+ * Driving the form in each of those cost one sign-in apiece and ran the suite
+ * into Better Auth's rate limit on /sign-in/email (10 per 60s), which is a
+ * production setting worth keeping — the failure looked like a broken sign-in
+ * page, and every test after the tenth failed the same way whatever it was
+ * testing. One real sign-in is made here and its session reused, so adding a
+ * test no longer spends a request against that budget.
+ */
+async function signIn(page: Page) {
+  if (!sessionCookies) {
+    const ctx = await request.newContext({ baseURL: BASE_URL });
+    const res = await ctx.post("/api/auth/sign-in/email", {
+      // Under NODE_ENV=production Better Auth refuses a request with no Origin.
+      headers: { Origin: BASE_URL },
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+    });
+    if (!res.ok()) throw new Error(`could not sign in (${res.status()}): ${await res.text()}`);
+    sessionCookies = (await ctx.storageState()).cookies;
+    await ctx.dispose();
+  }
+  await page.context().addCookies(sessionCookies);
+  await page.goto("/");
+  await page.waitForURL("**/", { timeout: 15_000 });
+}
+
 test.describe("signing in", () => {
   test("lands on the dashboard and renders it", async ({ page }) => {
     // The regression this exists for: the form submitted, the page reloaded,
     // the fields cleared and nothing else happened, because the component had
-    // failed to load and the browser fell back to a native submit.
+    // failed to load and the browser fell back to a native submit. So this one
+    // has to go through the form — a seeded cookie would prove nothing.
     const errors = watchForErrors(page);
-    await signIn(page);
+    await signInThroughTheForm(page);
 
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("link", { name: "Setup" })).toBeVisible();
@@ -141,7 +175,10 @@ test.describe("password reset", () => {
 
 test.describe("signing out", () => {
   test("ends the session and blocks the dashboard again", async ({ page }) => {
-    await signIn(page);
+    // Its own session, through the form: signing out revokes the session server
+    // side, and revoking the shared one would strand every test that runs after
+    // this — a failure that would depend on declaration order.
+    await signInThroughTheForm(page);
     await page.getByRole("button", { name: "Sign Out" }).click();
     await page.waitForURL(/\/login/, { timeout: 15_000 });
 

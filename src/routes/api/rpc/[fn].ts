@@ -1,5 +1,7 @@
+import { randomBytes } from "node:crypto";
 import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
+import { PublicError } from "~/server/public-error";
 
 /**
  * The one door between the browser and the server.
@@ -47,19 +49,63 @@ const PUBLIC = new Set([
 
 type Handler = (...args: never[]) => Promise<unknown>;
 
-// Imported inside the resolver so a request only loads the module it needs, and
-// so a failure in one area cannot stop the others being served.
+/**
+ * Every procedure this server exposes, named one at a time.
+ *
+ * This replaced a resolver that looked the name up as a property of three
+ * server modules. That worked, but it published whatever those modules happened
+ * to export — so adding an exported helper to admin.ts silently added an
+ * endpoint, and the only thing standing between that and a live procedure was
+ * remembering. It failed open; a list fails closed.
+ *
+ * Still imported lazily, per entry, for the two reasons the old resolver was:
+ * a request loads only the module it needs, and a module that throws on import
+ * cannot take the others down with it.
+ */
+const HANDLERS: Record<string, () => Promise<Handler>> = {
+  // ---- Dashboard ----
+  getSetupPage: async () => (await import("~/server/admin")).getSetupPage,
+  getKeysPage: async () => (await import("~/server/admin")).getKeysPage,
+  getStatusPage: async () => (await import("~/server/admin")).getStatusPage,
+  getToolsPage: async () => (await import("~/server/admin")).getToolsPage,
+  getSettingsPage: async () => (await import("~/server/admin")).getSettingsPage,
+  getSecurityPage: async () => (await import("~/server/admin")).getSecurityPage,
+  getSyncActivity: async () => (await import("~/server/admin")).getSyncActivity,
+  createApiKey: async () => (await import("~/server/admin")).createApiKey,
+  deleteApiKey: async () => (await import("~/server/admin")).deleteApiKey,
+  revokeOAuthClient: async () => (await import("~/server/admin")).revokeOAuthClient,
+  setGitTiming: async () => (await import("~/server/admin")).setGitTiming,
+  setGitConflictStrategy: async () => (await import("~/server/admin")).setGitConflictStrategy,
+  setTimezone: async () => (await import("~/server/admin")).setTimezone,
+  setDeleteEnabled: async () => (await import("~/server/admin")).setDeleteEnabled,
+  syncNow: async () => (await import("~/server/admin")).syncNow,
+  stopSync: async () => (await import("~/server/admin")).stopSync,
+  restartSync: async () => (await import("~/server/admin")).restartSync,
+  rebuildIndex: async () => (await import("~/server/admin")).rebuildIndex,
+  reauth: async () => (await import("~/server/admin")).reauth,
+
+  // ---- Setup wizard ----
+  getSetupStage: async () => (await import("~/server/setup")).getSetupStage,
+  getSetupProgress: async () => (await import("~/server/setup")).getSetupProgress,
+  getClaimState: async () => (await import("~/server/setup")).getClaimState,
+  relinkVault: async () => (await import("~/server/setup")).relinkVault,
+  setupChooseBackend: async () => (await import("~/server/setup")).setupChooseBackend,
+  setupGitRepo: async () => (await import("~/server/setup")).setupGitRepo,
+  setupObsidianLogin: async () => (await import("~/server/setup")).setupObsidianLogin,
+  setupListVaults: async () => (await import("~/server/setup")).setupListVaults,
+  setupConfigureVault: async () => (await import("~/server/setup")).setupConfigureVault,
+
+  // ---- Admin password reset ----
+  getResetState: async () => (await import("~/server/reset-actions")).getResetState,
+  submitAdminReset: async () => (await import("~/server/reset-actions")).submitAdminReset,
+};
+
+/** Names this route serves, for the test that keeps the access lists honest. */
+export const HANDLER_NAMES = Object.keys(HANDLERS);
+
 async function resolve(fn: string): Promise<Handler | null> {
-  if (fn in (await import("~/server/admin"))) {
-    return (await import("~/server/admin"))[fn as never] as Handler;
-  }
-  if (fn in (await import("~/server/setup"))) {
-    return (await import("~/server/setup"))[fn as never] as Handler;
-  }
-  if (fn in (await import("~/server/reset-actions"))) {
-    return (await import("~/server/reset-actions"))[fn as never] as Handler;
-  }
-  return null;
+  const load = Object.prototype.hasOwnProperty.call(HANDLERS, fn) ? HANDLERS[fn] : undefined;
+  return load ? await load() : null;
 }
 
 // Without these the file-router has no handler for the method, the request
@@ -216,10 +262,29 @@ export async function POST(event: APIEvent) {
   } catch (e: unknown) {
     // A redirect thrown by requireAdmin() is control flow, not an error.
     if (e instanceof Response) return e;
-    const message = String((e as { message?: string })?.message ?? e);
-    console.error(`[rpc] ${fn} failed:`, e);
-    // Message text is safe to return: these handlers throw their own strings,
-    // and anything unexpected has already been logged server-side.
-    return json({ error: "failed", message }, { status: 500 });
+
+    // A handler that deliberately raises something for the operator to read
+    // says so by type; everything else is an accident and its text is not for
+    // a stranger. The old code returned e.message verbatim, and the public
+    // handlers are reachable without a session, so an unexpected throw handed
+    // out absolute paths and SQLite messages.
+    if (e instanceof PublicError) {
+      return json({ error: "failed", message: e.message }, { status: e.status });
+    }
+
+    // One identifier, printed beside the detail in the log and shown to the
+    // operator, so "it broke" and the stack trace can be connected without
+    // either putting the detail on screen or guessing which log line was
+    // theirs.
+    const errorId = randomBytes(4).toString("hex");
+    console.error(`[rpc] ${fn} failed [${errorId}]:`, e);
+    return json(
+      {
+        error: "failed",
+        errorId,
+        message: `Something went wrong on the server. Reference ${errorId} — the details are in the server log.`,
+      },
+      { status: 500 },
+    );
   }
 }

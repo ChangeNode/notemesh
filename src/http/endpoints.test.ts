@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { claimAdmin, createApiKey, markConfigured, mcp, rpc, startServer, type Server } from "./harness";
 
 // Every endpoint this server exposes, over real HTTP, against the built output.
@@ -396,19 +397,58 @@ async function rawPost(
 }
 
 describe("the RPC surface is fully accounted for", () => {
-  it("classifies every handler as public or protected", async () => {
-    // Guards the two lists above against drift: a handler added to neither is
-    // untested, and a handler added to PUBLIC by mistake is unguarded.
-    const { readFileSync } = await import("node:fs");
-    const listed = new Set([...PUBLIC_RPC, ...PROTECTED_RPC]);
-    const handlers: string[] = [];
+  const routeSource = () =>
+    readFileSync("src/routes/api/rpc/[fn].ts", "utf8");
+
+  /** The names the dispatch map actually publishes. */
+  function mappedNames(): string[] {
+    const src = routeSource();
+    const block = src.slice(src.indexOf("const HANDLERS"), src.indexOf("export const HANDLER_NAMES"));
+    return [...block.matchAll(/^\s{2}(\w+): async \(\)/gm)].map((m) => m[1]);
+  }
+
+  /** Every function the three server modules export. */
+  function exportedNames(): string[] {
+    const out: string[] = [];
     for (const f of ["admin", "setup", "reset-actions"]) {
       const src = readFileSync(`src/server/${f}.ts`, "utf8");
-      handlers.push(...[...src.matchAll(/^export async function (\w+)/gm)].map((m) => m[1]));
+      out.push(...[...src.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]));
     }
-    const unlisted = handlers.filter((h) => !listed.has(h));
-    expect(unlisted).toEqual([]);
-    expect(handlers.length).toBe(listed.size);
+    return out;
+  }
+
+  it("classifies every published procedure as public or protected", () => {
+    // Guards the two lists above against drift: a procedure in neither is
+    // untested, and one in PUBLIC by mistake is unguarded.
+    const listed = new Set([...PUBLIC_RPC, ...PROTECTED_RPC]);
+    const mapped = mappedNames();
+    expect(mapped.length).toBeGreaterThan(20);
+    expect(mapped.filter((h) => !listed.has(h))).toEqual([]);
+    expect(mapped.length).toBe(listed.size);
+  });
+
+  it("publishes only names the server modules actually export", () => {
+    // A typo in the map is otherwise a 500 at call time rather than a build
+    // error, since the entries are dynamic imports.
+    const exported = new Set(exportedNames());
+    expect(mappedNames().filter((n) => !exported.has(n))).toEqual([]);
+  });
+
+  it("does not publish a server export merely because it exists", async () => {
+    // The property that changed: dispatch used to look the name up on the
+    // module, so exporting a helper from admin.ts published it as an endpoint.
+    // Anything exported but not mapped must now be unreachable.
+    const mapped = new Set(mappedNames());
+    const unmapped = exportedNames().filter((n) => !mapped.has(n));
+    for (const name of unmapped) {
+      const res = await rpc(server, name, [], cookie);
+      expect(res.status, `${name} is exported but not published, so it must 404`).toBe(404);
+    }
+    // And the check itself is not vacuous — a name that exists elsewhere in the
+    // server but was never a procedure is refused the same way.
+    for (const name of ["audit", "requireAdmin", "syncBackend"]) {
+      expect((await rpc(server, name, [], cookie)).status).toBe(404);
+    }
   });
 });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { detectOriginMismatch, env } from "./env";
+import { detectInsecureBaseUrl, detectOriginMismatch, env } from "./env";
 
 // A server that boots before it has a public domain advertises OAuth URLs
 // pointing at the wrong origin, and the failure surfaces client-side as an
@@ -156,5 +156,48 @@ describe("baseUrl", () => {
       else process.env.RAILWAY_PUBLIC_DOMAIN = d;
       expect(() => new URL(env.baseUrl)).not.toThrow();
     }
+  });
+});
+
+// A deployment reached over HTTPS but configured with an http:// BASE_URL is
+// the case that downgrades quietly: Better Auth infers the cookie's Secure flag
+// from BASE_URL, so the session cookie ships without it and travels in the
+// clear on any hop that is not TLS. Nothing else reports this — the app works.
+describe("detects a base URL that has fallen behind the scheme it is served over", () => {
+  it("flags http BASE_URL behind an https proxy", () => {
+    expect(detectInsecureBaseUrl("http://notes.example.com", "https")).toEqual({
+      configured: "http://notes.example.com",
+      servedOver: "https",
+    });
+  });
+
+  it("reads the first entry of a proxy chain", () => {
+    // X-Forwarded-Proto accumulates left to right; the client-facing hop is
+    // first, and it is the only one that says how the browser connected.
+    expect(detectInsecureBaseUrl("http://notes.example.com", "https, http")).toMatchObject({
+      servedOver: "https",
+    });
+  });
+
+  it("is quiet when the configured scheme already matches", () => {
+    expect(detectInsecureBaseUrl("https://notes.example.com", "https")).toBeNull();
+  });
+
+  it("is quiet on plain http end to end", () => {
+    // Someone self-hosting on their LAN over http is not misconfigured, they
+    // have chosen that — and a browser will not store a Secure cookie there at
+    // all, so forcing one would break the deployment rather than protect it.
+    expect(detectInsecureBaseUrl("http://192.168.1.10:3000", "http")).toBeNull();
+    expect(detectInsecureBaseUrl("http://192.168.1.10:3000", null)).toBeNull();
+  });
+
+  it("is quiet on loopback, where browsers treat http as trustworthy anyway", () => {
+    expect(detectInsecureBaseUrl("http://localhost:3000", "https")).toBeNull();
+    expect(detectInsecureBaseUrl("http://127.0.0.1:3000", "https")).toBeNull();
+  });
+
+  it("fails safe on nonsense", () => {
+    expect(detectInsecureBaseUrl("not a url", "https")).toBeNull();
+    expect(detectInsecureBaseUrl("", "https")).toBeNull();
   });
 });

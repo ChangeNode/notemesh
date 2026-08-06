@@ -81,6 +81,53 @@ export interface OriginMismatch {
   reachedAt: string;
 }
 
+export interface InsecureBaseUrl {
+  configured: string;
+  servedOver: string;
+}
+
+/**
+ * Is this instance served over HTTPS while configured as http?
+ *
+ * Better Auth decides the session cookie's Secure flag from BASE_URL. Behind a
+ * proxy that terminates TLS — which is every platform deployment — an http
+ * BASE_URL therefore issues the cookie without Secure, and it will travel in
+ * the clear on any hop that is not TLS. Nothing else notices: the app works
+ * perfectly, which is what makes it worth detecting rather than leaving to be
+ * spotted.
+ *
+ * The answer is deliberately not to force Secure on. Measured in Chromium: a
+ * Secure cookie on a plain-http LAN address is neither stored nor sent, so
+ * forcing it would take someone self-hosting at http://192.168.x.x from working
+ * to unable to sign in at all. Loopback is exempt for the same reason in
+ * reverse — browsers treat it as trustworthy, so http there is already fine.
+ *
+ * `forwardedProto` is used only to diagnose. It is caller-controlled, so it
+ * must never decide whether a cookie is marked Secure — only whether to say
+ * something looks wrong.
+ */
+export function detectInsecureBaseUrl(
+  configuredBaseUrl: string,
+  forwardedProto: string | null | undefined,
+): InsecureBaseUrl | null {
+  if (!forwardedProto) return null;
+  // X-Forwarded-Proto accumulates left to right; the client-facing hop is
+  // first, and only that one says how the browser actually connected.
+  const proto = forwardedProto.split(",")[0]?.trim().toLowerCase();
+  if (proto !== "https") return null;
+
+  let url: URL;
+  try {
+    url = new URL(configuredBaseUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:") return null;
+  if (/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(url.hostname)) return null;
+
+  return { configured: configuredBaseUrl, servedOver: proto };
+}
+
 // Did this instance boot before it had a public domain?
 //
 // better-auth freezes its issuer at module init from env.baseUrl, and process

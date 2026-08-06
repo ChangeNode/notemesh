@@ -59,7 +59,21 @@ export const auth = betterAuth({
       "/oauth2/register": { window: 3600, max: 20 },
     },
   },
+  // Both of these were previously left to Better Auth to infer, and it infers
+  // exactly this — so nothing changes behaviourally. They are stated because
+  // "the session cookie is Secure" and "which origins may post here" are things
+  // a reader should be able to check in this file rather than derive from a
+  // dependency's defaults.
+  //
+  // Secure is deliberately tied to the scheme rather than pinned on. A browser
+  // will not store a Secure cookie on a plain-http origin unless it is loopback
+  // — measured — so pinning it would stop anyone self-hosting at
+  // http://192.168.x.x from signing in at all. When BASE_URL says http but the
+  // deployment is actually served over https, that is a misconfiguration, and
+  // detectInsecureBaseUrl reports it on the Security tab instead.
+  trustedOrigins: [env.baseUrl],
   advanced: {
+    useSecureCookies: env.baseUrl.startsWith("https://"),
     ipAddress: {
       // Trust forwarding headers only where a proxy actually sets them.
       // Elsewhere a client could supply x-forwarded-for itself and get a fresh

@@ -320,3 +320,39 @@ describe("MCP: request bodies are bounded while reading", () => {
     expect(status).toBe(200);
   });
 });
+
+// Better Auth infers the session cookie's Secure flag from BASE_URL. Behind a
+// proxy that terminates TLS — every platform deployment — an http BASE_URL
+// therefore ships the cookie without Secure and nothing looks wrong.
+describe("the session cookie and the scheme it is served over", () => {
+  it("marks the cookie HttpOnly and SameSite=Lax", async () => {
+    const res = await fetch(`${server.url}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: server.url },
+      body: JSON.stringify({ email: "admin@example.com", password: "correct-horse-battery-staple" }),
+    });
+    const setCookie = res.headers.getSetCookie().join("; ");
+    expect(setCookie).toMatch(/HttpOnly/i);
+    expect(setCookie).toMatch(/SameSite=Lax/i);
+  });
+
+  it("reports the mismatch when served over https but configured as http", async () => {
+    // The harness runs on http://127.0.0.1, so claim to be behind a TLS proxy.
+    // Loopback is exempt from the check by design, so this asserts the wiring
+    // reaches getSecurityPage; env.test.ts covers the decision itself.
+    const res = await fetch(`${server.url}/api/rpc/getSecurityPage`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+        Origin: server.url,
+        "x-forwarded-proto": "https",
+      },
+      body: "[]",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()).result;
+    // The field exists and is reported, rather than being absent from the payload.
+    expect(body).toHaveProperty("insecureBaseUrl");
+  });
+});

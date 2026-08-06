@@ -6,7 +6,7 @@ import { authFailureSnapshot } from "./mcp/ratelimit";
 import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, deleteSetting, getSetting, setSetting } from "./db";
-import { env, detectOriginMismatch } from "./env";
+import { env, detectOriginMismatch, detectInsecureBaseUrl } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
@@ -24,6 +24,15 @@ function headers(): Headers {
 // itself lives in env.ts so it can be tested without a request context.
 function originMismatch() {
   return detectOriginMismatch(env.baseUrl, getRequestEvent()?.request.headers.get("host"));
+}
+
+// Served over HTTPS while configured as http — which silently drops Secure from
+// the session cookie. See detectInsecureBaseUrl.
+function insecureBaseUrl() {
+  return detectInsecureBaseUrl(
+    env.baseUrl,
+    getRequestEvent()?.request.headers.get("x-forwarded-proto"),
+  );
 }
 
 // Plain server functions (no solid-router query()/action() wrappers): each tab
@@ -186,6 +195,7 @@ export async function getSecurityPage() {
     throttle: authFailureSnapshot(),
     claimWindowMinutes: CLAIM_WINDOW_MINUTES,
     originMismatch: originMismatch(),
+    insecureBaseUrl: insecureBaseUrl(),
     backend: syncKind(),
   };
 }

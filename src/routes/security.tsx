@@ -44,6 +44,23 @@ export default function Security() {
                 />
               </Show>
 
+              <Show when={d.insecureBaseUrl}>
+                <Check
+                  state="err"
+                  label="Session cookie is not marked Secure, but should be"
+                  detail={
+                    <>
+                      You reached this over <b>{d.insecureBaseUrl!.servedOver}</b>, but{" "}
+                      <code>BASE_URL</code> says <code>{d.insecureBaseUrl!.configured}</code>. The
+                      session cookie's <code>Secure</code> flag is set from that URL, so right now
+                      the cookie is allowed to travel over plain HTTP — and everything looks fine
+                      while it does. Set <code>BASE_URL</code> to the <code>https://</code> address
+                      you actually use and restart.
+                    </>
+                  }
+                />
+              </Show>
+
               <Check
                 state={d.trustsProxyHeaders ? "ok" : "warn"}
                 label={

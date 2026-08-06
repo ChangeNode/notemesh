@@ -109,3 +109,56 @@ export function authFailureSnapshot(): {
     maxFailures: MAX_FAILURES,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Anonymous-volume throttle for /api/rpc.
+//
+// A different question from the one above, so a different bucket. On /api/mcp
+// the thing worth counting is a *failed* credential, because there is a
+// credential to guess. On /api/rpc there is not: the session cookie is opaque
+// and validated by Better Auth, so an anonymous flood is a load problem rather
+// than a guessing one. What is counted here is therefore requests without a
+// session — whether they reach a public procedure or bounce off the gate with a
+// 401.
+//
+// A request carrying a valid session is never counted. Throttling the operator
+// on their own single-user server would be friction with nothing bought.
+const ANON_WINDOW_MS = 10 * 60 * 1000;
+
+// Deliberately loose. Finishing the wizard costs a handful of anonymous calls
+// and a person cannot approach this; it exists to bound a flood, not to police
+// ordinary use. Cheap to lower later, expensive to explain if a real setup ever
+// trips it.
+const MAX_ANON_REQUESTS = 300;
+
+const anonKey = "__rpcAnonRequests";
+function anonBuckets(): Map<string, Bucket> {
+  const g = globalThis as any;
+  if (!g[anonKey]) g[anonKey] = new Map<string, Bucket>();
+  return g[anonKey];
+}
+
+export function anonRequestBlock(ip: string): { blocked: boolean; retryAfterSeconds: number } {
+  const b = anonBuckets().get(ip);
+  if (!b) return { blocked: false, retryAfterSeconds: 0 };
+  const now = Date.now();
+  if (now >= b.resetAt) {
+    anonBuckets().delete(ip);
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+  if (b.failures < MAX_ANON_REQUESTS) return { blocked: false, retryAfterSeconds: 0 };
+  return { blocked: true, retryAfterSeconds: Math.ceil((b.resetAt - now) / 1000) };
+}
+
+export function noteAnonRequest(ip: string): void {
+  const now = Date.now();
+  const map = anonBuckets();
+  const b = map.get(ip);
+  if (!b || now >= b.resetAt) {
+    map.set(ip, { failures: 1, resetAt: now + ANON_WINDOW_MS });
+    return;
+  }
+  b.failures += 1;
+}
+
+export const ANON_LIMIT = { max: MAX_ANON_REQUESTS, windowMs: ANON_WINDOW_MS };

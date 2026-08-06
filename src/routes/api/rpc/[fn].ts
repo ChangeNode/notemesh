@@ -223,10 +223,30 @@ export async function POST(event: APIEvent) {
   // handler without thinking about access fails closed rather than open.
   // Checking it first also means an unauthenticated caller cannot make the
   // server buffer and parse anything at all.
-  if (!PUBLIC.has(fn)) {
-    const { auth } = await import("~/server/auth");
-    const session = await auth.api.getSession({ headers: event.request.headers });
-    if (!session) {
+  //
+  // Resolved for every procedure, not only the protected ones, because the
+  // answer also decides whether this request is throttled. A request with no
+  // cookie never reaches the database for it.
+  const { auth } = await import("~/server/auth");
+  const session = await auth.api.getSession({ headers: event.request.headers });
+
+  if (!session) {
+    // Anonymous traffic is bounded; a signed-in operator is not. There is no
+    // credential to guess here — the session cookie is opaque and Better Auth
+    // validates it — so this is about volume, and it counts public calls and
+    // rejected ones alike.
+    const { clientIp, anonRequestBlock, noteAnonRequest } = await import("~/server/mcp/ratelimit");
+    const ip = clientIp(event.request);
+    const blocked = anonRequestBlock(ip);
+    if (blocked.blocked) {
+      return json(
+        { error: "rate_limited", message: "Too many requests. Try again shortly." },
+        { status: 429, headers: { "Retry-After": String(blocked.retryAfterSeconds) } },
+      );
+    }
+    noteAnonRequest(ip);
+
+    if (!PUBLIC.has(fn)) {
       return json({ error: "unauthorized", message: "Sign in first." }, { status: 401 });
     }
   }

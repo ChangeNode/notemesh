@@ -170,6 +170,122 @@ describe("MCP: the read scope is enforced", () => {
   });
 });
 
+// The RPC route authenticated from the session cookie alone: no Origin check
+// and no token, so a page on another origin could drive it with the operator's
+// own session. SameSite=Lax blocks it in current browsers, which is one control
+// and not a spare.
+describe("RPC: cross-origin requests are refused", () => {
+  it("refuses a state change from a foreign Origin", async () => {
+    const res = await fetch(`${server.url}/api/rpc/setDeleteEnabled`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie, Origin: "https://evil.example" },
+      body: JSON.stringify([false]),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses a read from a foreign Origin too", async () => {
+    const res = await fetch(`${server.url}/api/rpc/getStatusPage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie, Origin: "https://evil.example" },
+      body: "[]",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses an Origin that merely starts with the real one", async () => {
+    // https://127.0.0.1:PORT.evil.example and the like.
+    const res = await fetch(`${server.url}/api/rpc/getStatusPage`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+        Origin: `${server.url}.evil.example`,
+      },
+      body: "[]",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("allows the app's own Origin", async () => {
+    const res = await fetch(`${server.url}/api/rpc/getStatusPage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie, Origin: server.url },
+      body: "[]",
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("allows a request with no Origin at all", async () => {
+    // curl, a script, an MCP client — none of them are a browser being tricked,
+    // and every browser sends Origin on a cross-site POST.
+    const res = await rpc(server, "getStatusPage", [], cookie);
+    expect(res.status).toBe(200);
+  });
+});
+
+// The body was read and parsed before the auth gate, with no cap: 96MB went in
+// from an unauthenticated client, and a large argument array overflowed the
+// stack on the spread into the handler.
+describe("RPC: request bodies are bounded", () => {
+  const big = () => JSON.stringify([{ pad: "A".repeat(2 * 1024 * 1024) }]);
+
+  it("rejects an oversized body from an unauthenticated caller", async () => {
+    const res = await fetch(`${server.url}/api/rpc/getClaimState`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: big(),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it("rejects an oversized body on a protected handler as well", async () => {
+    const res = await fetch(`${server.url}/api/rpc/getStatusPage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie, Origin: server.url },
+      body: big(),
+    });
+    expect([401, 413]).toContain(res.status);
+  });
+
+  it("rejects an oversized body sent without a content-length", async () => {
+    // Chunked: the header-based check never sees it.
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('[{"pad":"'));
+        for (let i = 0; i < 24; i++) {
+          controller.enqueue(new TextEncoder().encode("A".repeat(128 * 1024)));
+        }
+        controller.enqueue(new TextEncoder().encode('"}]'));
+        controller.close();
+      },
+    });
+    const res = await fetch(`${server.url}/api/rpc/getClaimState`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: stream,
+      // @ts-expect-error — undici requires this for a streaming request body.
+      duplex: "half",
+    });
+    expect(res.status).toBe(413);
+  }, 30_000);
+
+  it("rejects an argument list long enough to overflow the spread", async () => {
+    const res = await fetch(`${server.url}/api/rpc/getClaimState`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(new Array(100_000).fill(0)),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.text()).not.toMatch(/call stack/i);
+  });
+
+  it("still accepts an ordinary call", async () => {
+    const res = await rpc(server, "setTimezone", ["Europe/Berlin"], cookie);
+    expect(res.status).toBe(200);
+  });
+});
+
 // Same class on the MCP route: the 4MB cap was read off content-length, which a
 // chunked upload simply omits, and the backstop ran only after the whole body
 // had been buffered.

@@ -78,24 +78,93 @@ export const PUT = methodNotAllowed;
 export const PATCH = methodNotAllowed;
 export const DELETE = methodNotAllowed;
 
+/**
+ * Nobody sends a megabyte of procedure arguments.
+ *
+ * The bodies here are a handful of short strings. The previous absence of any
+ * cap meant an unauthenticated caller could push 96MB in — measured — because
+ * the body was read and parsed before the session was checked.
+ */
+const MAX_BODY_BYTES = 256 * 1024;
+
+/** Arguments are spread into the handler, and a spread has a stack limit. */
+const MAX_ARGS = 32;
+
+/**
+ * Same-origin only, when the caller says where it came from.
+ *
+ * The session cookie is SameSite=Lax, which already stops a browser sending it
+ * on a cross-site POST — but that was the only thing standing between a page on
+ * another origin and this route, and one control is not a spare. Chrome's
+ * Lax+POST grace period alone leaves a couple of minutes after sign-in where
+ * the cookie does travel.
+ *
+ * A missing Origin is allowed: every browser sends one on a cross-site POST, so
+ * its absence means the caller is not a browser being tricked — it is curl, a
+ * script, or a test. Compared against the request's own Host as well as the
+ * configured base URL, so an instance reached at a domain it was not configured
+ * with still works rather than locking the operator out of their own dashboard.
+ */
+function originAllowed(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+
+  let host: string;
+  try {
+    host = new URL(origin).host;
+  } catch {
+    return false; // Unparseable Origin: not something to give the benefit of.
+  }
+
+  const requestHost = request.headers.get("host");
+  if (requestHost && host === requestHost) return true;
+
+  try {
+    return host === new URL(process.env.BASE_URL ?? "").host;
+  } catch {
+    return false;
+  }
+}
+
+/** Read the body with a byte cap, counting as it arrives rather than after. */
+async function readCappedBody(request: Request): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
+  if (!request.body) return "";
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    buf.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(buf);
+}
+
 export async function POST(event: APIEvent) {
   const fn = event.params.fn;
   if (!fn || !/^[a-zA-Z][a-zA-Z0-9]*$/.test(fn)) {
     return json({ error: "bad_request", message: "Invalid procedure name." }, { status: 400 });
   }
 
-  let args: unknown[] = [];
-  try {
-    const body = await event.request.text();
-    if (body) {
-      const parsed = JSON.parse(body);
-      if (!Array.isArray(parsed)) {
-        return json({ error: "bad_request", message: "Body must be a JSON array." }, { status: 400 });
-      }
-      args = parsed;
-    }
-  } catch {
-    return json({ error: "bad_request", message: "Body must be JSON." }, { status: 400 });
+  if (!originAllowed(event.request)) {
+    return json(
+      { error: "forbidden", message: "Cross-origin requests are not accepted here." },
+      { status: 403 },
+    );
   }
 
   const handler = await resolve(fn);
@@ -103,15 +172,43 @@ export async function POST(event: APIEvent) {
     return json({ error: "not_found", message: `No procedure "${fn}".` }, { status: 404 });
   }
 
-  // Gate before calling. The handlers still call requireAdmin() themselves —
-  // this is defence in depth, and it means adding a handler without thinking
-  // about access fails closed rather than open.
+  // Gate before reading the body, not after. The handlers still call
+  // requireAdmin() themselves — this is defence in depth, and it means adding a
+  // handler without thinking about access fails closed rather than open.
+  // Checking it first also means an unauthenticated caller cannot make the
+  // server buffer and parse anything at all.
   if (!PUBLIC.has(fn)) {
     const { auth } = await import("~/server/auth");
     const session = await auth.api.getSession({ headers: event.request.headers });
     if (!session) {
       return json({ error: "unauthorized", message: "Sign in first." }, { status: 401 });
     }
+  }
+
+  const body = await readCappedBody(event.request);
+  if (body === null) {
+    return json({ error: "too_large", message: "Request body is too large." }, { status: 413 });
+  }
+
+  let args: unknown[] = [];
+  if (body) {
+    try {
+      const parsed = JSON.parse(body);
+      if (!Array.isArray(parsed)) {
+        return json({ error: "bad_request", message: "Body must be a JSON array." }, { status: 400 });
+      }
+      args = parsed;
+    } catch {
+      return json({ error: "bad_request", message: "Body must be JSON." }, { status: 400 });
+    }
+  }
+  if (args.length > MAX_ARGS) {
+    // Spreading a large array into a call overflows the stack, which surfaced
+    // as a 500 carrying "Maximum call stack size exceeded".
+    return json(
+      { error: "bad_request", message: `At most ${MAX_ARGS} arguments.` },
+      { status: 400 },
+    );
   }
 
   try {

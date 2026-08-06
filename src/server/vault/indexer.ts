@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import matter from "gray-matter";
+import { splitLines } from "./text";
 import { db } from "../db";
 import { env } from "../env";
 import { toVaultRelative, isSafeVaultPath, MAX_NOTE_BYTES } from "./paths";
@@ -37,7 +38,8 @@ export function parseNote(relPath: string, content: string) {
     fmTags.filter((t) => typeof t === "string").forEach((t) => tags.add(t.replace(/^#/, "")));
   }
 
-  const lines = body.split("\n");
+  // Normalised, so a CRLF note still yields its headings and tasks — see text.ts.
+  const lines = splitLines(body);
   // Frontmatter offset so task line numbers match the file on disk.
   const fmOffset = content.length === body.length ? 0 : content.slice(0, content.length - body.length).split("\n").length - 1;
 

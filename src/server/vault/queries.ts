@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { splitLines, stripCr } from "./text";
 import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
@@ -155,12 +156,16 @@ export function toggleTask(notePath: string, line: number): TaskItem {
   const lines = readVaultFile(abs).split("\n");
   const idx = line - 1;
   if (idx < 0 || idx >= lines.length) throw new VaultPathError(`Line ${line} is out of range`);
-  const m = lines[idx].match(/^(\s*[-*+]\s+\[)([ xX])(\]\s+.*)$/);
+  // Match without the carriage return, then put it back: joining with "\n"
+  // preserves every other line's ending, and this one must not become the
+  // exception — a single toggle would otherwise rewrite the whole file.
+  const hadCr = lines[idx].endsWith("\r");
+  const m = stripCr(lines[idx]).match(/^(\s*[-*+]\s+\[)([ xX])(\]\s+.*)$/);
   if (!m) throw new VaultPathError(`Line ${line} is not a task`);
   const nowDone = m[2] === " ";
-  lines[idx] = m[1] + (nowDone ? "x" : " ") + m[3];
+  lines[idx] = m[1] + (nowDone ? "x" : " ") + m[3] + (hadCr ? "\r" : "");
   fs.writeFileSync(abs, lines.join("\n"), "utf8");
-  const text = lines[idx].replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, "");
+  const text = stripCr(lines[idx]).replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, "");
   return { path: notePath, line, text, done: nowDone };
 }
 
@@ -211,7 +216,7 @@ export function outline(notePath: string): { level: number; heading: string; lin
   const { content } = readNote(notePath);
   const out: { level: number; heading: string; line: number }[] = [];
   let inCodeBlock = false;
-  content.split("\n").forEach((line, i) => {
+  splitLines(content).forEach((line, i) => {
     if (/^\s*(```|~~~)/.test(line)) {
       inCodeBlock = !inCodeBlock;
       return;

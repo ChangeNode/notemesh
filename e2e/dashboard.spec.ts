@@ -157,6 +157,34 @@ test.describe("creating an API key", () => {
   });
 });
 
+test.describe("the connect instructions", () => {
+  test("keep only one disclosure open at a time", async ({ page }) => {
+    await signIn(page);
+    // Every disclosure in the card, not just the ones wearing the attribute
+    // that makes this work — otherwise a panel that drops out of the group
+    // leaves the locator too, and the count assertion fails in its place while
+    // the exclusivity assertion below never gets a chance to.
+    const panels = page.locator("article details");
+    await expect(panels).toHaveCount(5);
+
+    const openCount = async () => await panels.evaluateAll((els) => els.filter((e) => (e as HTMLDetailsElement).open).length);
+
+    // Starts on the TL;DR, which is the one nearly every client needs.
+    expect(await openCount()).toBe(1);
+    await expect(panels.first()).toHaveAttribute("open", "");
+
+    // Opening another closes it, rather than stacking.
+    await page.getByText("Claude Code", { exact: true }).click();
+    expect(await openCount()).toBe(1);
+    await expect(panels.first()).not.toHaveAttribute("open", "");
+
+    // And again, from one non-default panel to another — the case that would
+    // still stack if only the first were special-cased.
+    await page.getByText("Codex", { exact: true }).click();
+    expect(await openCount()).toBe(1);
+  });
+});
+
 test.describe("branding", () => {
   test("the header shows the mark beside the wordmark", async ({ page }) => {
     const errors = watchForErrors(page);

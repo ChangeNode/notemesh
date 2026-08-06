@@ -51,10 +51,18 @@ export default function Setup() {
                   </div>
                 </Show>
 
-                {/* First entry, and the only one open by default: nearly every
+                {/* The shared `name` makes these an exclusive accordion: opening
+                    one closes the others, natively, with no state to keep in
+                    sync. They are alternative answers to the same question, so
+                    two open at once is just a longer page to scroll past the
+                    part you need. A browser too old for the attribute ignores
+                    it and gets independent disclosures, which is the behaviour
+                    this replaces.
+
+                    First entry, and the only one open by default: nearly every
                     client needs just this URL, and the per-client sections
                     below are for the ones that want the exact incantation. */}
-                <details open>
+                <details name="connect" open>
                   <summary>TL;DR Connect An MCP Client</summary>
                   <p class="muted">
                     Point any MCP client at this endpoint (Streamable HTTP transport):
@@ -67,7 +75,7 @@ export default function Setup() {
                   </p>
                 </details>
 
-                <details>
+                <details name="connect">
                   <summary>Claude Desktop, claude.ai, and Cowork</summary>
                   <p>
                     Add notemesh as a <b>custom connector</b>. Go to <b>Settings → Connectors</b>,
@@ -85,13 +93,13 @@ export default function Setup() {
                   </p>
                 </details>
 
-                <details>
+                <details name="connect">
                   <summary>Claude Code</summary>
                   <p class="muted">Register the server, then run /mcp inside Claude Code to sign in.</p>
                   <Snippet text={`claude mcp add --transport http notemesh ${endpoint}`} />
                 </details>
 
-                <details>
+                <details name="connect">
                   <summary>Codex</summary>
                   <p class="muted">
                     Add this to <code>~/.codex/config.toml</code>. The approval mode lets Codex call
@@ -102,7 +110,7 @@ export default function Setup() {
                   />
                 </details>
 
-                <details>
+                <details name="connect">
                   <summary>Any other client (API key)</summary>
                   <p class="muted">
                     For command-line tools and anything else with no browser to complete a sign-in,

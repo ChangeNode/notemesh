@@ -83,3 +83,35 @@ describe("the tool catalogue", () => {
     expect((await catalog()).map((t) => t.name)).not.toContain("delete_note");
   });
 });
+
+// The version the server reports on connect, the version in package.json, and
+// the version at the top of the changelog are three copies of one fact. They
+// drift silently — nothing fails when they disagree, and a client showing a
+// stale version is the kind of thing nobody notices for months.
+describe("the reported version", () => {
+  it("matches package.json and the changelog", async () => {
+    const { readFileSync } = await import("node:fs");
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")).version as string;
+    expect(pkg).toMatch(/^\d+\.\d+\.\d+$/);
+
+    const serverSrc = readFileSync("src/server/mcp/server.ts", "utf8");
+    const reported = serverSrc.match(/name: "notemesh",[\s\S]{0,300}?version: "([^"]+)"/)?.[1];
+    expect(reported, "the MCP server reports a version").toBeDefined();
+    expect(reported).toBe(pkg);
+
+    // The newest released heading in the changelog, ignoring Unreleased.
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const latest = changelog.match(/^## (\d+\.\d+\.\d+)/m)?.[1];
+    expect(latest, "the changelog names a released version").toBeDefined();
+    expect(latest).toBe(pkg);
+  });
+
+  it("counts the tools the changelog claims", async () => {
+    // The release notes say how many tools there are; if that number is wrong
+    // it is wrong in the one document people read before deploying.
+    const { readFileSync } = await import("node:fs");
+    const claimed = Number(readFileSync("CHANGELOG.md", "utf8").match(/(\d+) tools covering/)?.[1]);
+    expect(claimed).toBeGreaterThan(0);
+    expect((await catalog()).length).toBe(claimed);
+  });
+});

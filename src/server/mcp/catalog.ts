@@ -37,7 +37,7 @@ export interface ToolDoc {
 async function toolsFor(access: McpAccess) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer(access);
-  const client = new Client({ name: "notemesh-admin", version: "0.1.0" });
+  const client = new Client({ name: "notemesh-admin", version: "1.0.0" });
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     return (await client.listTools()).tools;

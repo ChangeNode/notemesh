@@ -119,7 +119,10 @@ function safe<A extends unknown[], R>(fn: (...args: A) => R) {
 export function createMcpServer(access: McpAccess): McpServer {
   const server = new McpServer({
     name: "notemesh",
-    version: "0.1.0",
+    // Reported to every client on connect, so it is the deployment's version
+    // rather than a number that happens to live here. A test keeps it in step
+    // with package.json.
+    version: "1.0.0",
   });
 
   const writable = access.write;

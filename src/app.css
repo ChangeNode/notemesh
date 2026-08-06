@@ -78,6 +78,11 @@ nav.tabs ul:first-of-type {
   /* Cancel the link padding and Pico's nav offset so the first tab's text
      lines up with the cards below it. */
   margin-left: -0.9rem;
+  /* Six tabs do not fit across a phone, and Pico's nav rows do not wrap — so
+     the row simply ran off the side and the last tabs could not be reached.
+     Wrapping is the whole fix: the tabs stay full size and take a second line
+     when they need one. */
+  flex-wrap: wrap;
 }
 
 nav.tabs li {

@@ -186,6 +186,50 @@ test.describe("the connect instructions", () => {
   });
 });
 
+test.describe("on a phone", () => {
+  // The tab row is six items wide and did not wrap, so on a narrow screen it
+  // ran off the side and the last tabs were unreachable.
+  test.use({ viewport: { width: 375, height: 812 } });
+
+  test("wraps the tabs instead of running off the screen", async ({ page }) => {
+    await signIn(page);
+
+    const tabs = ["Setup", "Tools", "Status", "Keys", "Settings", "Security"];
+    for (const label of tabs) {
+      await expect(page.getByRole("link", { name: label, exact: true })).toBeVisible();
+    }
+
+    // Nothing may sit outside the viewport horizontally.
+    const viewport = page.viewportSize()!.width;
+    for (const label of tabs) {
+      const box = (await page.getByRole("link", { name: label, exact: true }).boundingBox())!;
+      expect(box.x, `${label} starts off-screen`).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width, `${label} runs past the right edge`).toBeLessThanOrEqual(viewport + 1);
+    }
+
+    // And the page itself must not scroll sideways.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, "the page scrolls horizontally").toBeLessThanOrEqual(1);
+
+    // Wrapped, not shrunk into illegibility.
+    const rows = new Set<number>();
+    for (const label of tabs) {
+      rows.add(Math.round((await page.getByRole("link", { name: label, exact: true }).boundingBox())!.y));
+    }
+    expect(rows.size, "six tabs on one 375px row would mean they are too small").toBeGreaterThan(1);
+  });
+
+  test("keeps the header and a usable page below it", async ({ page }) => {
+    await signIn(page);
+    await expect(page.locator("a.brand img.brand-mark")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign Out" })).toBeVisible();
+    // The tab row must not have pushed the content off the bottom either.
+    await expect(page.getByText("Set up your client")).toBeVisible();
+  });
+});
+
 test.describe("the sync controls", () => {
   test("offer no Sync Now while continuous sync is running", async ({ page }) => {
     // Reported from use: pressing it under a running daemon logged "[admin]

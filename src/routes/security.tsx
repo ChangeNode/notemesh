@@ -58,24 +58,12 @@ export default function Security() {
                 }
               />
 
-              <Check
-                state={d.deleteEnabled ? "warn" : "ok"}
-                label={
-                  d.deleteEnabled ? "Clients can delete notes" : "Clients cannot delete notes"
-                }
-                detail={
-                  d.deleteEnabled ? (
-                    <>
-                      The <code>delete_note</code> tool is enabled, and deletions propagate to every
-                      synced device. Turn it off under Settings when you're not using it.
-                    </>
-                  ) : (
-                    <>
-                      The <code>delete_note</code> tool is disabled — the default.
-                    </>
-                  )
-                }
-              />
+              {/* No delete_note check here. It flagged an enabled delete tool
+                  as a security warning, which overstated it: both backends keep
+                  the file in their history, so a deletion is recoverable —
+                  Obsidian Sync from version history, git from the previous
+                  commit. The toggle still lives under Settings, where it reads
+                  as the preference it is rather than as a posture problem. */}
             </article>
 
             <article>

@@ -140,7 +140,7 @@ export async function getSettingsPage() {
 
 // Security tab: the live posture of this instance. Everything here is derived
 // from current state rather than documentation, so it stays true as the
-// deployment changes (moving behind Railway's proxy, enabling delete, etc).
+// deployment changes (moving behind Railway's proxy, acquiring a domain, etc).
 export async function getSecurityPage() {
   "use server";
   await requireAdmin();
@@ -156,7 +156,6 @@ export async function getSecurityPage() {
     trustsProxyHeaders: Boolean(
       process.env.RAILWAY_PUBLIC_DOMAIN || process.env.TRUST_PROXY_HEADERS,
     ),
-    deleteEnabled: getSetting("delete_enabled") === "true",
     apiKeyCount: keyCount,
     oauthClientCount: oauthClientRows().length,
     maxOAuthClients: MAX_OAUTH_CLIENTS,

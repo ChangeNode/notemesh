@@ -36,6 +36,7 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 | Group | Tools |
 | --- | --- |
 | Files | `read_note`, `list_notes`, `list_folders`, `create_note`, `update_note`, `append_to_note`, `prepend_to_note`, `move_note`, `delete_note`* |
+| Attachments | `list_attachments`, `read_attachment` (images, PDFs and other non-markdown files) |
 | Daily notes | `daily_note` (read / append / prepend / path, honors your vault's daily-note settings) |
 | Search | `search_vault` (full-text over titles, headings, and bodies) |
 | Properties | `read_properties`, `set_property`, `remove_property` |
@@ -43,7 +44,14 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 | Links & tags | `get_links` (backlinks / outgoing), `list_link_issues` (unresolved / orphans / deadends), `list_tags`, `notes_by_tag` |
 | Vault | `get_vault_info`, `get_outline`, `word_count`, `random_note`, `unique_note` |
 
-\* `delete_note` is disabled by default; enable it on the **Settings** tab.
+\* `delete_note` is enabled by default, and can be turned off on the **Settings**
+tab. Deletions are recoverable: Obsidian Sync keeps version history, and a
+git-backed vault keeps the file in the previous commit.
+
+The **Tools** tab in the admin UI lists the same tools with their full
+descriptions and parameters. That page asks the running server over the
+protocol, so it is what your client is actually offered — this table is a
+summary, and the tab is the answer.
 
 Everything an MCP client writes lands in the synced vault folder and propagates
 to your other devices — through Obsidian Sync (end-to-end encrypted, as always),
@@ -94,12 +102,14 @@ or as a commit pushed to your git remote.
       encryption — or give the HTTPS clone URL, branch, and an access token
       scoped to that one repository.
 6. The server starts a continuous sync daemon and drops you into the admin UI,
-   which has four tabs:
+   which has these tabs:
 
    | Tab | What's there |
    | --- | --- |
    | **Setup** | The MCP endpoint URL, copy-paste setup for each client, and API keys |
+   | **Tools** | Every tool your clients can call, read from the running server |
    | **Status** | Sync health, vault stats, live log tail, connected OAuth clients |
+   | **Keys** | API keys for clients that can't complete an OAuth sign-in |
    | **Settings** | The `delete_note` toggle, timezone, daily-note folder/format, and where logs are written |
    | **Security** | Live posture of this instance — see [Security model](#security-model) |
 

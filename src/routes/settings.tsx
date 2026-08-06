@@ -24,7 +24,7 @@ export default function Settings() {
                 Allow MCP clients to delete notes (<code>delete_note</code> tool)
               </label>
               <small class="muted">
-                Deletions sync to every device. Off by default; leave it off unless you need it.
+                Deletions sync to every device. Deleted files can be recovered from history.
               </small>
             </article>
 

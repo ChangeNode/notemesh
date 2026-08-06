@@ -5,6 +5,7 @@ import { api } from "~/lib/api";
 
 const TABS = [
   { href: "/", label: "Setup" },
+  { href: "/tools", label: "Tools" },
   { href: "/status", label: "Status" },
   { href: "/keys", label: "Keys" },
   { href: "/settings", label: "Settings" },

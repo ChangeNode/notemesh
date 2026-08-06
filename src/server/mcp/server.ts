@@ -281,12 +281,18 @@ export function createMcpServer(access: McpAccess): McpServer {
       }),
     );
 
-    if (getSetting("delete_enabled") === "true") {
+    // On unless explicitly turned off, so an unset instance gets it. Both
+    // backends keep the file — Obsidian Sync in version history, git in the
+    // previous commit — so a deletion here is recoverable, which is what makes
+    // it reasonable as a default rather than something to opt into.
+    if (getSetting("delete_enabled") !== "false") {
       server.registerTool(
         "delete_note",
         {
           title: "Delete note",
-          description: "Permanently delete a note. The deletion syncs to all devices.",
+          description:
+            "Delete a note. The deletion syncs to all devices. The file remains in the vault's " +
+            "history (Obsidian Sync version history, or the previous git commit) and can be restored.",
           inputSchema: { path: z.string() },
         },
         safe(({ path }: { path: string }) => text(`Deleted ${w(deleteNote(path), "delete_note")}`)),

@@ -36,9 +36,9 @@ async function toolNames(read: boolean, write: boolean): Promise<string[]> {
   return Object.keys(server._registeredTools).sort();
 }
 
-async function enableDelete() {
+async function setDelete(on: boolean) {
   const { setSetting } = await import("../db");
-  setSetting("delete_enabled", "true");
+  setSetting("delete_enabled", on ? "true" : "false");
 }
 
 const READ_TOOLS = [
@@ -64,6 +64,8 @@ const READ_TOOLS = [
 const WRITE_TOOLS = [
   "append_to_note",
   "create_note",
+  // Present unless the setting turns it off — see the delete_note block below.
+  "delete_note",
   "move_note",
   "prepend_to_note",
   "remove_property",
@@ -95,18 +97,27 @@ describe("tool surface", () => {
   });
 });
 
-describe("delete is opt-in", () => {
-  it("is absent by default, even for a writable client", async () => {
-    expect(await toolNames(true, true)).not.toContain("delete_note");
-  });
-
-  it("appears once the setting is enabled", async () => {
-    await enableDelete();
+// Deleting is on by default: both backends keep the file in their history, so
+// it is recoverable rather than destructive. The setting still turns it off,
+// and read scope still never gets it — those are the parts that matter.
+describe("delete_note", () => {
+  it("is present by default for a writable client", async () => {
     expect(await toolNames(true, true)).toContain("delete_note");
   });
 
-  it("stays absent for a read-only client even when enabled", async () => {
-    await enableDelete();
+  it("disappears once the setting is turned off", async () => {
+    await setDelete(false);
+    expect(await toolNames(true, true)).not.toContain("delete_note");
+  });
+
+  it("comes back when the setting is turned on again", async () => {
+    await setDelete(true);
+    expect(await toolNames(true, true)).toContain("delete_note");
+  });
+
+  it("is never exposed to a read-only client", async () => {
+    expect(await toolNames(true, false)).not.toContain("delete_note");
+    await setDelete(true);
     expect(await toolNames(true, false)).not.toContain("delete_note");
   });
 });

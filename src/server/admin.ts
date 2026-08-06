@@ -119,11 +119,31 @@ export async function getStatusPage() {
   };
 }
 
+// Tools tab: what this server actually offers a connected client.
+//
+// Asked of a real MCP server over the protocol rather than assembled from a
+// list kept here, so it cannot drift from the tools themselves — including the
+// ones that appear conditionally, like delete_note.
+export async function getToolsPage() {
+  "use server";
+  await requireAdmin();
+  const { listMcpTools } = await import("./mcp/catalog");
+  const tools = await listMcpTools();
+  return {
+    tools,
+    readCount: tools.filter((t) => !t.write).length,
+    writeCount: tools.filter((t) => t.write).length,
+    endpoint: `${env.baseUrl}/api/mcp`,
+  };
+}
+
 export async function getSettingsPage() {
   "use server";
   await requireAdmin();
   return {
-    deleteEnabled: getSetting("delete_enabled") === "true",
+    // Absent means on — see the registration in mcp/server.ts. Read the same
+    // way here so the switch reflects what the tool surface actually does.
+    deleteEnabled: getSetting("delete_enabled") !== "false",
     dailyFolder: getSetting("daily_folder") ?? "",
     dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
     timezone: configuredTimeZone(),

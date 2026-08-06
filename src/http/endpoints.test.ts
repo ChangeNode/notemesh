@@ -49,6 +49,7 @@ const PROTECTED_RPC = [
   "getStatusPage",
   "getSettingsPage",
   "getSecurityPage",
+  "getToolsPage",
   "getSyncActivity",
   "createApiKey",
   "deleteApiKey",
@@ -149,6 +150,31 @@ describe("RPC: the dashboard loaders return real data", () => {
     expect((await rpc(server, "setTimezone", ["Asia/Tokyo"], cookie)).status).toBe(200);
     const res = await rpc(server, "getSettingsPage", [], cookie);
     expect((res.body.result as any).timezone).toBe("Asia/Tokyo");
+  });
+
+  it("reports deleting as on for an instance that never set it", async () => {
+    // The default changed, and it is the kind of thing that reads as correct
+    // either way at a glance. Deletions are recoverable from both backends'
+    // history, so the tool ships on; the switch has to agree with the tool
+    // surface, which registers delete_note on the same absent-means-on rule.
+    const res = await rpc(server, "getSettingsPage", [], cookie);
+    expect((res.body.result as any).deleteEnabled).toBe(true);
+    const tools = (await rpc(server, "getToolsPage", [], cookie)).body.result as any;
+    expect(tools.tools.map((t: any) => t.name)).toContain("delete_note");
+  });
+
+  it("getToolsPage describes the live tool surface", async () => {
+    const res = await rpc(server, "getToolsPage", [], cookie);
+    expect(res.status).toBe(200);
+    const r = res.body.result as any;
+    expect(r.tools.length).toBe(r.readCount + r.writeCount);
+    expect(r.readCount).toBeGreaterThan(0);
+    expect(r.writeCount).toBeGreaterThan(0);
+    // Read tools every deployment has, and a write tool, on the right sides.
+    const byName = Object.fromEntries(r.tools.map((t: any) => [t.name, t]));
+    expect(byName.read_note.write).toBe(false);
+    expect(byName.create_note.write).toBe(true);
+    expect(r.endpoint).toBe(`${server.url}/api/mcp`);
   });
 
   it("refuses a timezone the server does not recognise", async () => {

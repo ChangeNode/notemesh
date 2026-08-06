@@ -104,6 +104,7 @@ test.describe("every tab renders", () => {
   // browser can tell the difference.
   const TABS = [
     ["Setup", "/", "Set up your client"],
+    ["Tools", "/tools", "MCP tools"],
     ["Status", "/status", "Sync log"],
     ["Keys", "/keys", "API keys"],
     ["Settings", "/settings", "Vault writes"],

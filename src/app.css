@@ -180,6 +180,41 @@ nav.tabs ul li a.active {
   color: var(--pico-primary);
 }
 
+/* Tools tab. A long reference list, so it is set tighter than body copy —
+   the point is to scan it, not to read it through. */
+h4.tool-group {
+  margin-bottom: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.tool {
+  margin-bottom: 0.9rem;
+}
+
+.tool p {
+  margin: 0.1rem 0 0;
+  font-size: 0.9em;
+}
+
+.tool-name {
+  font-weight: 600;
+}
+
+.tool-params {
+  font-size: 0.8em;
+}
+
+.tool-params code {
+  font-size: inherit;
+  background: none;
+  padding: 0;
+}
+
+.tool-type {
+  opacity: 0.65;
+}
+
 /* Dot between the footer links. aria-hidden in the markup, since a screen
    reader announcing "middle dot" between two links is noise. */
 .repo-footer .sep {

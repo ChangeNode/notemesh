@@ -71,6 +71,7 @@ export const api = {
   getKeysPage: (() => call("getKeysPage")) as P<typeof Admin.getKeysPage>,
   getStatusPage: (() => call("getStatusPage")) as P<typeof Admin.getStatusPage>,
   getSettingsPage: (() => call("getSettingsPage")) as P<typeof Admin.getSettingsPage>,
+  getToolsPage: (() => call("getToolsPage")) as P<typeof Admin.getToolsPage>,
   getSecurityPage: (() => call("getSecurityPage")) as P<typeof Admin.getSecurityPage>,
   getSyncActivity: (() => call("getSyncActivity")) as P<typeof Admin.getSyncActivity>,
 

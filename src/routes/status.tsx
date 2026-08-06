@@ -51,6 +51,10 @@ export default function Status() {
     try {
       await fn();
       refetch();
+      // The header reads from the live poll, which ticks every two seconds —
+      // long enough after an action for the button to look like it did
+      // nothing. Pull once immediately so the new state lands with the click.
+      await refreshLive();
     } finally {
       // finally, not after await: a rejected call must still re-enable the
       // buttons rather than leaving the page permanently stuck.
@@ -61,15 +65,32 @@ export default function Status() {
   // Live status/log poll — cheap in-memory read on the server every 2s.
   const [live, setLive] = createSignal<LiveStatus | null>(null);
   let logsEl: HTMLPreElement | undefined;
+
+  /**
+   * Is the sync service genuinely stopped?
+   *
+   * Only "stopped". backoff and the needs-* latches are still trying, so Stop
+   * Sync stays available there — halting a retry loop is exactly what it is
+   * for. Reads the live poll first so it follows an action immediately rather
+   * than waiting for the page resource to refetch.
+   */
+  const stopped = () => (live()?.sync ?? data()?.sync)?.state === "stopped";
+
+  async function refreshLive() {
+    try {
+      setLive(await api.getSyncActivity());
+    } catch {
+      // transient — the poll retries
+    }
+  }
+
   onMount(() => {
     let inFlight = false;
     const tick = async () => {
       if (inFlight || document.hidden) return;
       inFlight = true;
       try {
-        setLive(await api.getSyncActivity());
-      } catch {
-        // transient — next tick retries
+        await refreshLive();
       } finally {
         inFlight = false;
       }
@@ -108,13 +129,18 @@ export default function Status() {
 
   return (
     <AdminShell>
-      <Show when={data()} keyed>
+      {/* Deliberately NOT keyed. A keyed Show compares by value, and refetch
+          always resolves a fresh object — so every action tore down this whole
+          subtree and rebuilt it, which read as the page reloading and threw
+          away the log scroll position. Unkeyed, `d` is an accessor and the DOM
+          is updated in place. */}
+      <Show when={data()}>
         {(d) => (
           <>
             <article>
               {(() => {
-                const sync = () => live()?.sync ?? d.sync;
-                const vault = () => live()?.vault ?? d.vault;
+                const sync = () => live()?.sync ?? d().sync;
+                const vault = () => live()?.vault ?? d().vault;
                 const activity = () => (live()?.sync as any)?.activity;
                 const syncing = () => sync().state === "running" && activity()?.active;
                 return (
@@ -169,33 +195,49 @@ export default function Status() {
                     one is in flight. */}
                 <Show
                   when={
-                    (live()?.sync ?? d.sync).kind !== "obsidian" ||
-                    (live()?.sync ?? d.sync).state !== "running"
+                    (live()?.sync ?? d().sync).kind !== "obsidian" ||
+                    (live()?.sync ?? d().sync).state !== "running"
                   }
                 >
+                  {/* Secondary once the service is stopped: starting it again
+                      is the thing to do there, and a one-off sync is the
+                      lesser action. */}
                   <button
+                    class={stopped() ? "secondary" : ""}
                     disabled={running() !== null}
                     aria-busy={running() === "sync"}
                     onClick={() => run("sync", api.syncNow)}
                   >
-                    {running() === "sync" ? "Syncing…" : "Sync Now"}
+                    {running() === "sync" ? "Syncing…" : stopped() ? "Manual Sync" : "Sync Now"}
                   </button>
                 </Show>
+                {/* Nothing to stop when it is already stopped. */}
+                <Show when={!stopped()}>
+                  <button
+                    class="secondary"
+                    disabled={running() !== null}
+                    aria-busy={running() === "stop"}
+                    onClick={() => run("stop", api.stopSync)}
+                  >
+                    {running() === "stop" ? "Stopping…" : "Stop Sync"}
+                  </button>
+                </Show>
+                {/* Same action either way — the label and the emphasis follow
+                    the state, because "Restart" reads as a thing you do to
+                    something already running. */}
                 <button
-                  class="secondary"
-                  disabled={running() !== null}
-                  aria-busy={running() === "stop"}
-                  onClick={() => run("stop", api.stopSync)}
-                >
-                  {running() === "stop" ? "Stopping…" : "Stop Sync"}
-                </button>
-                <button
-                  class="secondary"
+                  class={stopped() ? "" : "secondary"}
                   disabled={running() !== null}
                   aria-busy={running() === "restart"}
                   onClick={() => run("restart", api.restartSync)}
                 >
-                  {running() === "restart" ? "Restarting…" : "Restart Sync"}
+                  {running() === "restart"
+                    ? stopped()
+                      ? "Starting…"
+                      : "Restarting…"
+                    : stopped()
+                      ? "Start Sync Service"
+                      : "Restart Sync"}
                 </button>
                 <button
                   class="secondary"
@@ -206,13 +248,13 @@ export default function Status() {
                   {running() === "rebuild" ? "Rebuilding…" : "Rebuild Index"}
                 </button>
               </div>
-              <Show when={(live()?.sync ?? d.sync).conflicts?.length}>
+              <Show when={(live()?.sync ?? d().sync).conflicts?.length}>
                 <div class="callout warn">
                   <p>
                     <b>Conflicting edits.</b> Your other devices and this server changed the same
                     part of the same note. Nothing was lost — here's where each version went.
                   </p>
-                  <For each={(live()?.sync ?? d.sync).conflicts ?? []}>
+                  <For each={(live()?.sync ?? d().sync).conflicts ?? []}>
                     {(c) => (
                       <p class="muted logfile">
                         <code>{c.paths.join(", ")}</code>
@@ -229,7 +271,7 @@ export default function Status() {
                   </For>
                 </div>
               </Show>
-              <Show when={(live()?.sync ?? d.sync).state === "needs-setup"}>
+              <Show when={(live()?.sync ?? d().sync).state === "needs-setup"}>
                 <div class="callout warn">
                   <p>
                     <b>This vault is not linked to Obsidian Sync.</b> The sync client has no
@@ -257,7 +299,7 @@ export default function Status() {
                   </button>
                 </div>
               </Show>
-              <Show when={d.sync.state === "needs-reauth"}>
+              <Show when={d().sync.state === "needs-reauth"}>
                 <p class="error">
                   The Obsidian session expired. Re-authenticate to restart sync.
                 </p>
@@ -314,10 +356,10 @@ export default function Status() {
               </header>
               <pre class="logs" ref={logsEl}>
                 <Show
-                  when={(live()?.logs ?? d.logs).length > 0}
+                  when={(live()?.logs ?? d().logs).length > 0}
                   fallback={<div class="muted">(no log output yet)</div>}
                 >
-                  <For each={live()?.logs ?? d.logs}>
+                  <For each={live()?.logs ?? d().logs}>
                     {(l) => (
                       <div class={lineClass(l)}>
                         {`${new Date(l.ts).toLocaleTimeString()}  ${l.line}`}
@@ -340,7 +382,7 @@ export default function Status() {
                 <strong>Connected OAuth clients</strong>
               </header>
               <Show
-                when={d.oauthClients.length > 0}
+                when={d().oauthClients.length > 0}
                 fallback={<p class="muted">No OAuth clients registered yet.</p>}
               >
                 <table>
@@ -352,7 +394,7 @@ export default function Status() {
                     </tr>
                   </thead>
                   <tbody>
-                    <For each={d.oauthClients}>
+                    <For each={d().oauthClients}>
                       {(c) => (
                         <tr>
                           <td>{c.name}</td>

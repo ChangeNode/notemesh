@@ -248,18 +248,73 @@ test.describe("the sync controls", () => {
     await expect(page.getByRole("button", { name: "Sync Now" })).toHaveCount(0);
   });
 
-  test("bring Sync Now back once sync is stopped", async ({ page }) => {
+  test("relabel themselves for a stopped service", async ({ page }) => {
+    await signIn(page);
+    await page.getByRole("link", { name: "Status", exact: true }).click();
+
+    // Running: the service is the thing you stop or restart, and a one-off
+    // sync is not offered at all on the Obsidian backend.
+    await expect(page.getByRole("button", { name: "Stop Sync" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restart Sync" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start Sync Service" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Stop Sync" }).click();
+
+    // Stopped: starting it again is the primary action, a one-off sync is
+    // secondary, and there is nothing left to stop.
+    const start = page.getByRole("button", { name: "Start Sync Service" });
+    await expect(start).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Manual Sync" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stop Sync" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Restart Sync" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Sync Now" })).toHaveCount(0);
+
+    // Emphasis: Pico renders a secondary button with the class, so the primary
+    // is the one without it.
+    await expect(start).not.toHaveClass(/secondary/);
+    await expect(page.getByRole("button", { name: "Manual Sync" })).toHaveClass(/secondary/);
+
+    // And back, so the shared server is left as it was found.
+    await start.click();
+    await expect(page.getByRole("button", { name: "Stop Sync" })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("show the stop without a visible page rebuild", async ({ page }) => {
+    // The Show around this page used to be keyed, so every refetch resolved a
+    // fresh object, tore the subtree down and rebuilt it — which read as the
+    // page reloading. Marking a node and finding it still there afterwards is
+    // what tells the two apart.
+    await signIn(page);
+    await page.getByRole("link", { name: "Status", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop Sync" })).toBeVisible();
+
+    await page.locator("pre.logs").evaluate((el) => el.setAttribute("data-marker", "kept"));
+    await page.getByRole("button", { name: "Stop Sync" }).click();
+    await expect(page.getByRole("button", { name: "Start Sync Service" })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Survives only if the DOM was updated in place.
+    await expect(page.locator('pre.logs[data-marker="kept"]')).toHaveCount(1);
+
+    await page.getByRole("button", { name: "Start Sync Service" }).click();
+    await expect(page.getByRole("button", { name: "Stop Sync" })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("bring a manual sync back once the service is stopped", async ({ page }) => {
     // The other half: hidden while running must not mean gone for good, or a
     // stopped instance would have no way to sync by hand.
     await signIn(page);
     await page.getByRole("link", { name: "Status", exact: true }).click();
     await page.getByRole("button", { name: "Stop Sync" }).click();
 
-    await expect(page.getByRole("button", { name: "Sync Now" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Manual Sync" })).toBeVisible({ timeout: 15_000 });
 
     // Leave the instance as it was found — the tests share one server.
-    await page.getByRole("button", { name: "Restart Sync" }).click();
-    await expect(page.getByRole("button", { name: "Sync Now" })).toHaveCount(0, { timeout: 15_000 });
+    await page.getByRole("button", { name: "Start Sync Service" }).click();
+    await expect(page.getByRole("button", { name: "Manual Sync" })).toHaveCount(0, {
+      timeout: 15_000,
+    });
   });
 });
 

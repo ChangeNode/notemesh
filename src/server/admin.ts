@@ -309,8 +309,19 @@ export async function stopSync() {
   audit("sync.stop", { user: session.user.id });
   const sup = syncBackend();
   sup.stop();
-  sup.note("[admin] Sync stopped by the operator. Use Restart Sync to resume.");
-  return { ok: true };
+
+  // stop() only sends SIGTERM; the state becomes "stopped" when the child
+  // actually exits, which is a moment later. Returning immediately meant the
+  // page refetched, was told "running", and only caught up on its next
+  // two-second poll — so the button appeared to do nothing. Wait for the state
+  // to settle, bounded, so the answer is true when it arrives.
+  const deadline = Date.now() + 5_000;
+  while (sup.status().state !== "stopped" && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  sup.note("[admin] Sync stopped by the operator. Use Start Sync Service to resume.");
+  return { ok: true, state: sup.status().state };
 }
 
 export async function restartSync() {

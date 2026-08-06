@@ -166,6 +166,14 @@ describe("the attempt budget", () => {
     expect(res.message).toMatch(/too many attempts/i);
   });
 
+  it("is five, not a looser number", async () => {
+    // Deliberate: the PIN is reusable, so the budget does not need slack for an
+    // operator who mistypes their new password, and a tight count is what
+    // bounds guessing.
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    expect(m.MAX_PIN_ATTEMPTS).toBe(5);
+  });
+
   it("refuses the correct PIN once the budget is spent", async () => {
     // The budget is the backstop, so it has to hold even against a right answer
     // arriving late.
@@ -180,6 +188,41 @@ describe("the attempt budget", () => {
 });
 
 describe("resetting a real account", () => {
+  /** Arm the flow against a live Better Auth database with one admin. */
+  async function armedWithAdmin() {
+    const m = await load({ RESET_ADMIN_FLOW: "1" });
+    const pin = capturePin(m);
+    const { auth, runAuthMigrations } = await import("./auth");
+    await runAuthMigrations();
+    await auth.api.signUpEmail({
+      body: { email: "admin@example.com", password: "the-original-password", name: "Admin" },
+    });
+    return { m, pin, auth };
+  }
+
+  it("lets a correct PIN be used more than once", async () => {
+    // Not single-use, on purpose. Reading the PIN means reading the
+    // deployment's logs, which is already the access that could rewrite
+    // RESET_ADMIN_FLOW outright — so burning it after one use costs the
+    // operator a redeploy for a typo and denies an attacker nothing they were
+    // not already past.
+    const { m, pin } = await armedWithAdmin();
+    expect((await m.performAdminReset(pin, "first-long-password")).ok).toBe(true);
+    const second = await m.performAdminReset(pin, "second-long-password");
+    expect(second.ok, "the PIN still works after a successful reset").toBe(true);
+  });
+
+  it("counts successful resets against the budget as well", async () => {
+    // Reusable is not unlimited. The attempt counter is the only bound left, so
+    // a success has to spend from it like anything else.
+    const { m, pin } = await armedWithAdmin();
+    for (let i = 0; i < m.MAX_PIN_ATTEMPTS; i++) {
+      expect((await m.performAdminReset(pin, `password-number-${i}`)).ok).toBe(true);
+    }
+    expect(m.resetState().mode).toBe("exhausted");
+    expect((await m.performAdminReset(pin, "one-more-password")).ok).toBe(false);
+  });
+
   it("changes the password, clears sessions, and reports the account", async () => {
     const m = await load({ RESET_ADMIN_FLOW: "1" });
     const pin = capturePin(m);

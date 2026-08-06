@@ -23,10 +23,17 @@ export { resetBanner, type ResetBanner, type ResetState } from "../lib/reset-vie
  *
  * So: set RESET_ADMIN_FLOW=1 and redeploy. The server prints an eight-digit PIN
  * to its log — which only someone who can read the deployment's logs can see —
- * and accepts that PIN, once, to set a new password. It is bounded three ways:
- * the variable has to be set, the PIN only lives in this process, and the window
+ * and accepts that PIN to set a new password. It is bounded three ways: the
+ * variable has to be set, the PIN only lives in this process, and the window
  * closes CLAIM_WINDOW_MINUTES after boot, exactly like claiming an unclaimed
  * server does.
+ *
+ * The PIN is deliberately NOT single-use. Getting it already requires reading
+ * the deployment's logs, which is the same access that could change
+ * RESET_ADMIN_FLOW or the encryption key anyway — so burning it after one use
+ * buys nothing an attacker was not already past, while costing the operator a
+ * redeploy for a mistyped password. The attempt counter is the bound that
+ * matters, and it is deliberately tight.
  *
  * Deliberately not persisted anywhere. Vaultwarden's admin token is written into
  * config.json on first use and then takes precedence over the environment, so
@@ -41,16 +48,17 @@ export function resetFlowEnabled(): boolean {
   return process.env.RESET_ADMIN_FLOW === "1";
 }
 
-// Ten guesses per boot, against 10^8 possible PINs. A restart is what grants
+// Five guesses per boot, against 10^8 possible PINs. A restart is what grants
 // more, and a restart also issues a new PIN and restarts the window — so
-// grinding costs an attacker a full redeploy per ten attempts, on a deployment
-// they would already need to control.
-export const MAX_PIN_ATTEMPTS = 10;
+// grinding costs an attacker a full redeploy per five attempts, on a deployment
+// they would already need to control. Five rather than ten because the PIN can
+// be reused: the operator who mistypes their new password still has attempts
+// left, so the count does not need slack for honest mistakes.
+export const MAX_PIN_ATTEMPTS = 5;
 
 interface ResetProcessState {
   pin: string;
   attempts: number;
-  used: boolean;
   // On the shared object rather than a module-level flag: the bundler
   // instantiates this module in more than one chunk, so module scope is not
   // once per process. Observed — the PIN was printed twice on one boot (the
@@ -68,7 +76,6 @@ function state(): ResetProcessState {
       // stranger and the admin account while the flow is armed.
       pin: String(crypto.randomInt(0, 100_000_000)).padStart(8, "0"),
       attempts: 0,
-      used: false,
       announced: false,
     };
   }
@@ -93,8 +100,9 @@ export function announceResetFlow(): void {
     [
       "",
       "==================== ADMIN PASSWORD RESET ARMED ====================",
-      `  RESET_ADMIN_FLOW is set, so this server will accept a one-time`,
-      `  password reset for the next ${CLAIM_WINDOW_MINUTES} minutes.`,
+      `  RESET_ADMIN_FLOW is set, so this server will accept a password`,
+      `  reset for the next ${CLAIM_WINDOW_MINUTES} minutes, with up to`,
+      `  ${MAX_PIN_ATTEMPTS} attempts. Restarting issues a new PIN and resets both.`,
       "",
       `      PIN:  ${s.pin}`,
       "",
@@ -210,7 +218,6 @@ export async function performAdminReset(pin: string, newPassword: string): Promi
   // password. Drop them all; the operator signs in again with the new one.
   db().prepare('DELETE FROM "session" WHERE userId = ?').run(user.id);
 
-  s.used = true;
   audit("reset.succeeded", { user: user.id });
   return { ok: true, email: user.email };
 }

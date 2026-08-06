@@ -36,7 +36,11 @@ export function readVaultFile(abs: string): string {
 export function formatBytes(n: number): string {
   if (n < 1000) return `${n} B`;
   if (n < 1000 * 1000) return `${(n / 1000).toFixed(1)} KB`;
-  return `${(n / 1000 / 1000).toFixed(1)} MB`;
+  if (n < 1000 * 1000 * 1000) return `${(n / 1e6).toFixed(1)} MB`;
+  // Volumes are measured in gigabytes, and "994700.0 MB" is not a size anyone
+  // reads. Decimal units throughout, matching how disks are sold and how
+  // Railway states its plan ceilings.
+  return `${(n / 1e9).toFixed(1)} GB`;
 }
 
 // Sniff the head of the file for NUL bytes rather than trusting the extension:

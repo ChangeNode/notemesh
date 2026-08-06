@@ -323,3 +323,28 @@ pre.logs .repeat {
   font-size: 0.78em;
   white-space: pre;
 }
+
+/* Disk usage on the Status tab. */
+.disk {
+  margin-bottom: var(--pico-spacing);
+}
+
+.disk-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--pico-card-sectioning-background-color);
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+
+.disk-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.disk-fill.ok { background: #2e7d32; }
+.disk-fill.warn { background: #ed6c02; }
+.disk-fill.err { background: #c0392b; }
+
+.disk p { margin-bottom: 0.25rem; }

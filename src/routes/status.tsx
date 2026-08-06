@@ -17,6 +17,27 @@ function lineClass(l: { line: string; level?: "error" | "warn" }): string {
   return level ? `log-${level}` : "";
 }
 
+/**
+ * Decimal byte sizes, matching how disks are sold and how Railway states its
+ * plan ceilings. Duplicated from the server's formatBytes on purpose: that
+ * lives in vault/paths.ts, and importing it here would drag the vault module
+ * graph — better-sqlite3 included — into the browser bundle. That exact mistake
+ * broke sign-in once already.
+ */
+function fmtBytes(n: number): string {
+  if (n < 1000) return `${n} B`;
+  if (n < 1e6) return `${(n / 1000).toFixed(1)} KB`;
+  if (n < 1e9) return `${(n / 1e6).toFixed(1)} MB`;
+  return `${(n / 1e9).toFixed(1)} GB`;
+}
+
+/** Bar colour: green until it is worth thinking about, amber, then red. */
+function diskLevel(percentUsed: number): string {
+  if (percentUsed >= 90) return "err";
+  if (percentUsed >= 80) return "warn";
+  return "ok";
+}
+
 const STATE_LABEL: Record<string, { cls: string; label: string }> = {
   running: { cls: "ok", label: "Syncing continuously" },
   stopped: { cls: "warn", label: "Stopped" },
@@ -164,6 +185,56 @@ export default function Status() {
                         {new Date(sync().lastActivityAt!).toLocaleTimeString()}
                       </Show>
                     </p>
+                    {/* Disk. The volume is the hard ceiling on a deployment,
+                        and a full one does not fail gracefully — writes return
+                        ENOSPC and the service wedges. Growing it early is free;
+                        growing one already at 100% forces an offline resize. So
+                        the useful thing to show is how close it is while the
+                        fix is still cheap. */}
+                    <Show when={d().disk}>
+                      <div class="disk">
+                        <Show when={d().disk.filesystem}>
+                          <div class="disk-bar">
+                            <div
+                              class={`disk-fill ${diskLevel(d().disk.filesystem!.percentUsed)}`}
+                              style={{ width: `${Math.min(d().disk.filesystem!.percentUsed, 100)}%` }}
+                            />
+                          </div>
+                          <p class="muted">
+                            <b>{fmtBytes(d().disk.filesystem!.usedBytes)}</b> used of{" "}
+                            {fmtBytes(d().disk.filesystem!.totalBytes)} (
+                            {d().disk.filesystem!.percentUsed}%) ·{" "}
+                            <b>{fmtBytes(d().disk.filesystem!.availableBytes)}</b> free
+                          </p>
+                        </Show>
+                        <p class="muted">
+                          This vault accounts for {fmtBytes(d().disk.vaultBytes)} across{" "}
+                          {d().disk.noteCount.toLocaleString()} notes and{" "}
+                          {d().disk.attachmentCount.toLocaleString()} attachments, plus{" "}
+                          {fmtBytes(d().disk.databaseBytes)} of index.
+                        </p>
+                        <Show when={d().disk.filesystem?.sharedWithRoot}>
+                          <small class="muted">
+                            The data directory is on this machine's main filesystem rather than its
+                            own volume, so the figures above cover the whole disk — not just the
+                            vault. On a deployment with a mounted volume they describe the volume.
+                          </small>
+                        </Show>
+                        <Show when={(d().disk.filesystem?.percentUsed ?? 0) >= 80 && !d().disk.filesystem?.sharedWithRoot}>
+                          <small class="muted">
+                            Worth growing the volume now. Railway resizes live with no downtime
+                            until it is full; at 100% the resize goes offline and restarts the
+                            service.
+                          </small>
+                        </Show>
+                        <Show when={!d().disk.filesystem}>
+                          <small class="muted">
+                            This platform did not report filesystem usage, so only what the vault
+                            itself accounts for is shown.
+                          </small>
+                        </Show>
+                      </div>
+                    </Show>
                     <Show when={syncing()}>
                       <progress />
                       <small class="muted">

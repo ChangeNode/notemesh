@@ -10,6 +10,7 @@ import { env, detectOriginMismatch, detectInsecureBaseUrl } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
+import { diskStatus } from "./vault/disk";
 import { configuredTimeZone, isValidTimeZone, resolveDailyConfig } from "./vault/daily";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
@@ -118,6 +119,7 @@ export async function getStatusPage() {
   const sup = syncBackend();
   return {
     vault: vaultInfo(),
+    disk: diskStatus(),
     sync: sup.status(),
     logs: sup.getLogs().slice(-80),
     oauthClients: oauthClientRows().map((c) => ({

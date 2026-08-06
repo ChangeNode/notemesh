@@ -22,6 +22,13 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code: string,
+    /**
+     * Set when the server hit something unexpected. The same value is printed
+     * beside the stack trace in the server log, so an operator reading "it
+     * broke" on screen can find the one log line that explains it without the
+     * detail being shown to whoever asked.
+     */
+    readonly errorId?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -48,7 +55,7 @@ async function call<T>(fn: string, args: unknown[] = []): Promise<T> {
     );
   }
 
-  let body: { result?: unknown; error?: string; message?: string } = {};
+  let body: { result?: unknown; error?: string; message?: string; errorId?: string } = {};
   try {
     body = await res.json();
   } catch {
@@ -56,7 +63,12 @@ async function call<T>(fn: string, args: unknown[] = []): Promise<T> {
   }
 
   if (!res.ok) {
-    throw new ApiError(body.message ?? `Request failed (${res.status}).`, res.status, body.error ?? "failed");
+    throw new ApiError(
+      body.message ?? `Request failed (${res.status}).`,
+      res.status,
+      body.error ?? "failed",
+      body.errorId,
+    );
   }
   return body.result as T;
 }

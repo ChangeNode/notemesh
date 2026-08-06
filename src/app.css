@@ -314,3 +314,12 @@ pre.logs .repeat {
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+/* Stack traces in the client-side error boundary. Long lines, so let it scroll
+   in its own box rather than widening the page. */
+.error-detail pre {
+  max-height: 22rem;
+  overflow: auto;
+  font-size: 0.78em;
+  white-space: pre;
+}

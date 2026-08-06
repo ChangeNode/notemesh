@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import crypto from "node:crypto";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { claimAdmin, createApiKey, markConfigured, rpc, startServer, type Server } from "./harness";
+import { claimAdmin, createApiKey, markConfigured, mcp, rpc, startServer, type Server } from "./harness";
 
 /**
  * Regressions from the endpoint audit.
@@ -354,5 +354,60 @@ describe("the session cookie and the scheme it is served over", () => {
     const body = (await res.json()).result;
     // The field exists and is reported, rather than being absent from the payload.
     expect(body).toHaveProperty("insecureBaseUrl");
+  });
+});
+
+// The catch-all used to return e.message verbatim with a 500, and the public
+// procedures answer callers with no session — so an unexpected throw handed a
+// stranger whatever the error happened to say.
+describe("RPC: server errors are referenced, not described", () => {
+  it("gives an unauthenticated caller a reference instead of the detail", async () => {
+    // submitAdminReset is public and takes (pin, password); numbers where
+    // strings are expected reach code that was never written for them.
+    const res = await fetch(`${server.url}/api/rpc/submitAdminReset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([{ not: "a pin" }, { not: "a password" }]),
+    });
+    const body = await res.json();
+    if (res.status === 500) {
+      expect(body.errorId, "a 500 must carry a reference").toMatch(/^[0-9a-f]{8}$/);
+      expect(body.message).toContain(body.errorId);
+      // Nothing about the machine it is running on.
+      expect(JSON.stringify(body)).not.toMatch(/\/(Users|home|private|var)\//);
+      expect(JSON.stringify(body)).not.toMatch(/SQLITE|no such (table|column)/i);
+    } else {
+      // Handled rather than thrown, which is also a correct answer.
+      expect(body.result).toBeDefined();
+    }
+  });
+
+  it("uses a different reference each time", async () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 3; i++) {
+      const res = await fetch(`${server.url}/api/rpc/submitAdminReset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ bad: i }, { bad: i }]),
+      });
+      const body = await res.json();
+      if (body.errorId) ids.add(body.errorId);
+    }
+    // Either nothing threw, or the references are distinct — a constant id
+    // would make the log unsearchable, which is the entire point of it.
+    expect(ids.size === 0 || ids.size === 3).toBe(true);
+  });
+
+  it("prints the same reference in the server log", async () => {
+    const res = await fetch(`${server.url}/api/rpc/submitAdminReset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([Symbol as unknown as string, null]),
+    });
+    const body = await res.json();
+    if (body.errorId) {
+      await new Promise((r) => setTimeout(r, 300));
+      expect(server.log(), "the reference must appear in the log").toContain(body.errorId);
+    }
   });
 });

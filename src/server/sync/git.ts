@@ -173,6 +173,7 @@ class GitBackend implements SyncBackend {
   status(): SyncStatus {
     const a = this.counts;
     return {
+      kind: this.kind,
       state: this.state,
       startedAt: this.startedAt,
       lastActivityAt: this.lastActivityAt,

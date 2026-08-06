@@ -212,6 +212,17 @@ class SyncSupervisor implements SyncBackend {
   // One-shot sync, reported into the same log the operator is watching rather
   // than back through the button that triggered it.
   async syncNow(): Promise<{ ok: boolean; output: string }> {
+    // `ob sync` takes a lock on the vault, so a one-shot run started while the
+    // continuous daemon holds it fails with "Another sync instance is already
+    // running for this vault" — an error for doing something that was never
+    // possible, and which the daemon was already doing anyway. The Status tab
+    // hides the button in this state; this covers a page that loaded before the
+    // daemon started, and anything calling the procedure directly.
+    if (this.child) {
+      const message = "Continuous sync is already running — it picks up changes on its own.";
+      this.note(`[admin] ${message}`);
+      return { ok: true, output: message };
+    }
     const res = await obSyncOnce();
     const tail = res.combined.split("\n").filter(Boolean).slice(-5).join("\n");
     if (res.ok) {
@@ -228,6 +239,7 @@ class SyncSupervisor implements SyncBackend {
   status(): SyncStatus {
     const a = this.activity ?? { downloaded: 0, uploaded: 0, deleted: 0, startedAt: null, lastEventAt: null };
     return {
+      kind: this.kind,
       state: this.state,
       startedAt: this.startedAt,
       lastActivityAt: this.lastActivityAt,

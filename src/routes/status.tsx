@@ -156,13 +156,31 @@ export default function Status() {
                 );
               })()}
               <div class="actions">
-                <button
-                  disabled={running() !== null}
-                  aria-busy={running() === "sync"}
-                  onClick={() => run("sync", api.syncNow)}
+                {/* Hidden while the Obsidian daemon is up. `ob sync` locks the
+                    vault, so a one-shot started underneath the continuous run
+                    cannot succeed — it fails with "Another sync instance is
+                    already running for this vault" — and there is nothing for
+                    it to do anyway, since the daemon is already syncing.
+
+                    Only that backend. A git vault's normal running state is a
+                    pair of timers with no lock, and forcing an immediate
+                    push/pull rather than waiting for the next tick is exactly
+                    what the button is for; its cycle already returns early if
+                    one is in flight. */}
+                <Show
+                  when={
+                    (live()?.sync ?? d.sync).kind !== "obsidian" ||
+                    (live()?.sync ?? d.sync).state !== "running"
+                  }
                 >
-                  {running() === "sync" ? "Syncing…" : "Sync Now"}
-                </button>
+                  <button
+                    disabled={running() !== null}
+                    aria-busy={running() === "sync"}
+                    onClick={() => run("sync", api.syncNow)}
+                  >
+                    {running() === "sync" ? "Syncing…" : "Sync Now"}
+                  </button>
+                </Show>
                 <button
                   class="secondary"
                   disabled={running() !== null}

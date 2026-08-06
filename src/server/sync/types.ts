@@ -34,6 +34,13 @@ export interface SyncActivity {
 }
 
 export interface SyncStatus {
+  /**
+   * Which backend produced this. The two do not behave alike — an Obsidian
+   * daemon holds a lock on the vault while it runs, a git backend is a pair of
+   * timers — so a UI showing controls for "sync" has to know which it is
+   * looking at.
+   */
+  kind: SyncKind;
   state: SyncState;
   startedAt: number | null;
   lastActivityAt: number | null;

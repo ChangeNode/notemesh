@@ -186,6 +186,39 @@ test.describe("the connect instructions", () => {
   });
 });
 
+test.describe("the sync controls", () => {
+  test("offer no Sync Now while continuous sync is running", async ({ page }) => {
+    // Reported from use: pressing it under a running daemon logged "[admin]
+    // Error: manual sync failed. Another sync instance is already running for
+    // this vault." `ob sync` locks the vault, so the one-shot could not have
+    // worked — and the daemon was already doing the thing being asked for.
+    await signIn(page);
+    await page.getByRole("link", { name: "Status", exact: true }).click();
+
+    // The controls that do apply are still there, so this is the button being
+    // absent rather than the whole row failing to render.
+    await expect(page.getByRole("button", { name: "Stop Sync" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restart Sync" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rebuild Index" })).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Sync Now" })).toHaveCount(0);
+  });
+
+  test("bring Sync Now back once sync is stopped", async ({ page }) => {
+    // The other half: hidden while running must not mean gone for good, or a
+    // stopped instance would have no way to sync by hand.
+    await signIn(page);
+    await page.getByRole("link", { name: "Status", exact: true }).click();
+    await page.getByRole("button", { name: "Stop Sync" }).click();
+
+    await expect(page.getByRole("button", { name: "Sync Now" })).toBeVisible({ timeout: 15_000 });
+
+    // Leave the instance as it was found — the tests share one server.
+    await page.getByRole("button", { name: "Restart Sync" }).click();
+    await expect(page.getByRole("button", { name: "Sync Now" })).toHaveCount(0, { timeout: 15_000 });
+  });
+});
+
 test.describe("branding", () => {
   test("the header shows the mark beside the wordmark", async ({ page }) => {
     const errors = watchForErrors(page);

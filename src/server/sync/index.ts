@@ -17,15 +17,25 @@ export function syncBackend(): SyncBackend {
 
 // Idempotent boot hook: starts whichever backend this instance uses, once
 // setup has completed.
+//
+// The latch is set only once something has actually been started. Setting it on
+// the first request regardless meant a request that arrived before the vault
+// was configured — or while the database was briefly unreadable — used up the
+// one attempt this process gets, and sync then stayed down until someone
+// restarted the server or pressed Restart Sync. Nothing reported it, because
+// from the hook's point of view it had already done its job.
+//
+// Not latching until then is safe: start() is itself idempotent, and once it
+// has run the latch keeps this from overriding an operator who pressed Stop
+// Sync.
 let bootChecked = false;
 export function ensureSyncStarted() {
   if (bootChecked) return;
-  bootChecked = true;
   try {
-    if (getSetting("vault_configured") === "true") {
-      syncBackend().start();
-    }
+    if (getSetting("vault_configured") !== "true") return;
+    syncBackend().start();
+    bootChecked = true;
   } catch {
-    // DB not ready yet — first boot before setup; nothing to start.
+    // DB not ready yet — try again on the next request rather than giving up.
   }
 }

@@ -193,3 +193,34 @@ describe("counts the events ob actually emits", () => {
     expect(a.downloaded + a.uploaded + a.deleted).toBe(1);
   });
 });
+
+// Sync Now underneath a running daemon.
+//
+// `ob sync` locks the vault, so a one-shot started while `ob sync --continuous`
+// holds the lock fails with "Another sync instance is already running for this
+// vault" — reported to the operator as a failed manual sync, for pressing a
+// button that could not have worked and had nothing to do. The Status tab hides
+// the button in this state; this is the half that covers a stale page and a
+// direct call to the procedure.
+describe("syncNow while the daemon is running", () => {
+  it("answers instead of launching a second instance", async () => {
+    const { supervisor } = await import("./supervisor");
+    const sup = supervisor() as unknown as { child: unknown; getLogs(): { line: string }[] };
+    const before = sup.child;
+    // Stand in for a live child. Nothing is spawned: the point is that the
+    // guard returns before obSyncOnce is reached, which a real `ob` would
+    // otherwise have to be installed to prove.
+    sup.child = { kill() {} };
+    try {
+      const res = await supervisor().syncNow();
+      expect(res.ok).toBe(true);
+      expect(res.output).toMatch(/already running/i);
+      // Said in the log the operator is watching, not only returned.
+      expect(sup.getLogs().at(-1)!.line).toMatch(/already running/i);
+      // And not reported as an error, which is what the collision produced.
+      expect(res.output).not.toMatch(/fail/i);
+    } finally {
+      sup.child = before;
+    }
+  });
+});

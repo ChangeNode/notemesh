@@ -35,6 +35,12 @@ If you're looking, these are where a bug would hurt most:
   reach the vault, since the model reads those files as content.
 - **`src/server/crypto.ts` and credential storage** — the encryption protecting
   stored account credentials.
+- **`src/routes/api/attachment.ts`** — the only route that serves vault bytes
+  without a session. A signed URL is its whole credential: the signature covers
+  the path *and* the expiry, and a valid signature still does not skip the path
+  guards. It is also where a vault file gets a content type, which is why
+  anything script-capable is served as an opaque download rather than by its
+  real type — this origin holds the admin session cookie.
 - **The claim window** (`src/server/claim.ts`) — a fresh instance accepts an
   admin account for 30 minutes after start, with no token. That is a deliberate
   trade, documented in the file; a way to *extend* or *reopen* that window

@@ -559,3 +559,127 @@ describe("RPC: anonymous traffic is bounded, signed-in traffic is not", () => {
     }
   }, 60_000);
 });
+
+// Signed attachment URLs. The route is unauthenticated by necessity — a browser
+// following the link carries no token — so the signature is the whole
+// credential, and it must not become an excuse to skip the vault guards.
+describe("attachments over signed URLs", () => {
+  let big: { url: string; path: string };
+
+  beforeAll(async () => {
+    // Over the 1MB inline cap, so read_attachment offers a link instead.
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const dir = path.join(server.dataDir, "vault", "Attachments");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "big.png"), Buffer.alloc(1_200_000, 7));
+    fs.writeFileSync(path.join(dir, "small.png"), Buffer.alloc(64, 3));
+    // A file a browser would execute if served by its own type.
+    // Over the inline cap on purpose: only an oversized file gets a URL, and
+    // the URL is what serves a content type.
+    fs.writeFileSync(
+      path.join(dir, "evil.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg"><!--' + "x".repeat(1_200_000) + '--></svg>',
+    );
+
+    const res = await mcp(
+      server,
+      "tools/call",
+      { name: "read_attachment", arguments: { path: "Attachments/big.png" } },
+      `Bearer ${apiKey}`,
+    );
+    const payload = JSON.parse(res.json.result.content[0].text);
+    big = { url: payload.url, path: payload.path };
+  }, 60_000);
+
+  it("offers a link instead of refusing an oversized attachment", () => {
+    expect(big.url).toContain("/api/attachment?");
+    expect(big.url).toContain("sig=");
+  });
+
+  it("serves the file to a caller with no credentials at all", async () => {
+    const res = await fetch(big.url);
+    expect(res.status).toBe(200);
+    expect(Number(res.headers.get("content-length"))).toBe(1_200_000);
+  });
+
+  it("serves it as a download that cannot be sniffed back", async () => {
+    const res = await fetch(big.url);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment;/);
+    expect(res.headers.get("cache-control")).toContain("no-store");
+    await res.arrayBuffer();
+  });
+
+  it("refuses a signature that has been edited", async () => {
+    const u = new URL(big.url);
+    const sig = u.searchParams.get("sig")!;
+    u.searchParams.set("sig", (sig[0] === "a" ? "b" : "a") + sig.slice(1));
+    expect((await fetch(u)).status).toBe(403);
+  });
+
+  it("refuses a swapped path under a valid signature", async () => {
+    const u = new URL(big.url);
+    u.searchParams.set("path", "Attachments/small.png");
+    expect((await fetch(u)).status).toBe(403);
+  });
+
+  it("refuses an extended expiry", async () => {
+    const u = new URL(big.url);
+    u.searchParams.set("exp", String(Number(u.searchParams.get("exp")) + 86_400_000));
+    expect((await fetch(u)).status).toBe(403);
+  });
+
+  it("refuses the route with no signature at all", async () => {
+    const res = await fetch(`${server.url}/api/attachment?path=Attachments/small.png`);
+    expect(res.status).toBe(403);
+  });
+
+  it("never mints a link for a path that escapes the vault", async () => {
+    for (const bad of ["../app.sqlite", "../../etc/passwd", ".obsidian/daily-notes.json"]) {
+      const res = await mcp(
+        server,
+        "tools/call",
+        { name: "read_attachment", arguments: { path: bad } },
+        `Bearer ${apiKey}`,
+      );
+      const text = res.json.result.content[0].text as string;
+      expect(res.json.result.isError, `${bad} must be refused`).toBe(true);
+      expect(text).not.toContain("/api/attachment");
+    }
+  });
+
+  it("serves a script-capable file as an opaque download", async () => {
+    // An .svg rendered as image/svg+xml runs script on the origin holding the
+    // admin session cookie, so the route must refuse to name that type.
+    const res = await mcp(
+      server,
+      "tools/call",
+      { name: "read_attachment", arguments: { path: "Attachments/evil.svg" } },
+      `Bearer ${apiKey}`,
+    );
+    const payload = JSON.parse(res.json.result.content[0].text);
+    expect(payload.mimeType, "the vault still knows what it is").toBe("image/svg+xml");
+
+    const served = await fetch(payload.url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("application/octet-stream");
+    expect(served.headers.get("content-disposition")).toMatch(/^attachment;/);
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+    await served.arrayBuffer();
+  });
+
+  it("refuses the guards' own targets even through a real signature", async () => {
+    // The signature is a credential, not permission to skip the guards. A
+    // hand-signed traversal is still resolved through the same vault checks.
+    const forged = await fetch(
+      `${server.url}/api/attachment?${new URLSearchParams({
+        path: "../app.sqlite",
+        exp: String(Date.now() + 60_000),
+        sig: "0".repeat(64),
+      })}`,
+    );
+    // Rejected at the signature, before the path is even considered.
+    expect(forged.status).toBe(403);
+  });
+});

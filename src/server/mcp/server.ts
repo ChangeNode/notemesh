@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getSetting } from "../db";
 import { withBoundary, boundaryToken, boundaryNote, fence } from "./boundary";
+import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
 import { reindexPath } from "../vault/indexer";
@@ -18,6 +19,7 @@ import {
   listNotes,
   listFolders,
   listAttachments,
+  attachmentMeta,
 } from "../vault/notes";
 import { readProperties, setProperty, removeProperty, listVaultProperties } from "../vault/frontmatter";
 import { dailyNotePath, dailyRead, dailyAppend, dailyPrepend } from "../vault/daily";
@@ -187,10 +189,30 @@ export function createMcpServer(access: McpAccess): McpServer {
       title: "Read attachment",
       description:
         "Read a binary vault file (image, PDF, …) as base64; images come back as viewable image content. " +
-        "Limited to 1 MB — larger files are reported with their size instead of returned.",
+        "Files over 1 MB are not inlined — the result carries a short-lived download URL instead, " +
+        "for handing to the user. That URL is not fetched for you, so its contents have not been seen.",
       inputSchema: { path: z.string().describe("Vault-relative attachment path, e.g. 'Attachments/Diagram.png'") },
     },
     safe(({ path }: { path: string }) => {
+      // Too big to inline: hand back a signed link instead of refusing. Worth
+      // saying in the payload that this is retrieval and not vision — clients
+      // do not fetch URLs out of tool results, so a model cannot see the image
+      // through this and should not claim to have looked.
+      const meta = attachmentMeta(path);
+      if (meta.tooLarge) {
+        const { url, expiresAt } = signAttachmentUrl(meta.path);
+        return json({
+          path: meta.path,
+          mimeType: meta.mimeType,
+          bytes: meta.bytes,
+          tooLargeToInline: true,
+          url,
+          expiresAt: new Date(expiresAt).toISOString(),
+          note:
+            "Too large to return inline. The URL is a direct download, valid for 15 minutes — " +
+            "give it to the user. It is not fetched automatically, so its contents have not been seen.",
+        });
+      }
       const a = readAttachment(path);
       if (a.isImage) {
         return {

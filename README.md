@@ -309,7 +309,7 @@ against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 | List results | 100 default, 500 max | `list_notes`, `list_folders`, `list_tags`, `notes_by_tag`, `list_tasks`, `list_link_issues` |
 | Search results | 20 default, 100 max | `search_vault` |
 | Note read window | 2,000 lines or 100 KB, whichever first | `read_note`, `daily_note` read, `random_note` |
-| Attachment read | 1 MB | `read_attachment` |
+| Attachment inlined | 1 MB | `read_attachment` — larger files come back as a 15-minute signed download URL |
 | File read (internal) | 10 MB | any text read; larger files are skipped by the indexer too |
 | Request body | 4 MB | `/api/mcp` — the ceiling on a single `create_note`/`update_note` |
 
@@ -319,7 +319,10 @@ so a long note is paged with `offset` rather than dumped in one response — a
 
 Binary files are refused by the text read path (detected by content, not just
 extension) and served by `read_attachment`, which returns images as viewable
-image content and refuses anything over 1 MB with its size. Reading a JPEG as
+image content. Anything over 1 MB is not inlined; the result carries a
+short-lived signed URL instead, which is a direct download for you rather than
+something the model can see — MCP clients do not fetch links out of tool
+results. Reading a JPEG as
 text previously produced a 12 MB response of replacement characters.
 
 ## Security model

@@ -128,13 +128,26 @@ function resolveByFilename(requested: string): string {
   );
 }
 
-export function readAttachment(notePath: string): {
+export interface AttachmentMeta {
+  /** Absolute path, already through every vault guard. */
+  abs: string;
   path: string;
   mimeType: string;
   bytes: number;
   isImage: boolean;
-  base64: string;
-} {
+  /** Over the inline cap, so it has to be fetched rather than returned. */
+  tooLarge: boolean;
+}
+
+/**
+ * Locate an attachment and describe it, without reading it.
+ *
+ * Split out from readAttachment so an oversized file can be *offered* — as a
+ * signed URL — rather than refused. Every guard that mattered still runs here:
+ * this is the only place the path is resolved, and the signed-URL route calls
+ * it too rather than trusting a path that arrived with a valid signature.
+ */
+export function attachmentMeta(notePath: string): AttachmentMeta {
   let abs = resolveNotePath(notePath, { allowMissingExt: true });
   if (!fs.existsSync(abs)) abs = resolveByFilename(notePath);
   const st = fs.lstatSync(abs);
@@ -148,22 +161,41 @@ export function readAttachment(notePath: string): {
       `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
     );
   }
-  // The pointer is small, so this fires well before the size cap below.
+  // The pointer is small, so this fires well before the size cap.
   if (isLfsPointer(abs)) throw lfsPointerError();
-  if (st.size > MAX_ATTACHMENT_BYTES) {
-    throw new VaultPathError(
-      `Attachment is ${formatBytes(st.size)}; the limit for inline reads is ` +
-        `${formatBytes(MAX_ATTACHMENT_BYTES)}. It exists in the vault but is too large to return.`,
-    );
-  }
+
   const ext = path.extname(abs).slice(1).toLowerCase();
   const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
   return {
+    abs,
     path: toVaultRelative(abs),
     mimeType,
     bytes: st.size,
     isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
-    base64: fs.readFileSync(abs).toString("base64"),
+    tooLarge: st.size > MAX_ATTACHMENT_BYTES,
+  };
+}
+
+export function readAttachment(notePath: string): {
+  path: string;
+  mimeType: string;
+  bytes: number;
+  isImage: boolean;
+  base64: string;
+} {
+  const meta = attachmentMeta(notePath);
+  if (meta.tooLarge) {
+    throw new VaultPathError(
+      `Attachment is ${formatBytes(meta.bytes)}; the limit for inline reads is ` +
+        `${formatBytes(MAX_ATTACHMENT_BYTES)}. It exists in the vault but is too large to return.`,
+    );
+  }
+  return {
+    path: meta.path,
+    mimeType: meta.mimeType,
+    bytes: meta.bytes,
+    isImage: meta.isImage,
+    base64: fs.readFileSync(meta.abs).toString("base64"),
   };
 }
 

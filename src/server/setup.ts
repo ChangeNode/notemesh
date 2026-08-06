@@ -8,6 +8,7 @@ import {
   obListRemoteVaults,
   obIsAuthenticated,
   obSyncSetup,
+  obSyncConfigs,
   obSyncStatus,
   looksLikeMfaRequired,
   looksLikeAuthFailure,
@@ -296,6 +297,27 @@ export async function setupConfigureVault(
     return { ok: false, message: lastLines(res.combined) || "sync-setup failed." };
   }
   if (encryptionPassword) storeVaultPassword(encryptionPassword);
+
+  // Ask for the vault's own core-plugin settings, which is where Obsidian keeps
+  // daily-notes.json. Config sync is off by default, so without this the vault
+  // arrives with no .obsidian folder at all and the daily_note tool falls back
+  // to YYYY-MM-DD at the vault root — quietly building a second set of dailies
+  // beside the real ones for anyone who keeps them in a folder.
+  //
+  // Best effort on purpose. The vault is linked and usable either way, and
+  // failing setup over a convenience would be the wrong trade; the Settings tab
+  // can still set the folder by hand. Reported into the sync log so the reason
+  // is visible if the daily path later looks wrong.
+  const configs = await obSyncConfigs(["core-plugin-data"]);
+  if (configs.ok) {
+    syncBackend().note("[setup] Syncing your vault's core plugin settings (daily notes, etc).");
+  } else {
+    syncBackend().note(
+      "[setup] Could not enable settings sync — set the daily note folder on the Settings tab if it looks wrong.",
+      "warn",
+    );
+  }
+
   setSetting("vault_configured", "true");
   // The picker passes the vault id; sync-status --json knows the display name.
   let vaultName = vault;

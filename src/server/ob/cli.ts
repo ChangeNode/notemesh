@@ -180,6 +180,48 @@ export async function obSyncSetup(vault: string, encryptionPassword?: string): P
   return runOb(args, { timeoutMs: 120_000, stdinInput, redactSecrets: [encryptionPassword] });
 }
 
+/**
+ * Config categories `ob sync-config --configs` understands, and what each
+ * covers, read from the CLI's own file-to-category mapping rather than guessed.
+ *
+ * Only settings files are involved — `workspace.json` is excluded by the CLI
+ * itself, so another device's open tabs never arrive here.
+ */
+export const OB_CONFIG_CATEGORIES = {
+  app: "app.json, types.json",
+  appearance: "appearance.json",
+  "appearance-data": "themes and CSS snippets",
+  hotkey: "hotkeys.json",
+  "core-plugin": "core-plugins.json (which core plugins are on)",
+  // Any other top-level .json in the config folder, which is where the core
+  // plugins keep their settings — daily-notes.json among them.
+  "core-plugin-data": "core plugin settings, including daily-notes.json",
+  "community-plugin": "community-plugins.json",
+  "community-plugin-data": "community plugin settings",
+} as const;
+
+export type ObConfigCategory = keyof typeof OB_CONFIG_CATEGORIES;
+
+/**
+ * Ask Obsidian Sync to send the vault's own configuration files.
+ *
+ * Off by default, which is why a synced vault arrives with no `.obsidian`
+ * folder and why the daily-note folder had to be typed in by hand: the
+ * resolver looks for `.obsidian/daily-notes.json` and never found one.
+ *
+ * The files land on disk and nothing else changes. Every dot-segmented path is
+ * excluded from the index, from the file watcher, and from MCP path resolution,
+ * so the config folder is not reachable as a note, an attachment, or a search
+ * hit — the daily-note resolver reads its one file directly.
+ */
+export async function obSyncConfigs(categories: ObConfigCategory[]): Promise<ObResult> {
+  for (const c of categories) assertSafeArg(c, "Config category");
+  return runOb(
+    ["sync-config", "--path", env.vaultDir, "--configs", categories.join(",")],
+    { timeoutMs: 60_000 },
+  );
+}
+
 export async function obSyncStatus(): Promise<ObResult> {
   return runOb(["sync-status", "--path", env.vaultDir, "--json"], { timeoutMs: 30_000 });
 }

@@ -37,7 +37,7 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 | --- | --- |
 | Files | `read_note`, `list_notes`, `list_folders`, `create_note`, `update_note`, `append_to_note`, `prepend_to_note`, `move_note`, `delete_note`* |
 | Attachments | `list_attachments`, `read_attachment` (images, PDFs and other non-markdown files) |
-| Daily notes | `daily_note` (read / append / prepend / path, honors your vault's daily-note settings) |
+| Daily notes | `daily_note` (read / append / prepend / path) — the folder and filename format come from your vault's own Daily Notes settings* |
 | Search | `search_vault` (full-text over titles, headings, and bodies) |
 | Properties | `read_properties`, `set_property`, `remove_property` |
 | Tasks | `list_tasks` (all / todo / daily), `toggle_task` |
@@ -47,6 +47,15 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 \* `delete_note` is enabled by default, and can be turned off on the **Settings**
 tab. Deletions are recoverable: Obsidian Sync keeps version history, and a
 git-backed vault keeps the file in the previous commit.
+
+\* Obsidian Sync doesn't send the `.obsidian` config folder unless asked, so
+linking a vault also runs `ob sync-config --configs core-plugin-data`, which
+brings over `daily-notes.json` — the file `daily_note` reads for your folder and
+filename format. Without it the tool would fall back to `YYYY-MM-DD` at the vault
+root and quietly build a second set of dailies beside your real ones. Nothing to
+configure here: change it in Obsidian and it follows on the next sync. A vault
+linked before this existed, or a git repo without `.obsidian` committed, gets
+the Obsidian defaults; the **Settings** tab says which of the two you have.
 
 The **Tools** tab in the admin UI lists the same tools with their full
 descriptions and parameters. That page asks the running server over the
@@ -110,7 +119,7 @@ or as a commit pushed to your git remote.
    | **Tools** | Every tool your clients can call, read from the running server |
    | **Status** | Sync health, vault stats, live log tail, connected OAuth clients |
    | **Keys** | API keys for clients that can't complete an OAuth sign-in |
-   | **Settings** | The `delete_note` toggle, timezone, daily-note folder/format, and where logs are written |
+   | **Settings** | The `delete_note` toggle, timezone, and where logs are written |
    | **Security** | Live posture of this instance — see [Security model](#security-model) |
 
 ### Sizing the volume, and what happens if it fills

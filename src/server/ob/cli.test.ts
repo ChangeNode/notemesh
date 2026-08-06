@@ -295,3 +295,48 @@ describe("detecting an unlinked vault", () => {
     }
   });
 });
+
+// Settings sync. The category name is the whole point of the call — the wrong
+// one silently syncs nothing useful, and the vault then falls back to
+// Obsidian's default daily-note location with nothing reporting why.
+describe("obSyncConfigs", () => {
+  /** A stand-in `ob` that records the arguments it was called with. */
+  function recordingOb(): string {
+    const argsFile = path.join(dir, "args.txt");
+    const script = path.join(dir, "fake-ob");
+    fs.writeFileSync(script, `#!/bin/sh\nprintf '%s\\n' "$@" > ${argsFile}\nexit 0\n`);
+    fs.chmodSync(script, 0o755);
+    process.env.OB_BIN = script;
+    return argsFile;
+  }
+
+  it("asks sync-config for the named categories against the vault path", async () => {
+    const argsFile = recordingOb();
+    const { obSyncConfigs } = await import("./cli");
+    const res = await obSyncConfigs(["core-plugin-data"]);
+    expect(res.ok).toBe(true);
+
+    const args = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+    expect(args[0]).toBe("sync-config");
+    expect(args).toContain("--configs");
+    expect(args[args.indexOf("--configs") + 1]).toBe("core-plugin-data");
+    expect(args).toContain("--path");
+  });
+
+  it("passes several categories as one comma-separated value", async () => {
+    const argsFile = recordingOb();
+    const { obSyncConfigs } = await import("./cli");
+    await obSyncConfigs(["core-plugin-data", "appearance"]);
+    const args = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+    // One argument, not two — the CLI parses the list itself.
+    expect(args[args.indexOf("--configs") + 1]).toBe("core-plugin-data,appearance");
+  });
+
+  it("names daily-notes.json in the category the CLI actually files it under", async () => {
+    // Read from obsidian-headless's own file-to-category mapping: any
+    // top-level .json in the config folder that is not one of the specifically
+    // named files is core-plugin-data, and daily-notes.json is one of those.
+    const { OB_CONFIG_CATEGORIES } = await import("./cli");
+    expect(OB_CONFIG_CATEGORIES["core-plugin-data"]).toMatch(/daily-notes\.json/);
+  });
+});

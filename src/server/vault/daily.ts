@@ -11,30 +11,65 @@ interface DailyConfig {
   template?: string;
 }
 
-// Resolution order: admin-configured settings (the ob daemon doesn't sync the
-// .obsidian config folder by default, so this is the reliable path), then the
-// vault's own daily-notes.json if present, then Obsidian's default of
-// YYYY-MM-DD at the vault root.
-function dailyConfig(): DailyConfig {
-  const folderSetting = getSetting("daily_folder");
-  const formatSetting = getSetting("daily_format");
-  if (folderSetting !== undefined || formatSetting) {
-    return {
-      folder: folderSetting ?? "",
-      format: formatSetting || "YYYY-MM-DD",
-    };
-  }
+// Obsidian Sync does not send the .obsidian folder unless asked, so a synced
+// vault used to arrive without one and every instance fell back to the default
+// — which is why this once had a manual override beside it. Setup asks for the
+// core-plugin-data category now (see obSyncConfigs), so the vault brings its
+// real daily note folder and format with it.
+export const DEFAULT_DAILY_FORMAT = "YYYY-MM-DD";
+
+/** Where a resolved value came from, so the UI can say. */
+export type DailySource = "vault" | "default";
+
+export interface DailyResolution extends DailyConfig {
+  folderSource: DailySource;
+  formatSource: DailySource;
+  /** Whether the vault's own daily-notes.json was found and parsed. */
+  vaultConfigFound: boolean;
+}
+
+// The vault's own Daily Notes settings, if Obsidian Sync sent them.
+function vaultDailyConfig(): { folder?: string; format?: string; template?: string } | null {
   try {
     const raw = fs.readFileSync(path.join(env.vaultDir, ".obsidian", "daily-notes.json"), "utf8");
     const cfg = JSON.parse(raw);
     return {
-      folder: typeof cfg.folder === "string" ? cfg.folder : "",
-      format: typeof cfg.format === "string" && cfg.format ? cfg.format : "YYYY-MM-DD",
+      folder: typeof cfg.folder === "string" ? cfg.folder : undefined,
+      format: typeof cfg.format === "string" && cfg.format ? cfg.format : undefined,
       template: typeof cfg.template === "string" ? cfg.template : undefined,
     };
   } catch {
-    return { folder: "", format: "YYYY-MM-DD" };
+    // Absent, unreadable or not JSON — all mean "no vault config to use".
+    return null;
   }
+}
+
+/**
+ * Where the daily note goes: the vault's own Daily Notes settings, or
+ * Obsidian's defaults when the vault has none.
+ *
+ * There is deliberately no override here. There used to be a folder and format
+ * pair on the Settings tab, which existed only because the config folder was
+ * never synced — the resolver looked for daily-notes.json and never found one,
+ * so the answer had to be typed in. Setup asks for those files now, so the
+ * vault carries its own answer and a second place to state it could only ever
+ * disagree with the first.
+ */
+export function resolveDailyConfig(): DailyResolution {
+  const vault = vaultDailyConfig();
+  return {
+    folder: vault?.folder ?? "",
+    format: vault?.format || DEFAULT_DAILY_FORMAT,
+    template: vault?.template,
+    folderSource: vault?.folder !== undefined ? "vault" : "default",
+    formatSource: vault?.format ? "vault" : "default",
+    vaultConfigFound: vault !== null,
+  };
+}
+
+function dailyConfig(): DailyConfig {
+  const r = resolveDailyConfig();
+  return { folder: r.folder, format: r.format, template: r.template };
 }
 
 // "Today" has to be resolved in the user's timezone, not the server's. A

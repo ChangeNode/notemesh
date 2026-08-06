@@ -142,47 +142,35 @@ export default function Settings() {
                 whatever this browser is set to.
               </small>
               <hr />
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const form = e.currentTarget as HTMLFormElement;
-                  const folder = (form.elements.namedItem("daily-folder") as HTMLInputElement).value;
-                  const format = (form.elements.namedItem("daily-format") as HTMLInputElement).value;
-                  await api.setDailyConfig(folder, format);
-                  refetch();
-                }}
-              >
-                <div class="grid">
-                  <div>
-                    <label for="daily-folder">Daily notes folder</label>
-                    <input
-                      id="daily-folder"
-                      name="daily-folder"
-                      type="text"
-                      placeholder="e.g. Daily"
-                      value={d.dailyFolder}
-                    />
-                  </div>
-                  <div>
-                    <label for="daily-format">Daily note filename format</label>
-                    <input id="daily-format" name="daily-format" type="text" value={d.dailyFormat} />
-                  </div>
-                </div>
-                <small class="muted">
-                  Used by the <code>daily_note</code> tool. The sync daemon doesn't sync your vault's{" "}
-                  <code>.obsidian</code> settings, so set this to match your Daily Notes plugin
-                  config (format uses{" "}
-                  <a
-                    href="https://momentjscom.readthedocs.io/en/latest/moment/04-displaying/01-format/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    moment tokens
-                  </a>{" "}
-                  like YYYY-MM-DD).
-                </small>
-                <button type="submit">Save Daily Note Settings</button>
-              </form>
+              {/* Reported, not editable. The daily note location is a property
+                  of the vault, and the vault says what it is — a second place
+                  to set it here could only ever disagree with Obsidian. */}
+              <p>
+                <b>Daily notes</b> go to{" "}
+                <code>
+                  {d.daily.folder ? `${d.daily.folder}/` : ""}
+                  {d.daily.format}.md
+                </code>
+              </p>
+              <small class="muted">
+                <Show
+                  when={d.daily.vaultConfigFound}
+                  fallback={
+                    <>
+                      Read from your vault's Daily Notes plugin settings — except this vault hasn't
+                      sent <code>.obsidian/daily-notes.json</code>, so the{" "}
+                      <code>daily_note</code> tool is using Obsidian's defaults. Settings sync is
+                      turned on when a vault is linked; a vault linked before that, or a git repo
+                      without its <code>.obsidian</code> folder committed, won't have it. Re-linking
+                      from the Setup tab turns it on.
+                    </>
+                  }
+                >
+                  Read from your vault's own Daily Notes plugin settings (
+                  <code>.obsidian/daily-notes.json</code>), so this follows whatever Obsidian is set
+                  to. Change it there and it changes here on the next sync.
+                </Show>
+              </small>
             </article>
 
             <article>

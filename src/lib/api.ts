@@ -87,8 +87,6 @@ export const api = {
   setTimezone: ((tz: string) => call("setTimezone", [tz])) as P<typeof Admin.setTimezone>,
   setDeleteEnabled: ((on: boolean) =>
     call("setDeleteEnabled", [on])) as P<typeof Admin.setDeleteEnabled>,
-  setDailyConfig: ((folder: string, format: string) =>
-    call("setDailyConfig", [folder, format])) as P<typeof Admin.setDailyConfig>,
 
   syncNow: (() => call("syncNow")) as P<typeof Admin.syncNow>,
   stopSync: (() => call("stopSync")) as P<typeof Admin.stopSync>,

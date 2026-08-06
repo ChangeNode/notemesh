@@ -58,7 +58,6 @@ const PROTECTED_RPC = [
   "setGitConflictStrategy",
   "setTimezone",
   "setDeleteEnabled",
-  "setDailyConfig",
   "relinkVault",
   "syncNow",
   "stopSync",

@@ -5,12 +5,12 @@ import { auth, audit, MAX_OAUTH_CLIENTS } from "./auth";
 import { authFailureSnapshot } from "./mcp/ratelimit";
 import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
-import { db, getSetting, setSetting } from "./db";
+import { db, deleteSetting, getSetting, setSetting } from "./db";
 import { env, detectOriginMismatch } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
-import { configuredTimeZone, isValidTimeZone } from "./vault/daily";
+import { configuredTimeZone, isValidTimeZone, resolveDailyConfig } from "./vault/daily";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
 import { obLogin, looksLikeMfaRequired } from "./ob/cli";
@@ -144,8 +144,10 @@ export async function getSettingsPage() {
     // Absent means on — see the registration in mcp/server.ts. Read the same
     // way here so the switch reflects what the tool surface actually does.
     deleteEnabled: getSetting("delete_enabled") !== "false",
-    dailyFolder: getSetting("daily_folder") ?? "",
-    dailyFormat: getSetting("daily_format") ?? "YYYY-MM-DD",
+    // Reported, not configured: the daily note path comes from the vault's own
+    // Daily Notes settings. Shown so the operator can see what it resolved to
+    // and whether the vault actually sent its config.
+    daily: resolveDailyConfig(),
     timezone: configuredTimeZone(),
     syncLogs: syncLogFiles(),
     logTailLines: MAX_LOG_LINES,
@@ -283,14 +285,6 @@ export async function setDeleteEnabled(enabled: boolean) {
 // Where daily notes live. Needed because the ob daemon doesn't sync the
 // .obsidian config folder, so the vault's own daily-notes settings aren't
 // visible on the server.
-export async function setDailyConfig(folder: string, format: string) {
-  "use server";
-  await requireAdmin();
-  setSetting("daily_folder", folder.trim().replace(/^\/+|\/+$/g, ""));
-  setSetting("daily_format", format.trim() || "YYYY-MM-DD");
-  return { ok: true };
-}
-
 export async function syncNow() {
   "use server";
   await requireAdmin();

@@ -120,6 +120,12 @@ export function createMcpServer(access: McpAccess): McpServer {
   });
 
   const writable = access.write;
+  // Nothing is registered for a credential that cannot even read. serveMcp
+  // refuses those before reaching this, so this is the second lock rather than
+  // the first — but the first lock is exactly what was missing: `read` was
+  // computed from the token's scopes and then never consulted here, so every
+  // read tool below registered for any credential at all.
+  if (!access.read) return server;
 
   // ---- Files ----
   server.registerTool(

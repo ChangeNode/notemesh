@@ -35,8 +35,8 @@ export default function Tools() {
                     <h4 class="tool-group">{write ? "Change the vault" : "Read the vault"}</h4>
                     <p class="muted">
                       {write
-                        ? "Available to clients with write access. OAuth clients get it on approval; API keys get it unless created read-only."
-                        : "Available to every connected client."}
+                        ? "Offered only to a credential carrying vault:write — an OAuth client you approved for it, or any API key. API keys always carry both scopes; there is no read-only key."
+                        : "Offered to any credential carrying vault:read. A credential with neither scope is refused outright."}
                     </p>
                     <For each={d.tools.filter((t) => t.write === write)}>
                       {(t) => (

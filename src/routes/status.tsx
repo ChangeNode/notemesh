@@ -177,7 +177,7 @@ export default function Status() {
                   aria-busy={running() === "restart"}
                   onClick={() => run("restart", api.restartSync)}
                 >
-                  {running() === "restart" ? "Restarting…" : "Restart Daemon"}
+                  {running() === "restart" ? "Restarting…" : "Restart Sync"}
                 </button>
                 <button
                   class="secondary"

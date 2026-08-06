@@ -305,7 +305,7 @@ export async function stopSync() {
   audit("sync.stop", { user: session.user.id });
   const sup = syncBackend();
   sup.stop();
-  sup.note("[admin] Sync stopped by the operator. Use Restart Daemon to resume.");
+  sup.note("[admin] Sync stopped by the operator. Use Restart Sync to resume.");
   return { ok: true };
 }
 

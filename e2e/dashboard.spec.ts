@@ -342,6 +342,28 @@ test.describe("branding", () => {
     expect(errors).toEqual([]);
   });
 
+  test("offers a route to update notifications, without loading anything", async ({ page }) => {
+    // The server cannot mail its operator, so this link is the only standing
+    // way they hear about a security fix. It is a link on purpose: an embedded
+    // signup form would put a third-party script in the origin that holds the
+    // admin session.
+    const requests: string[] = [];
+    page.on("request", (r) => {
+      const host = new URL(r.url()).host;
+      if (!host.startsWith("127.0.0.1") && !host.startsWith("localhost")) requests.push(r.url());
+    });
+
+    await signIn(page);
+    const link = page.getByRole("link", { name: "Update notifications" });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "https://changenode.com/notemesh-thanks/");
+    await expect(link).toHaveAttribute("rel", /noopener/);
+
+    // Nothing off-origin is fetched merely by rendering the page — no CDN
+    // script, no tracker, nothing until someone clicks.
+    expect(requests, "the admin UI must not contact anything off-origin").toEqual([]);
+  });
+
   test("the footer credits ChangeNode, signed in or not", async ({ page }) => {
     // The footer is on the signed-out pages too, so check both — they render
     // through different route trees.

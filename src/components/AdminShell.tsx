@@ -14,6 +14,11 @@ const TABS = [
 
 const REPO_URL = "https://github.com/ChangeNode/notemesh";
 const VENDOR_URL = "https://changenode.com";
+// The server cannot mail its own operator, so this is the only standing route
+// for "a security fix shipped". A plain link: no third-party script runs in the
+// origin holding the admin session, and nothing is contacted until it is
+// clicked.
+const UPDATES_URL = "https://changenode.com/notemesh-thanks/";
 
 // Sits at the bottom of every page, signed in or not, so the source is always
 // one click away from whatever the operator is looking at.
@@ -24,6 +29,12 @@ export function RepoFooter() {
       <p class="muted repo-footer">
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
           notemesh on GitHub
+        </a>
+        <span class="sep" aria-hidden="true">
+          ·
+        </span>
+        <a href={UPDATES_URL} target="_blank" rel="noopener noreferrer">
+          Update notifications
         </a>
         <span class="sep" aria-hidden="true">
           ·

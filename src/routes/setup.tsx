@@ -111,6 +111,48 @@ export default function Setup() {
                   <b>cannot be shrunk</b>, and Hobby caps at 5&nbsp;GB.
                 </p>
               </article>
+
+              {/* The one thing this server genuinely cannot do for its
+                  operator. It has no mail transport and no way to reach them,
+                  so a security fix has no route to the people running it —
+                  which matters more here than for most software, because this
+                  holds their notes.
+
+                  A link, not an embedded form. An embed means a third-party
+                  script executing in the origin that holds the admin session,
+                  from a floating version range, loading on every page view
+                  whether or not anyone wants a newsletter. A link contacts
+                  nothing until someone chooses to. */}
+              <article>
+                <header>
+                  <strong>How you'll hear about security fixes</strong>
+                </header>
+                <p class="muted">
+                  This server has no way to contact you. It sends no mail, reports nothing back,
+                  and does not check for updates — so if a security fix ships, nothing here will
+                  tell you.
+                </p>
+                <p>
+                  <a
+                    href="https://changenode.com/notemesh-thanks/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Get notified when notemesh is updated
+                  </a>{" "}
+                  <span class="muted">
+                    — a note from the author when something ships, security fixes included. Watching{" "}
+                    <a
+                      href="https://github.com/ChangeNode/notemesh/releases"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      releases on GitHub
+                    </a>{" "}
+                    does the same job if you would rather not hand over an address.
+                  </span>
+                </p>
+              </article>
             </Match>
           </Switch>
         )}

@@ -13,15 +13,36 @@ not read this file or require any particular format — it just recommends keepi
 one — so the format here is [Keep a Changelog](https://keepachangelog.com), and
 versions follow [semantic versioning](https://semver.org).
 
-Two conventions worth knowing:
+### Every release opens with what it costs you
 
-- **Action required** marks anything that needs you to do something after taking
-  the update. Applying an update never edits your Railway variables or your
-  volume, so a change that depends on either is called out rather than left as a
-  bullet to spot.
-- **Breaking** marks a change to the MCP tool surface — tool names, arguments,
-  or the shape of what they return. Clients cache the tool list when they
-  connect, so a client may need reconnecting.
+Redeploying is almost always the whole job, so each entry starts with one line
+saying so, and you can stop reading there:
+
+> **Taking this update:** redeploy. Nothing else.
+
+That is the default because of how the server is built, not by luck. Your
+volume survives a deploy, so the vault and the database are untouched. The
+search index is derived from the vault and rebuilt from scratch on every boot,
+so changes to how notes are parsed or indexed apply on their own. Schema changes
+are additive and run themselves. And no update will ever add a required
+variable, because an update cannot set one for you.
+
+When something does need you, the line says that instead, and the detail
+follows:
+
+> **Taking this update:** ⚠️ **Action required** — see below.
+
+Two labels appear inside entries:
+
+- **Action required** — you have to do something after redeploying. Applying an
+  update never edits your Railway variables or your volume, so anything
+  depending on either is called out rather than left as a bullet to spot.
+- **Breaking** — a change to the MCP tool surface: tool names, arguments, or
+  the shape of what they return. Not work for you, but your *clients* cache the
+  tool list when they connect, so one may need reconnecting.
+
+If a release is quiet, that is the information. The intent is that the rare
+entry needing your attention cannot get lost among routine ones.
 
 ## Unreleased
 
@@ -29,7 +50,8 @@ Nothing yet.
 
 ## 1.0.0 — 2026-08-06
 
-First release.
+**Taking this update:** nothing to take — this is the first release. Deploying
+it is covered in the [README](README.md#deploy-on-railway).
 
 A self-hosted MCP server that joins your Obsidian vault as another sync client
 and exposes it to AI assistants. One deployment per person.

@@ -106,6 +106,24 @@ describe("the reported version", () => {
     expect(latest).toBe(pkg);
   });
 
+  it("opens every release with what taking it costs the deployer", async () => {
+    // The convention only works if it is never skipped: a deployer who learns
+    // the first line always answers "what do I have to do" stops reading the
+    // rest, and one release without it silently breaks that habit. Cheap to
+    // forget when writing an entry, so it is checked rather than remembered.
+    const { readFileSync } = await import("node:fs");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const sections = changelog.split(/^## /m).slice(1);
+    const releases = sections.filter((s) => /^\d+\.\d+\.\d+/.test(s));
+    expect(releases.length, "there is at least one released version").toBeGreaterThan(0);
+    for (const body of releases) {
+      const heading = body.split("\n")[0];
+      expect(body, `release "${heading}" must open with **Taking this update:**`).toContain(
+        "**Taking this update:**",
+      );
+    }
+  });
+
   it("counts the tools the changelog claims", async () => {
     // The release notes say how many tools there are; if that number is wrong
     // it is wrong in the one document people read before deploying.

@@ -658,13 +658,34 @@ function VaultStep(props: { onDone: () => void }) {
             </Show>
           )}
         </Show>
-        <label for="vault-password">Vault encryption password (only for end-to-end encrypted vaults)</label>
-        <input id="vault-password" type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
-        <small class="muted">
-          Leave this blank if your vault uses managed encryption (the default — no password was set
-          when the vault was created). Only end-to-end encrypted vaults have a password; if yours
-          does, it's stored encrypted on this server.
-        </small>
+        {/* Folded away because blank is right for most vaults: Obsidian Sync
+            defaults to managed encryption, and only a vault deliberately made
+            end-to-end encrypted has a password at all. Left in the open it read
+            as a required field, and the obvious thing to type into a password
+            box during an Obsidian sign-in flow is the Obsidian account password
+            — which is wrong here, fails opaquely, and would be a credential
+            entered somewhere it was never wanted. */}
+        <p class="muted">
+          Nothing else to set for most vaults: Obsidian Sync uses managed encryption unless you
+          chose otherwise when you created it.
+        </p>
+        <details>
+          <summary>My vault is end-to-end encrypted</summary>
+          <label for="vault-password">Vault encryption password</label>
+          <input
+            id="vault-password"
+            type="password"
+            autocomplete="off"
+            value={password()}
+            onInput={(e) => setPassword(e.currentTarget.value)}
+          />
+          <small class="muted">
+            Only for a vault you chose to end-to-end encrypt when you created it. This is{" "}
+            <b>not</b> your Obsidian account password — that was the previous step. Stored
+            encrypted on this server, because the sync client needs it on every reconnect.
+          </small>
+        </details>
+
         <Show when={error()}>
           <p class="error">{error()}</p>
         </Show>

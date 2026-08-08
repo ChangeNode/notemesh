@@ -48,7 +48,15 @@ let sessionCookies: Cookie[] | null = null;
  * testing. One real sign-in is made here and its session reused, so adding a
  * test no longer spends a request against that budget.
  */
-async function signIn(page: Page) {
+/**
+ * Put a session in the browser without navigating anywhere.
+ *
+ * Split out from signIn because the wizard tests land on /setup rather than the
+ * dashboard, and signIn waits for a URL pattern that only matches a trailing
+ * slash — so on an instance mid-setup it timed out, and the failure read as
+ * sign-in itself being broken.
+ */
+async function seedSession(page: Page) {
   if (!sessionCookies) {
     const ctx = await request.newContext({ baseURL: BASE_URL });
     const res = await ctx.post("/api/auth/sign-in/email", {
@@ -61,6 +69,10 @@ async function signIn(page: Page) {
     await ctx.dispose();
   }
   await page.context().addCookies(sessionCookies);
+}
+
+async function signIn(page: Page) {
+  await seedSession(page);
   await page.goto("/");
   await page.waitForURL("**/", { timeout: 15_000 });
 }
@@ -386,6 +398,66 @@ test.describe("branding", () => {
   });
 });
 
+test.describe("the vault step", () => {
+  /** Open the seeded instance's database. */
+  async function openDb() {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const Database = (await import("better-sqlite3")).default;
+    const state = JSON.parse(
+      fs.readFileSync(path.join(os.tmpdir(), "notemesh-e2e-state.json"), "utf8"),
+    ) as { dataDir: string };
+    return new Database(path.join(state.dataDir, "app.sqlite"));
+  }
+
+  test("keeps the encryption password folded away, and still submits it", async ({ page }) => {
+    // Blank is right for most vaults — Obsidian Sync defaults to managed
+    // encryption — and an open password box during an Obsidian sign-in flow
+    // invites the account password, which is the wrong secret entirely.
+    //
+    // Reached by clearing vault_configured on the shared instance. Restored in
+    // `finally` rather than by completing the step, so an assertion failure
+    // cannot strand every test that runs after this one.
+    const db = await openDb();
+    db.prepare("DELETE FROM settings WHERE key = 'vault_configured'").run();
+    db.close();
+
+    try {
+      await seedSession(page);
+      await page.goto("/setup");
+      await expect(page.getByText("Choose a vault")).toBeVisible({ timeout: 15_000 });
+
+      // The picker is the visible decision; the password is not.
+      await expect(page.locator("#vault-select")).toBeVisible();
+      const pw = page.locator("#vault-password");
+      await expect(pw).toBeHidden();
+
+      // It is in the DOM though, so its value still reaches the form.
+      await expect(pw).toHaveCount(1);
+
+      await page.getByText("My vault is end-to-end encrypted").click();
+      await expect(pw).toBeVisible();
+      await expect(pw).toHaveAttribute("type", "password");
+
+      // Closing it again does not lose what was typed.
+      await pw.fill("a-vault-password");
+      await page.getByText("My vault is end-to-end encrypted").click();
+      await expect(pw).toBeHidden();
+      await expect(pw).toHaveValue("a-vault-password");
+    } finally {
+      const restore = await openDb();
+      restore
+        .prepare(
+          "INSERT INTO settings (key,value) VALUES ('vault_configured','true') " +
+            "ON CONFLICT(key) DO UPDATE SET value='true'",
+        )
+        .run();
+      restore.close();
+    }
+  });
+});
+
 test.describe("the notifications step", () => {
   // The wizard's last step, and the only one that gates on an acknowledgement.
   // Driven against the shared server by clearing the setting that marks it done
@@ -405,7 +477,7 @@ test.describe("the notifications step", () => {
     db.prepare("DELETE FROM settings WHERE key = 'notifications_acknowledged'").run();
     db.close();
 
-    await signIn(page);
+    await seedSession(page);
     await page.goto("/setup");
 
     await expect(page.getByText("Security and Update Notifications")).toBeVisible();

@@ -38,6 +38,13 @@ case "$1" in
     while true; do sleep 1; done
     ;;
   sync-status) echo '{"vaultName":"E2E Vault","state":"synced"}' ;;
+  # Enough of the account-facing surface to drive the wizard's Obsidian path in
+  # a browser. Without sync-list-remote the vault step cannot render at all, so
+  # that half of setup had no browser coverage.
+  sync-list-remote) echo '{"vaults":[{"id":"v1","name":"E2E Vault","region":"us"}]}' ;;
+  login) echo "Logged in." ;;
+  sync-setup) echo "Sync configured." ;;
+  sync-config) echo "Configuration updated." ;;
   *) : ;;
 esac
 exit 0

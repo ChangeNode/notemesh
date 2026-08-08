@@ -487,12 +487,12 @@ test.describe("the notifications step", () => {
     const cont = page.getByRole("button", { name: "Continue" });
     await expect(cont).toBeDisabled();
 
-    // Both links are offered, and neither is loaded until clicked.
-    await expect(page.getByRole("link", { name: "Sign up for update notifications" })).toHaveAttribute(
-      "href",
-      "https://changenode.com/notemesh-thanks/",
-    );
-    await expect(page.getByRole("link", { name: "releases on GitHub" })).toBeVisible();
+    // The signup is a button to press, but still an anchor underneath — so it
+    // keeps a link's behaviour and loads nothing until it is clicked.
+    const signup = page.getByRole("button", { name: "Sign Up for Update Notifications" });
+    await expect(signup).toHaveAttribute("href", "https://changenode.com/notemesh-thanks/");
+    await expect(signup).toHaveAttribute("target", "_blank");
+    await expect(signup).toHaveAttribute("rel", /noopener/);
 
     await page.getByRole("checkbox").check();
     await expect(cont).toBeEnabled();

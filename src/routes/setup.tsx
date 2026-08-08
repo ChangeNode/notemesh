@@ -148,24 +148,26 @@ function NotificationsStep(props: { onDone: () => void }) {
         <strong>Security and Update Notifications</strong>
       </header>
       <p class="muted">
-        This server has no way to contact you. It sends no mail, reports nothing back, and does not
-        check for updates — so if a security fix ships, nothing here will tell you.
+        This server has no way to push a notification to you. It sends no mail, reports nothing
+        back, and does not check for updates — so if a security fix ships, nothing here will tell
+        you.
       </p>
+      {/* An anchor wearing Pico's button role rather than a <button> that calls
+          window.open: it is a navigation, so it should keep a link's behaviour —
+          middle-click, open in a new tab, copy the address — and it cannot be
+          eaten by a popup blocker. */}
       <p>
-        <a href="https://changenode.com/notemesh-thanks/" target="_blank" rel="noopener noreferrer">
-          Sign up for update notifications
-        </a>{" "}
-        <span class="muted">
-          — a note from the author when something ships, security fixes included. Watching{" "}
-          <a
-            href="https://github.com/ChangeNode/notemesh/releases"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            releases on GitHub
-          </a>{" "}
-          does the same job if you would rather not hand over an address.
-        </span>
+        <a
+          href="https://changenode.com/notemesh-thanks/"
+          target="_blank"
+          rel="noopener noreferrer"
+          role="button"
+        >
+          Sign Up for Update Notifications
+        </a>
+      </p>
+      <p class="muted">
+        You will get emails when there is a new update, security fixes, etc.
       </p>
       <label>
         <input
@@ -173,7 +175,7 @@ function NotificationsStep(props: { onDone: () => void }) {
           checked={understood()}
           onChange={(e) => setUnderstood(e.currentTarget.checked)}
         />
-        I get it - sign up for emails to get notifications
+        Got it - Sign up for emails to get notifications
       </label>
       <Show when={error()}>
         <p class="error">{error()}</p>

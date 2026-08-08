@@ -1,6 +1,6 @@
 {
-  "name": "notemesh",
-  "short_name": "notemesh",
+  "name": "NoteMesh",
+  "short_name": "NoteMesh",
   "description": "Your notes, available to your AI assistant.",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },

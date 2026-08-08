@@ -118,7 +118,11 @@ function safe<A extends unknown[], R>(fn: (...args: A) => R) {
 // reimplemented against the synced files (the desktop app isn't running here).
 export function createMcpServer(access: McpAccess): McpServer {
   const server = new McpServer({
+    // `name` is the identifier and stays lowercase — clients and configs may
+    // key on it, and changing it would be a rename of the thing rather than of
+    // its label. `title` is what a client shows a person.
     name: "notemesh",
+    title: "NoteMesh",
     // Reported to every client on connect, so it is the deployment's version
     // rather than a number that happens to live here. A test keeps it in step
     // with package.json.

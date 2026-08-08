@@ -1,4 +1,4 @@
-notemesh — a self-hosted MCP server that gives AI assistants access to your
+NoteMesh — a self-hosted MCP server that gives AI assistants access to your
 markdown notes, backed by Obsidian Sync or a git repository.
 
 Copyright (C) 2026 ChangeNode (Will Iverson) <https://changenode.com/>
@@ -15,6 +15,6 @@ PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License along
 with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-notemesh is dual-licensed: a commercial licence is available for anyone who
+NoteMesh is dual-licensed: a commercial licence is available for anyone who
 wants to offer it to other people as a hosted service without publishing their
 source. See COMMERCIAL-LICENSE.md.

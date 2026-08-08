@@ -121,6 +121,8 @@ export const api = {
   setupListVaults: (() => call("setupListVaults")) as P<typeof Setup.setupListVaults>,
   setupConfigureVault: ((vault: string, password?: string) =>
     call("setupConfigureVault", [vault, password])) as P<typeof Setup.setupConfigureVault>,
+  acknowledgeNotifications: (() =>
+    call("acknowledgeNotifications")) as P<typeof Setup.acknowledgeNotifications>,
 
   // ---- Admin password reset ----
   getResetState: (() => call("getResetState")) as P<typeof Reset.getResetState>,

@@ -364,6 +364,13 @@ test.describe("branding", () => {
     expect(requests, "the admin UI must not contact anything off-origin").toEqual([]);
   });
 
+  test("spells the product NoteMesh where a person reads it", async ({ page }) => {
+    await signIn(page);
+    await expect(page.locator("a.brand strong")).toHaveText("NoteMesh");
+    await expect(page).toHaveTitle("NoteMesh");
+    await expect(page.getByRole("link", { name: "NoteMesh on GitHub" })).toBeVisible();
+  });
+
   test("the footer credits ChangeNode, signed in or not", async ({ page }) => {
     // The footer is on the signed-out pages too, so check both — they render
     // through different route trees.
@@ -376,6 +383,61 @@ test.describe("branding", () => {
 
     await signIn(page);
     await expect(page.getByRole("link", { name: "ChangeNode", exact: true })).toBeVisible();
+  });
+});
+
+test.describe("the notifications step", () => {
+  // The wizard's last step, and the only one that gates on an acknowledgement.
+  // Driven against the shared server by clearing the setting that marks it done
+  // — completing the step writes it back, so finishing the test restores the
+  // instance for everything after it. Playwright runs one worker, so nothing
+  // interleaves with this.
+  test("gates Continue on the checkbox, then completes setup", async ({ page }) => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const Database = (await import("better-sqlite3")).default;
+
+    const state = JSON.parse(
+      fs.readFileSync(path.join(os.tmpdir(), "notemesh-e2e-state.json"), "utf8"),
+    ) as { dataDir: string };
+    const db = new Database(path.join(state.dataDir, "app.sqlite"));
+    db.prepare("DELETE FROM settings WHERE key = 'notifications_acknowledged'").run();
+    db.close();
+
+    await signIn(page);
+    await page.goto("/setup");
+
+    await expect(page.getByText("Security and Update Notifications")).toBeVisible();
+    // Last step of the wizard, not an extra screen after it.
+    await expect(page.getByText(/Step 6 of 6/)).toBeVisible();
+
+    const cont = page.getByRole("button", { name: "Continue" });
+    await expect(cont).toBeDisabled();
+
+    // Both links are offered, and neither is loaded until clicked.
+    await expect(page.getByRole("link", { name: "Sign up for update notifications" })).toHaveAttribute(
+      "href",
+      "https://changenode.com/notemesh-thanks/",
+    );
+    await expect(page.getByRole("link", { name: "releases on GitHub" })).toBeVisible();
+
+    await page.getByRole("checkbox").check();
+    await expect(cont).toBeEnabled();
+    await cont.click();
+
+    await expect(page.getByText("Setup complete")).toBeVisible({ timeout: 15_000 });
+    // The card moved out of the finish screen — it is a step now, not something
+    // to scroll past under a "Go to Dashboard" button.
+    await expect(page.getByText("Security and Update Notifications")).toHaveCount(0);
+  });
+
+  test("stays done once acknowledged", async ({ page }) => {
+    // The previous test wrote the setting by completing the step; revisiting
+    // must not ask again.
+    await signIn(page);
+    await page.goto("/setup");
+    await expect(page.getByText("Setup complete")).toBeVisible();
   });
 });
 

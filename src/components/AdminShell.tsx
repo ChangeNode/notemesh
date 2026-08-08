@@ -28,7 +28,7 @@ export function RepoFooter() {
       <hr />
       <p class="muted repo-footer">
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-          notemesh on GitHub
+          NoteMesh on GitHub
         </a>
         <span class="sep" aria-hidden="true">
           ·
@@ -68,11 +68,11 @@ export function AdminShell(props: { children: JSX.Element }) {
           <li>
             <a class="brand" href={REPO_URL} target="_blank" rel="noopener noreferrer">
               {/* alt="" deliberately: the wordmark beside it already says
-                  "notemesh", so describing the image would make a screen
+                  "NoteMesh", so describing the image would make a screen
                   reader announce the name twice. Width and height are set so
                   the row does not reflow when the SVG arrives. */}
               <img src="/favicon.svg" alt="" width="26" height="26" class="brand-mark" />
-              <strong>notemesh</strong>
+              <strong>NoteMesh</strong>
             </a>
           </li>
         </ul>

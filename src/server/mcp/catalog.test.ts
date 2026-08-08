@@ -88,6 +88,32 @@ describe("the tool catalogue", () => {
 // the version at the top of the changelog are three copies of one fact. They
 // drift silently — nothing fails when they disagree, and a client showing a
 // stale version is the kind of thing nobody notices for months.
+// The product is spelled NoteMesh where a person reads it and notemesh where a
+// machine keys on it. Those are different jobs and they drift toward each other
+// — someone tidies the "inconsistent" casing and renames an identifier, or adds
+// a display string in the identifier's spelling.
+describe("the name a client is told", () => {
+  it("advertises notemesh as the identifier and NoteMesh as the title", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { createMcpServer } = await import("./server");
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ read: true, write: true, label: "name-test" });
+    const client = new Client({ name: "test", version: "0" });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    const info = client.getServerVersion();
+    await client.close();
+    await server.close();
+
+    // `name` is what a config or a registry keys on, so it does not get
+    // capitalised for looks.
+    expect(info?.name).toBe("notemesh");
+    // `title` is what a client puts in front of a person.
+    expect((info as { title?: string } | undefined)?.title).toBe("NoteMesh");
+  });
+});
+
 describe("the reported version", () => {
   it("matches package.json and the changelog", async () => {
     const { readFileSync } = await import("node:fs");

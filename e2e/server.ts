@@ -121,6 +121,7 @@ export async function startSeeded(extraEnv: Record<string, string> = {}): Promis
     obsidian_logged_in: "true",
     vault_configured: "true",
     timezone: "UTC",
+    notifications_acknowledged: "true",
     vault_name: "E2E Vault",
   })) {
     set.run(k, v);

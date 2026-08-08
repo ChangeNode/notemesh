@@ -22,8 +22,8 @@ import type { SetupStage } from "~/server/setup";
 // can tick down rather than up.
 function stepsFor(backend: "obsidian" | "git" | null): SetupStage[] {
   return backend === "git"
-    ? ["admin", "backend", "git", "timezone"]
-    : ["admin", "backend", "obsidian-login", "vault", "timezone"];
+    ? ["admin", "backend", "git", "timezone", "notifications"]
+    : ["admin", "backend", "obsidian-login", "vault", "timezone", "notifications"];
 }
 
 export default function Setup() {
@@ -37,7 +37,7 @@ export default function Setup() {
   return (
     <main class="container">
       <hgroup>
-        <h2>Set up notemesh</h2>
+        <h2>Set up NoteMesh</h2>
         <Show when={stage() && stage() !== "done"}>
           <p class="muted">
             Step {stepNumber()} of {steps().length}
@@ -67,6 +67,9 @@ export default function Setup() {
             </Match>
             <Match when={s === "timezone"}>
               <TimezoneStep onDone={refetch} />
+            </Match>
+            <Match when={s === "notifications"}>
+              <NotificationsStep onDone={refetch} />
             </Match>
             <Match when={s === "done"}>
               <article>
@@ -112,53 +115,88 @@ export default function Setup() {
                 </p>
               </article>
 
-              {/* The one thing this server genuinely cannot do for its
-                  operator. It has no mail transport and no way to reach them,
-                  so a security fix has no route to the people running it —
-                  which matters more here than for most software, because this
-                  holds their notes.
-
-                  A link, not an embedded form. An embed means a third-party
-                  script executing in the origin that holds the admin session,
-                  from a floating version range, loading on every page view
-                  whether or not anyone wants a newsletter. A link contacts
-                  nothing until someone chooses to. */}
-              <article>
-                <header>
-                  <strong>How you'll hear about security fixes</strong>
-                </header>
-                <p class="muted">
-                  This server has no way to contact you. It sends no mail, reports nothing back,
-                  and does not check for updates — so if a security fix ships, nothing here will
-                  tell you.
-                </p>
-                <p>
-                  <a
-                    href="https://changenode.com/notemesh-thanks/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Get notified when notemesh is updated
-                  </a>{" "}
-                  <span class="muted">
-                    — a note from the author when something ships, security fixes included. Watching{" "}
-                    <a
-                      href="https://github.com/ChangeNode/notemesh/releases"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      releases on GitHub
-                    </a>{" "}
-                    does the same job if you would rather not hand over an address.
-                  </span>
-                </p>
-              </article>
             </Match>
           </Switch>
         )}
       </Show>
       <RepoFooter />
     </main>
+  );
+}
+
+/**
+ * Its own step, deliberately, and one that cannot be walked past.
+ *
+ * This is the single thing the server cannot do for its operator later: it has
+ * no mail transport, makes no outbound calls and does not check for updates, so
+ * if a security fix ships there is no channel to tell them. As a card under a
+ * "Go to Dashboard" button that got scrolled past. As a step with a checkbox it
+ * gets read.
+ *
+ * The acknowledgement records only that the screen was seen. Subscribing
+ * happens on another site and this server has no way to observe it — a setting
+ * claiming otherwise would be recording something we do not know.
+ */
+function NotificationsStep(props: { onDone: () => void }) {
+  const [understood, setUnderstood] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+
+  return (
+    <article>
+      <header>
+        <strong>Security and Update Notifications</strong>
+      </header>
+      <p class="muted">
+        This server has no way to contact you. It sends no mail, reports nothing back, and does not
+        check for updates — so if a security fix ships, nothing here will tell you.
+      </p>
+      <p>
+        <a href="https://changenode.com/notemesh-thanks/" target="_blank" rel="noopener noreferrer">
+          Sign up for update notifications
+        </a>{" "}
+        <span class="muted">
+          — a note from the author when something ships, security fixes included. Watching{" "}
+          <a
+            href="https://github.com/ChangeNode/notemesh/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            releases on GitHub
+          </a>{" "}
+          does the same job if you would rather not hand over an address.
+        </span>
+      </p>
+      <label>
+        <input
+          type="checkbox"
+          checked={understood()}
+          onChange={(e) => setUnderstood(e.currentTarget.checked)}
+        />
+        I get it - sign up for emails to get notifications
+      </label>
+      <Show when={error()}>
+        <p class="error">{error()}</p>
+      </Show>
+      <button
+        disabled={!understood() || busy()}
+        aria-busy={busy()}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await api.acknowledgeNotifications();
+            props.onDone();
+          } catch (e) {
+            setError(String((e as { message?: string })?.message ?? e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy() ? "Saving…" : "Continue"}
+      </button>
+    </article>
   );
 }
 
@@ -320,7 +358,7 @@ function BackendStep(props: { onDone: () => void }) {
         <strong>How does your vault sync?</strong>
       </header>
       <p class="muted">
-        notemesh keeps its own copy of your vault and needs a way to stay in step with your other
+        NoteMesh keeps its own copy of your vault and needs a way to stay in step with your other
         devices. Pick whichever you already use — this can't be changed later without starting
         over.
       </p>

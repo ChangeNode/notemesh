@@ -11,7 +11,7 @@ export default function App() {
     <Router
       root={(props) => (
         <MetaProvider>
-          <Title>notemesh</Title>
+          <Title>NoteMesh</Title>
           {/* Without this, a component that throws renders SolidStart's bare
               "Uncaught Client Exception" — which is what an operator actually
               saw when a bad chunk shipped, and it says nothing they can act on

@@ -1,4 +1,4 @@
-# Contributing to notemesh
+# Contributing to NoteMesh
 
 Bug reports, questions, and pull requests are all welcome.
 
@@ -17,7 +17,7 @@ change that took a different one.
 
 ## The Contributor Licence Agreement
 
-notemesh is dual-licensed: AGPL-3.0 for everyone, plus a commercial licence for
+NoteMesh is dual-licensed: AGPL-3.0 for everyone, plus a commercial licence for
 anyone who wants to host it as a service without the source-disclosure
 obligation. See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 

@@ -1,4 +1,4 @@
-# notemesh on Railway
+# NoteMesh on Railway
 
 Two guides in one file.
 
@@ -228,7 +228,7 @@ One quirk worth knowing: if nobody asks anything, you still receive the full
 25%. The bonus is not withheld for a quiet queue — it is withheld for an
 ignored one.
 
-Practical notes for answering notemesh questions specifically:
+Practical notes for answering NoteMesh questions specifically:
 
 - **"I can't create the admin account"** is almost always the claim window
   having closed. Tell them to restart the service; see
@@ -288,7 +288,7 @@ deployments of the template will build from next. Two habits worth keeping:
 
 # Part B — Deploying and using it
 
-## What notemesh does
+## What NoteMesh does
 
 It gives an AI assistant access to your Obsidian vault. The server joins your
 vault as another Obsidian Sync client, keeps a live copy, and exposes it over
@@ -372,7 +372,7 @@ brings you back to your own server to approve access.
 
 > Do not go looking for the *"drag .MCPB or .DXT files here"* box under
 > Settings → Extensions. Those bundles package a **local** MCP server that runs
-> on your own machine over stdio. notemesh is a remote HTTP server, which is what
+> on your own machine over stdio. NoteMesh is a remote HTTP server, which is what
 > custom connectors are for. There is no bundle to install.
 >
 > This also means a connector **cannot reach `localhost`** — Anthropic's
@@ -444,6 +444,6 @@ Common answers first:
 
 ---
 
-notemesh is an independent, unofficial project. It is not affiliated with,
+NoteMesh is an independent, unofficial project. It is not affiliated with,
 endorsed by, or sponsored by Obsidian or Railway. "Obsidian" and "Obsidian Sync"
 are trademarks of their respective owners.

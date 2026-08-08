@@ -94,6 +94,7 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   setupObsidianLogin: async () => (await import("~/server/setup")).setupObsidianLogin,
   setupListVaults: async () => (await import("~/server/setup")).setupListVaults,
   setupConfigureVault: async () => (await import("~/server/setup")).setupConfigureVault,
+  acknowledgeNotifications: async () => (await import("~/server/setup")).acknowledgeNotifications,
 
   // ---- Admin password reset ----
   getResetState: async () => (await import("~/server/reset-actions")).getResetState,

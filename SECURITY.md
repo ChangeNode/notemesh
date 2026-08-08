@@ -1,6 +1,6 @@
 # Security
 
-notemesh holds credentials and has full read/write access to a personal notes
+NoteMesh holds credentials and has full read/write access to a personal notes
 vault, so security reports are taken seriously.
 
 ## Reporting a vulnerability

@@ -133,6 +133,7 @@ export async function markConfigured(s: Server, extra: Record<string, string> = 
     obsidian_logged_in: "true",
     vault_configured: "true",
     timezone: "UTC",
+    notifications_acknowledged: "true",
     vault_name: "Test Vault",
     ...extra,
   };

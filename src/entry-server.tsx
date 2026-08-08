@@ -16,6 +16,12 @@ export default createHandler(() => (
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta name="color-scheme" content="dark" />
           <meta name="robots" content="noindex, nofollow" />
+          {/* In the shell for the same reason as the icons below: with ssr
+              disabled, @solidjs/meta renders in the browser, so a <Title> in
+              the component tree is absent from the HTML the browser first
+              receives — leaving the tab showing the URL until JavaScript runs.
+              MetaProvider takes over from here on client navigation. */}
+          <title>NoteMesh</title>
           {/* Declared in the document rather than through @solidjs/meta: with
               ssr disabled the component tree renders in the browser, so meta
               tags added there are absent from the HTML a browser first

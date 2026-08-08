@@ -683,3 +683,65 @@ describe("attachments over signed URLs", () => {
     expect(forged.status).toBe(403);
   });
 });
+
+// Display name versus identifier. The product is NoteMesh where a person reads
+// it; notemesh stays the identifier in configs, commit authorship and package
+// metadata. The two drift together when someone tidies "inconsistent" casing.
+describe("the name shown to a person", () => {
+  it("is NoteMesh in the page title and the web manifest", async () => {
+    const html = await (await fetch(`${server.url}/login`)).text();
+    expect(html).toContain("<title>NoteMesh</title>");
+
+    const manifest = await (await fetch(`${server.url}/site.webmanifest`)).json();
+    expect(manifest.name).toBe("NoteMesh");
+    expect(manifest.short_name).toBe("NoteMesh");
+  });
+
+  it("keeps the lowercase identifier where machines read it", async () => {
+    // The commit identity is documented as `git log --author=notemesh`, so it
+    // is a name people have typed into their own tooling, not a label.
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/server/sync/git.ts", "utf8")).toContain("user.name=notemesh");
+    expect(JSON.parse(readFileSync("package.json", "utf8")).name).toBe("notemesh");
+  });
+});
+
+// The wizard gained a step, and a stage machine keyed on an absent setting is
+// easy to get wrong in the direction that strands people in the wizard forever.
+describe("the setup wizard's notification step", () => {
+  it("asks once, then reports setup as done", async () => {
+    const own = await startServer();
+    try {
+      const ownCookie = await claimAdmin(own);
+      await markConfigured(own);
+
+      // markConfigured seeds the acknowledgement, so clear it to reach the step.
+      const db = new Database(path.join(own.dataDir, "app.sqlite"));
+      db.prepare("DELETE FROM settings WHERE key = 'notifications_acknowledged'").run();
+      db.close();
+
+      const stage = async () =>
+        (await rpc(own, "getSetupStage", [], ownCookie)).body.result as string;
+
+      expect(await stage(), "an unacknowledged instance stops here").toBe("notifications");
+
+      const ack = await fetch(`${own.url}/api/rpc/acknowledgeNotifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: ownCookie, Origin: own.url },
+        body: "[]",
+      });
+      expect(ack.status).toBe(200);
+
+      expect(await stage(), "and never again").toBe("done");
+    } finally {
+      await own.stop();
+    }
+  }, 60_000);
+
+  it("will not let a stranger acknowledge it", async () => {
+    // It writes a setting, so it is a state change and needs a session like any
+    // other — it is not part of the pre-account wizard.
+    const res = await rpc(server, "acknowledgeNotifications");
+    expect(res.status).toBe(401);
+  });
+});

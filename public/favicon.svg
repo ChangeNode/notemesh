@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="notemesh">
-  <title>notemesh</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="NoteMesh">
+  <title>NoteMesh</title>
   <!--
     Wikilink brackets around two connected nodes: the syntax that makes a note
     a link, and the mesh those links form.

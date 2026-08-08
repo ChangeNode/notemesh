@@ -27,6 +27,7 @@ export type SetupStage =
   | "vault" // Obsidian backend: logged in, vault not chosen
   | "git" // git backend: repo not linked
   | "timezone" // vault works; "today" not yet pinned to a zone
+  | "notifications" // told how they will hear about security fixes
   | "done";
 
 async function computeStage(): Promise<SetupStage> {
@@ -50,7 +51,31 @@ async function computeStage(): Promise<SetupStage> {
   // (middleware gates on vault_configured, not on this), and only sees the step
   // if it visits the wizard.
   if (getSetting("timezone") === undefined) return "timezone";
+  // Last, and its own step rather than a card on the finish screen, because it
+  // is the one thing this server cannot do for the operator later: it has no
+  // way to contact them, so if they scroll past this they have no channel for
+  // a security fix at all. A step they have to acknowledge is read; a card
+  // below a "Go to Dashboard" button is not.
+  //
+  // Keyed on absence, like the timezone step. An instance that finished setup
+  // before this existed will see it once on its next visit to the wizard.
+  if (getSetting("notifications_acknowledged") === undefined) return "notifications";
   return "done";
+}
+
+/**
+ * Record that the operator has been shown how they will hear about updates.
+ *
+ * Stores only that the screen was acknowledged. Whether they actually
+ * subscribed happens on another site entirely and this server has no way to
+ * know — claiming otherwise in a setting would be recording a fact we do not
+ * have.
+ */
+export async function acknowledgeNotifications(): Promise<{ ok: boolean }> {
+  "use server";
+  await requireAdmin();
+  setSetting("notifications_acknowledged", "true");
+  return { ok: true };
 }
 
 // Same stage, plus the chosen backend, so the wizard can number its steps: the

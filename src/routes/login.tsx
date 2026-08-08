@@ -53,7 +53,7 @@ export default function Login() {
     <main class="container">
       <article>
         <header>
-          <strong>Sign in — notemesh</strong>
+          <strong>Sign in — NoteMesh</strong>
         </header>
         <form onSubmit={submit}>
           <label for="email">Email</label>

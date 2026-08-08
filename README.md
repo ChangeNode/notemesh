@@ -1,8 +1,8 @@
-# notemesh
+# NoteMesh
 
 **Talk to your Obsidian vault from an AI assistant.**
 
-notemesh is a self-hosted MCP server for your Obsidian vault. It joins your vault
+NoteMesh is a self-hosted MCP server for your Obsidian vault. It joins your vault
 as another sync client — either through [Obsidian
 Sync](https://obsidian.md/sync) using Obsidian's official [headless sync
 client](https://github.com/obsidianmd/obsidian-headless), or through **any git
@@ -24,7 +24,7 @@ With the git backend every change an assistant makes lands as its own commit,
 authored as `notemesh`, so `git log --author=notemesh` shows you exactly what it
 did and any of it can be reverted.
 
-> notemesh is an independent, unofficial project. It is not affiliated with,
+> NoteMesh is an independent, unofficial project. It is not affiliated with,
 > endorsed by, or sponsored by Obsidian. "Obsidian" and "Obsidian Sync" are
 > trademarks of their respective owners; they are used here only to describe
 > what this software interoperates with.
@@ -251,7 +251,7 @@ The MCP endpoint is `https://<your-app>/api/mcp` (Streamable HTTP). The
 what follows is the same thing for reference.
 
 - **Claude (web, Desktop, Cowork)** — add it as a **custom connector**, not an
-  `.mcpb` bundle. Bundles package *local* stdio servers; notemesh is a remote
+  `.mcpb` bundle. Bundles package *local* stdio servers; NoteMesh is a remote
   Streamable HTTP server, which is what custom connectors are for. Configure it
   once at claude.ai → Customize → Connectors → *Add custom connector* → paste
   the endpoint URL, and it becomes available across your Claude surfaces. The
@@ -387,13 +387,13 @@ One Node process (SolidStart) plus one supervised child process:
 
 Copyright &copy; 2026 [ChangeNode](https://changenode.com/) (Will Iverson). See [COPYRIGHT](COPYRIGHT).
 
-notemesh is dual-licensed.
+NoteMesh is dual-licensed.
 
 - **[AGPL-3.0](LICENSE)** for everyone. Free to use, modify, and self-host.
   Running your own instance triggers no obligation — it is single-user by
   design, so you are the only user of your service and you already have the
   source.
-- **A commercial licence** if you want to offer notemesh to *other people* as a
+- **A commercial licence** if you want to offer NoteMesh to *other people* as a
   hosted service without publishing your source. See
   [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
@@ -403,4 +403,4 @@ Contributions require a CLA so that arrangement keeps working — see
 Note that the Obsidian Sync backend spawns Obsidian's official headless client,
 which npm publishes as `UNLICENSED` (proprietary, Dynalist Inc.). Nothing here
 relicenses it: it is run as a separate process and installed from npm by
-whoever deploys notemesh.
+whoever deploys NoteMesh.

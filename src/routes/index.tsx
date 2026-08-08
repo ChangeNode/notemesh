@@ -78,7 +78,7 @@ export default function Setup() {
                 <details name="connect">
                   <summary>Claude Desktop, claude.ai, and Cowork</summary>
                   <p>
-                    Add notemesh as a <b>custom connector</b>. Go to <b>Settings → Connectors</b>,
+                    Add NoteMesh as a <b>custom connector</b>. Go to <b>Settings → Connectors</b>,
                     click <b>Add custom connector</b>, and paste the endpoint URL. Configure it once
                     and it becomes available across your Claude apps. The OAuth flow will bring you
                     back here to approve access.
@@ -87,9 +87,9 @@ export default function Setup() {
                   <p class="muted">
                     Not to be confused with the <b>“drag .MCPB or .DXT files here”</b> box in
                     Settings → Extensions. Those bundles package a <i>local</i> MCP server that runs
-                    on your own machine over stdio; notemesh is a remote HTTP server, which is what
+                    on your own machine over stdio; NoteMesh is a remote HTTP server, which is what
                     custom connectors are for. (<code>.dxt</code> was renamed to <code>.mcpb</code>,
-                    so you'll see both names around.) There is no bundle to install for notemesh.
+                    so you'll see both names around.) There is no bundle to install for NoteMesh.
                   </p>
                 </details>
 

@@ -64,8 +64,9 @@ entry needing your attention cannot get lost among routine ones.
   damage is that no tool here can send anything anywhere — there is no email, no
   web request, no webhook for an injected instruction to call.
 
-  Paths, tags and property names are deliberately left unmarked so they can be
-  passed straight back into the next call; the explanation names them instead.
+  Paths, titles, tags and property names are deliberately left unmarked so they
+  can be passed straight back into the next call; the explanation names them
+  instead.
 
 - **Breaking** — `get_outline` now returns `{ headings: [...] }` and
   `read_properties` returns `{ properties: {...} }`, each alongside the marker

@@ -137,6 +137,17 @@ describe("fencing a value of unknown shape", () => {
     expect(out.meta.note).toBe(fence("deep"));
   });
 
+  it("leaves a Date intact", () => {
+    // YAML turns `created: 2026-08-06` into a Date, and a Date has no own
+    // enumerable properties — so rebuilding it from its entries produced {} and
+    // dropped the value. Live vault data caught this; the cases below did not,
+    // because every one of them used a plain map.
+    const created = new Date("2026-08-06T00:00:00.000Z");
+    const out = fenceDeep({ created }) as { created: Date };
+    expect(out.created).toBe(created);
+    expect(JSON.parse(JSON.stringify(out)).created).toBe("2026-08-06T00:00:00.000Z");
+  });
+
   it("leaves keys, numbers, booleans and null alone", () => {
     const out = fenceDeep({ priority: 3, done: true, empty: null }) as Record<string, unknown>;
     expect(out).toEqual({ priority: 3, done: true, empty: null });
@@ -147,7 +158,7 @@ describe("the explanation", () => {
   it("says the unfenced identifiers are vault content too", () => {
     // The fence deliberately stops at paths and tags so they stay usable as
     // tool input; the note is what covers them instead, so it has to say so.
-    expect(boundaryNote()).toMatch(/paths, tags and property names/i);
+    expect(boundaryNote()).toMatch(/paths, titles, tags and property names/i);
   });
 
   it("leads the payload rather than trailing it", () => {

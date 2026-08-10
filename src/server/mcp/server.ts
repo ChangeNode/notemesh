@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getSetting } from "../db";
-import { withBoundary, boundaryToken, boundaryNote, fence } from "./boundary";
+import { withBoundary, fence, fenceEach, fenceDeep } from "./boundary";
 import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
@@ -59,17 +59,35 @@ function json(data: unknown) {
 const DEFAULT_PAGE = 100;
 const MAX_PAGE = 500;
 
-function page<T>(items: T[], limit?: number, offset?: number) {
+/**
+ * One page of a list, with any free-text fields fenced.
+ *
+ * Fencing happens after the slice, not before: list_tasks on a large vault
+ * returns every task from the index and then keeps 100 of them, so fencing the
+ * input would rewrite thousands of strings to throw nearly all of them away.
+ */
+function page<T>(items: T[], limit?: number, offset?: number, ...fenceFields: (keyof T & string)[]) {
   const off = Math.max(offset ?? 0, 0);
   const lim = Math.min(Math.max(limit ?? DEFAULT_PAGE, 1), MAX_PAGE);
-  const slice = items.slice(off, off + lim);
-  return json({
-    total: items.length,
-    offset: off,
-    count: slice.length,
-    hasMore: off + slice.length < items.length,
-    items: slice,
-  });
+  const window = items.slice(off, off + lim);
+  // Lists of bare strings (folders, note paths) have no field to fence and
+  // pass straight through; the cast is confined to the branch that cannot see
+  // one, so callers keep field-name checking.
+  const slice = fenceFields.length
+    ? (fenceEach(window as Record<string, unknown>[], ...(fenceFields as string[])) as T[])
+    : window;
+  // Every list here carries strings lifted out of the vault — paths, tags,
+  // task text — so every one is labelled, whether or not it had a free-text
+  // field worth fencing.
+  return json(
+    withBoundary({
+      total: items.length,
+      offset: off,
+      count: slice.length,
+      hasMore: off + slice.length < items.length,
+      items: slice,
+    }),
+  );
 }
 
 const PAGE_ARGS = {
@@ -386,14 +404,9 @@ export function createMcpServer(access: McpAccess): McpServer {
       },
     },
     safe(({ query, context, limit }: { query: string; context?: boolean; limit?: number }) =>
-      json({
-        boundary: boundaryToken(),
-        boundaryNote: boundaryNote(),
-        results: searchVault(query, { context, limit }).map((hit) => ({
-          ...hit,
-          snippet: fence(hit.snippet),
-        })),
-      }),
+      json(
+        withBoundary({ results: fenceEach(searchVault(query, { context, limit }), "snippet") }),
+      ),
     ),
   );
 
@@ -406,7 +419,13 @@ export function createMcpServer(access: McpAccess): McpServer {
         "Read a note's frontmatter properties, or (with no path) survey all property names used in the vault with usage counts.",
       inputSchema: { path: z.string().optional() },
     },
-    safe(({ path }: { path?: string }) => json(path ? readProperties(path) : listVaultProperties())),
+    safe(({ path }: { path?: string }) =>
+      json(
+        path
+          ? withBoundary({ properties: fenceDeep(readProperties(path)) })
+          : withBoundary({ properties: listVaultProperties() }),
+      ),
+    ),
   );
 
   if (writable) {
@@ -458,7 +477,7 @@ export function createMcpServer(access: McpAccess): McpServer {
       inputSchema: { filter: z.enum(["all", "todo", "daily"]).optional(), ...PAGE_ARGS },
     },
     safe(({ filter, limit, offset }: { filter?: "all" | "todo" | "daily"; limit?: number; offset?: number }) =>
-      page(listTasks(filter ?? "all"), limit, offset),
+      page(listTasks(filter ?? "all"), limit, offset, "text"),
     ),
   );
 
@@ -551,7 +570,9 @@ export function createMcpServer(access: McpAccess): McpServer {
       description: "Heading structure of a note with levels and line numbers.",
       inputSchema: { path: z.string() },
     },
-    safe(({ path }: { path: string }) => json(outline(path))),
+    safe(({ path }: { path: string }) =>
+      json(withBoundary({ headings: fenceEach(outline(path), "heading") })),
+    ),
   );
 
   server.registerTool(

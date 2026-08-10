@@ -46,7 +46,31 @@ entry needing your attention cannot get lost among routine ones.
 
 ## Unreleased
 
-Nothing yet.
+**Taking this update:** redeploy. Nothing else.
+
+### Changed
+
+- Note text that reaches an assistant is now marked as content rather than
+  instruction in more places. Headings (`get_outline`), task text
+  (`list_tasks`), frontmatter values (`read_properties`) and search snippets are
+  wrapped in a per-boot random marker, and every list result carries the
+  sentence explaining what the marker means.
+
+  Your vault is not only what you wrote in it — a clipped article, a shared
+  folder or a pasted email can carry text aimed at the assistant reading it, and
+  it arrives looking exactly like your own notes. This is worth being plain
+  about: it helps a model tell data from orders, but a model that ignores the
+  marker is the one it was meant to guard against. What actually bounds the
+  damage is that no tool here can send anything anywhere — there is no email, no
+  web request, no webhook for an injected instruction to call.
+
+  Paths, tags and property names are deliberately left unmarked so they can be
+  passed straight back into the next call; the explanation names them instead.
+
+- **Breaking** — `get_outline` now returns `{ headings: [...] }` and
+  `read_properties` returns `{ properties: {...} }`, each alongside the marker
+  and its explanation, where both previously returned the bare value. Clients
+  cache the tool list, not the result shape, so nothing needs reconnecting.
 
 ## 1.0.0 — 2026-08-06
 

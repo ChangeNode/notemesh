@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { boundaryNote, boundaryToken, fence, withBoundary } from "./boundary";
+import { boundaryNote, boundaryToken, fence, fenceDeep, fenceEach, withBoundary } from "./boundary";
 
 // The marker exists so a model can tell vault content from instructions. It is
 // not a security control — the model decides whether to honour it — so what is
@@ -97,5 +97,61 @@ describe("withBoundary", () => {
     const payload = { content: "body" };
     withBoundary(payload, "content");
     expect(payload.content).toBe("body");
+  });
+});
+
+describe("fencing a list", () => {
+  it("fences the named field and leaves the rest alone", () => {
+    const out = fenceEach([{ text: "do the thing", path: "A.md", line: 3 }], "text");
+    expect(out[0].text).toBe(fence("do the thing"));
+    // Identifiers survive intact: they are what the next tool call is given.
+    expect(out[0].path).toBe("A.md");
+    expect(out[0].line).toBe(3);
+  });
+
+  it("does not mutate the caller's items", () => {
+    const items = [{ text: "original" }];
+    fenceEach(items, "text");
+    expect(items[0].text).toBe("original");
+  });
+
+  it("skips a field that is absent or not a string", () => {
+    const out = fenceEach([{ text: 7 as unknown as string, other: "x" }], "text");
+    expect(out[0].text).toBe(7);
+  });
+});
+
+describe("fencing a value of unknown shape", () => {
+  it("fences a bare string", () => {
+    expect(fenceDeep("hello")).toBe(fence("hello"));
+  });
+
+  it("fences strings inside lists and nested maps", () => {
+    // Frontmatter is arbitrary YAML — aliases are a list, and a value can be a
+    // map, so a shallow pass would leave the interesting text unfenced.
+    const out = fenceDeep({ aliases: ["one", "two"], meta: { note: "deep" } }) as {
+      aliases: string[];
+      meta: { note: string };
+    };
+    expect(out.aliases).toEqual([fence("one"), fence("two")]);
+    expect(out.meta.note).toBe(fence("deep"));
+  });
+
+  it("leaves keys, numbers, booleans and null alone", () => {
+    const out = fenceDeep({ priority: 3, done: true, empty: null }) as Record<string, unknown>;
+    expect(out).toEqual({ priority: 3, done: true, empty: null });
+  });
+});
+
+describe("the explanation", () => {
+  it("says the unfenced identifiers are vault content too", () => {
+    // The fence deliberately stops at paths and tags so they stay usable as
+    // tool input; the note is what covers them instead, so it has to say so.
+    expect(boundaryNote()).toMatch(/paths, tags and property names/i);
+  });
+
+  it("leads the payload rather than trailing it", () => {
+    const keys = Object.keys(withBoundary({ items: [1, 2, 3] }));
+    expect(keys.indexOf("boundaryNote")).toBeLessThan(keys.indexOf("items"));
   });
 });

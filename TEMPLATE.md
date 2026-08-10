@@ -45,8 +45,9 @@ repo, but it is scoped to sharing inside your own Workspace or Organization
 rather than to the public marketplace. If you want a public listing with a
 private source, take route B.
 
-`ChangeNode/notemesh` is private today, so this is a real decision rather than a
-formality — routes A and B both require action.
+`ChangeNode/notemesh` is public and the published template builds from it, so
+route A is the one in effect. B and C are kept here because the decision is
+reversible and the trade-offs are the same if it is ever revisited.
 
 Two things worth weighing beyond mechanics:
 
@@ -177,19 +178,19 @@ Publishing gives you a **template code** and, with it, the share URL to use.
 NoteMesh's is:
 
 ```
-https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic
+https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic
 ```
 
 Put the button at the top of the README:
 
 ```md
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 ```
 
 HTML, if you prefer:
 
 ```html
-<a href="https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic"><img src="https://railway.com/button.svg" alt="Deploy on Railway" /></a>
+<a href="https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic"><img src="https://railway.com/button.svg" alt="Deploy on Railway" /></a>
 ```
 
 **On "affiliate codes":** an earlier version of this file said there was no code

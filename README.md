@@ -2,7 +2,7 @@
 
 **Talk to your Obsidian vault from an AI assistant.**
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 NoteMesh is a self-hosted MCP server for your Obsidian vault. It joins your vault
 as another sync client — either through [Obsidian
@@ -70,10 +70,10 @@ or as a commit pushed to your git remote.
 
 ## Deploy on Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 The button is the short path: the [published
-template](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
+template](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 already carries the volume, the generated `ENCRYPTION_KEY`, the healthcheck and
 a public domain, so steps 1–4 below are done for you and you arrive at the setup
 wizard. **[TEMPLATE.md, Part

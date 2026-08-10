@@ -14,3 +14,4 @@ overrides:
   hono: ^4.12.34 # ReDoS in CORS middleware
   fast-uri: ^3.1.5 # host confusion via backslash
   brace-expansion: ^2.1.4 # DoS via unbounded intermediate arrays
+  nanoid: ^3.3.17 # custom generators loop forever when size is zero

@@ -173,26 +173,37 @@ From the template page, click **Publish** and fill in the form. It goes to the
 
 ## 4. The deploy button
 
-Publishing gives you a **template code** — the short string in
-`railway.com/new/template/<CODE>`. Put the button at the top of the README:
+Publishing gives you a **template code** and, with it, the share URL to use.
+NoteMesh's is:
+
+```
+https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic
+```
+
+Put the button at the top of the README:
 
 ```md
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/CODE?utm_medium=integration&utm_source=button&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 ```
 
 HTML, if you prefer:
 
 ```html
-<a href="https://railway.com/new/template/CODE?utm_medium=integration&utm_source=button&utm_campaign=generic"><img src="https://railway.com/button.svg" alt="Deploy on Railway" /></a>
+<a href="https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic"><img src="https://railway.com/button.svg" alt="Deploy on Railway" /></a>
 ```
 
-**On "affiliate codes":** there isn't one to paste, and you don't need one.
-Attribution runs through the **template code** — the template belongs to your
-workspace, so any deployment of it is credited to you whether it came from your
-button, a link someone shared, or the marketplace listing. The `utm_*`
-parameters are campaign analytics, not payment routing; you can change or drop
-them without affecting what you earn. Nothing about the money depends on the
-link a user happened to click.
+**On "affiliate codes":** an earlier version of this file said there was no code
+to paste. The URL Railway actually issued has one — `referralCode=changenode` —
+so copy the link Railway gives you rather than assembling your own from the
+template code.
+
+What has not changed is the part that matters: template attribution runs through
+the **template code**, and the template belongs to your workspace, so a
+deployment is credited to you whether it arrived from your button, a link
+someone shared, or the marketplace listing. The `utm_*` parameters are campaign
+analytics. Whether `referralCode` adds anything on top of template attribution —
+Railway runs a separate referral programme — is not something this file should
+claim either way; use the issued link and it is moot.
 
 ## 5. Kickbacks
 

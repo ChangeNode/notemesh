@@ -2,6 +2,8 @@
 
 **Talk to your Obsidian vault from an AI assistant.**
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
 NoteMesh is a self-hosted MCP server for your Obsidian vault. It joins your vault
 as another sync client — either through [Obsidian
 Sync](https://obsidian.md/sync) using Obsidian's official [headless sync
@@ -68,12 +70,20 @@ or as a commit pushed to your git remote.
 
 ## Deploy on Railway
 
-> Deploying the published template rather than this repo? **[TEMPLATE.md, Part
-> B](TEMPLATE.md#part-b--deploying-and-using-it)** is the end-to-end version
-> with troubleshooting.
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
+The button is the short path: the [published
+template](https://railway.com/deploy/55CROC?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
+already carries the volume, the generated `ENCRYPTION_KEY`, the healthcheck and
+a public domain, so steps 1–4 below are done for you and you arrive at the setup
+wizard. **[TEMPLATE.md, Part
+B](TEMPLATE.md#part-b--deploying-and-using-it)** is the end-to-end version of
+that route, with troubleshooting.
 
-1. Create a new Railway service from this repo (or the template).
+The rest of this section is the manual route — building a service from this repo
+yourself.
+
+1. Create a new Railway service from this repo.
 2. Attach a **volume** mounted at `/data` — this holds your vault copy,
    database, and sync state.
 3. Set these variables on the service:

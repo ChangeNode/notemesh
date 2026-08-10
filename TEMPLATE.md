@@ -94,13 +94,12 @@ Railway workspace → **Settings → Templates → New Template**.
    monitor. Neither is about protecting notes — the disk is a copy of Obsidian
    Sync or their git remote — but a full disk stops writes and sync until
    someone notices.
-3. **Set the variables.** Only these two — the goal is that a deployer never
+3. **Set the variable.** Only this one — the goal is that a deployer never
    opens this panel:
 
    | Variable | Value | Why |
    | --- | --- | --- |
    | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` | 64 hex characters — exactly the 32 bytes of key material the server demands |
-   | `PORT` | `3000` | Pins the listening port to the domain's target port |
 
    **`ENCRYPTION_KEY` must be the generator function, never a literal.** A fixed
    value in a published template would ship the same encryption key to every
@@ -108,10 +107,17 @@ Railway workspace → **Settings → Templates → New Template**.
    rejects anything that isn't valid base64 or hex, so it would fail at boot.
    The `"abcdef0123456789"` alphabet argument is what makes it hex.
 
-   **`PORT` is not optional.** Railway assigns a port dynamically and the app
-   follows whatever it is given, so without pinning this the app can end up
-   listening somewhere the generated domain isn't pointing — which presents as a
-   502 with `connection refused` and no error in the logs.
+   **Do not set `PORT`.** This file used to say to pin it to `3000`, on the
+   reasoning that the app follows whatever port it is handed and could end up
+   listening where the domain is not pointing. The live deployment says
+   otherwise: it runs on Railway's own `PORT` of `8080` and serves fine. Nothing
+   in this repo produces that number — the Dockerfile's `PORT=3000` and
+   `EXPOSE 3000` are image defaults, and the app listens on whatever the
+   environment sets.
+
+   What actually matters is that the listening port and the domain's target port
+   agree, and Railway sets both when left alone. Pinning `3000` while Railway
+   targets `8080` would *cause* the 502 the old advice was written to prevent.
 
    **Do not set `DATA_DIR`.** The Dockerfile already sets it to `/data`, matching
    the volume mount. Setting it by hand is how it gets set *wrong*: a relative

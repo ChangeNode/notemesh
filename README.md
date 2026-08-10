@@ -219,24 +219,22 @@ tests fail, or the test wasn't testing it.
 Full walkthrough — building the template, the deploy button, how kickbacks and
 attribution work, and the support commitment — is in **[TEMPLATE.md](TEMPLATE.md)**.
 
-The short version: a service from this repo, a volume at `/data`, and two
-variables set with Railway's generator functions so every deployment gets its
-own secrets.
+The short version: a service from this repo, a volume at `/data`, and one
+variable set with a Railway generator function so every deployment gets its own
+secret.
 
 | Variable | Value |
 | --- | --- |
 | `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
-| `PORT` | `3000` |
 
 The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the 32 bytes
 of key material the server requires. A plain `${{secret()}}` is rejected at boot:
-it isn't valid base64 or hex. `PORT` must be pinned because Railway assigns one
-dynamically and the app follows it, which otherwise leaves the domain pointing at
-a port nothing is listening on.
+it isn't valid base64 or hex.
 
-`DATA_DIR` and `BASE_URL` are deliberately not in that table. Both already have
-correct defaults — `/data` from the Dockerfile, and the public origin derived
-from `RAILWAY_PUBLIC_DOMAIN` — and setting either by hand is how they get set
+`PORT`, `DATA_DIR` and `BASE_URL` are deliberately not in that table. Each
+already has a correct default — the port Railway assigns and targets itself,
+`/data` from the Dockerfile, and the public origin derived from
+`RAILWAY_PUBLIC_DOMAIN` — and setting any of them by hand is how they get set
 wrong. See the notes in [TEMPLATE.md](TEMPLATE.md) for what each failure looks
 like.
 

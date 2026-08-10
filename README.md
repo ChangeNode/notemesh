@@ -72,94 +72,15 @@ or as a commit pushed to your git remote.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-The button is the short path: the [published
-template](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)
-already carries the volume, the generated `ENCRYPTION_KEY`, the healthcheck and
-a public domain, so steps 1–4 below are done for you and you arrive at the setup
-wizard. **[TEMPLATE.md, Part
-B](TEMPLATE.md#part-b--deploying-and-using-it)** is the end-to-end version of
-that route, with troubleshooting.
+The button is the whole path: the published template carries the volume, a
+generated `ENCRYPTION_KEY`, the healthcheck and a public domain, so you land on
+the setup wizard with nothing to configure.
 
-The rest of this section is the manual route — building a service from this repo
-yourself.
-
-1. Create a new Railway service from this repo.
-2. Attach a **volume** mounted at `/data` — this holds your vault copy,
-   database, and sync state.
-3. Set these variables on the service:
-   - `ENCRYPTION_KEY` — 32 random bytes as base64 (`openssl rand -base64 32`)
-     or hex (`openssl rand -hex 32`). Encrypts your stored Obsidian credentials
-     at rest and derives the session secret, so it must be real random key
-     material, not a passphrase. **Changing it later locks the stored
-     credentials out.**
-
-   That is the only one you need. `DATA_DIR` already points at `/data` from the
-   Dockerfile — do not set it by hand, because a relative value like `./data`
-   resolves against the container's working directory rather than the volume,
-   and every redeploy then discards the vault and database.
-4. Under **Settings → Networking**, generate a public domain, **then restart
-   the service.**
-
-   Railway does not restart a running service when you add a domain, and the
-   public origin is read from `RAILWAY_PUBLIC_DOMAIN` at process start. Until it
-   restarts the server still thinks it is on `localhost`, and sign-up fails with
-   *"Invalid origin"* — the auth layer only accepts the address the server
-   believes it has. The setup page detects this and says so rather than leaving
-   you with the bare error. Nothing is lost by restarting.
-
-   Restarting is the fix. Setting `BASE_URL` to `https://<your-domain>` works
-   too, but only as a complete literal origin — see the variable notes below
-   before reaching for it.
-5. Open the service URL **within 30 minutes of the deploy** and follow the
-   setup wizard:
-   1. Choose your admin email/password — no token to look up.
-   2. Choose how your vault syncs — **Obsidian Sync** or a **git repository**.
-      This can't be changed later without starting over.
-   3. Either sign in with your **Obsidian account** (MFA supported) and pick the
-      remote vault — leaving the encryption password **blank** unless the vault
-      is end-to-end encrypted, since Obsidian Sync defaults to managed
-      encryption — or give the HTTPS clone URL, branch, and an access token
-      scoped to that one repository.
-6. The server starts a continuous sync daemon and drops you into the admin UI,
-   which has these tabs:
-
-   | Tab | What's there |
-   | --- | --- |
-   | **Setup** | The MCP endpoint URL, copy-paste setup for each client, and API keys |
-   | **Tools** | Every tool your clients can call, read from the running server |
-   | **Status** | Sync health, vault stats, live log tail, connected OAuth clients |
-   | **Keys** | API keys for clients that can't complete an OAuth sign-in |
-   | **Settings** | The `delete_note` toggle, timezone, and where logs are written |
-   | **Security** | Live posture of this instance — see [Security model](#security-model) |
-
-### Sizing the volume, and what happens if it fills
-
-**Give it two to three times the size of your vault or repository, minimum.**
-
-The vault copy includes synced attachments (images, audio, PDFs, video), so size
-for the whole vault rather than its markdown — on a git-backed setup, size for
-the working tree *plus* the `.git` directory, which for a repo with binary
-history can be larger than the checkout. On top of that, the database holds a
-full-text index worth roughly twice the markdown it covers, and the Obsidian
-sync client keeps an append-only log that grows without bound. The **Settings**
-tab shows that log's path and current size, and you can narrow what syncs with
-`ob sync-config --file-types` inside the container.
-
-Volumes can be **grown** later with no downtime, but they **cannot be shrunk**,
-so erring large costs nothing but a little money and erring small means a
-migration. Railway caps volumes at 5 GB on Hobby and 50 GB on Pro.
-
-**If the disk fills or is lost, you do not lose notes.** Everything here is a
-copy: the vault of record is Obsidian Sync's or your git remote's, and the
-index, settings and credentials are rebuilt by redeploying and running the setup
-wizard again. What a full disk actually costs is availability — writes fail and
-sync stops until someone notices.
-
-Which is the argument for an alert rather than for headroom alone. On **Pro**,
-add one under your project's **Observability** dashboard: the disk usage widget
-→ **⋮** → **Add monitor**, threshold around 80%, delivered by email, in-app, or
-webhook. Monitors are a Pro feature; on Hobby, the sizing rule above is the whole
-defence.
+**[TEMPLATE.md](TEMPLATE.md)** is the full guide — [Part
+B](TEMPLATE.md#part-b--deploying-and-using-it) covers deploying and living with
+it, including sizing the volume and troubleshooting; [Part
+A](TEMPLATE.md#part-a--publishing-the-template) covers publishing a template of
+your own.
 
 ## Git-backed vaults
 
@@ -223,34 +144,6 @@ binary in throwaway repositories rather than mocks — the behaviour under test
 
 The security tests are mutation-checked: deleting a guard has to make specific
 tests fail, or the test wasn't testing it.
-
-## Publish it as a Railway template
-
-Full walkthrough — building the template, the deploy button, how kickbacks and
-attribution work, and the support commitment — is in **[TEMPLATE.md](TEMPLATE.md)**.
-
-The short version: a service from this repo, a volume at `/data`, and one
-variable set with a Railway generator function so every deployment gets its own
-secret.
-
-| Variable | Value |
-| --- | --- |
-| `ENCRYPTION_KEY` | `${{secret(64, "abcdef0123456789")}}` |
-
-The `ENCRYPTION_KEY` generator produces 64 hex characters — exactly the 32 bytes
-of key material the server requires. A plain `${{secret()}}` is rejected at boot:
-it isn't valid base64 or hex.
-
-`PORT`, `DATA_DIR` and `BASE_URL` are deliberately not in that table. Each
-already has a correct default — the port Railway assigns and targets itself,
-`/data` from the Dockerfile, and the public origin derived from
-`RAILWAY_PUBLIC_DOMAIN` — and setting any of them by hand is how they get set
-wrong. See the notes in [TEMPLATE.md](TEMPLATE.md) for what each failure looks
-like.
-
-Deployers bring their own vault — an Obsidian Sync subscription or a git repo —
-and each deployment is a **single-user** instance — the first person to create an account claims it,
-and sign-up closes permanently after that.
 
 ## Connect MCP clients
 

@@ -17,3 +17,4 @@ dist/
 /playwright-report/
 /blob-report/
 /.playwright/
+/.uat-data

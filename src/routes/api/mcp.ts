@@ -21,6 +21,44 @@ function tooManyRequests(retryAfterSeconds: number): Response {
   );
 }
 
+/**
+ * Authenticated, but the wizard has not been finished.
+ *
+ * Checked *after* authentication, not before. It used to be the first thing
+ * this route did, which meant an unauthenticated client got 503 and never the
+ * 401 that carries the discovery hint — so a connector added before setup
+ * offered no authorize button and no reason why, which is a confusing hour for
+ * whoever hits it.
+ *
+ * 503 is the right status and stays. RFC 6750 defines resource-server errors
+ * only for token problems — 400 invalid_request, 401 invalid_token, 403
+ * insufficient_scope — and none of them describes a server that is simply not
+ * ready. Plain HTTP does: 503 means the endpoint exists and will work later,
+ * which is exactly true here and is what a client should hear. 404 would say
+ * the opposite, and send whoever reads it hunting for a typo in their URL.
+ *
+ * Retry-After is what was missing. It is how a well-behaved client is told to
+ * come back rather than give up, and the wizard takes minutes, not hours.
+ */
+function notConfigured(): Response {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: -32002, message: "Server not configured yet — finish the setup wizard first." },
+      id: null,
+    }),
+    {
+      status: 503,
+      headers: { "Content-Type": "application/json", "Retry-After": "120" },
+    },
+  );
+}
+
+/** Has the wizard been finished? */
+function configured(): boolean {
+  return getSetting("vault_configured") === "true";
+}
+
 function unauthorized(): Response {
   // Per the MCP auth spec, point unauthenticated clients at the
   // protected-resource metadata so they can discover the OAuth server.
@@ -62,17 +100,6 @@ export async function POST(event: APIEvent) {
     );
   }
 
-  if (getSetting("vault_configured") !== "true") {
-    return new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        error: { code: -32002, message: "Server not configured yet — finish the setup wizard first." },
-        id: null,
-      }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
   // Throttling applies ONLY to requests that fail to authenticate. We
   // deliberately authenticate first and never gate on the bucket beforehand: a
   // valid credential must always be served, even while an anonymous prober is
@@ -92,6 +119,13 @@ export async function POST(event: APIEvent) {
 
   // 1) OAuth JWT (clients that send an RFC 8707 `resource`): verify via JWKS.
   if (bearer && looksLikeJwt(bearer)) {
+    // Readiness before token validation on this path only, so an unconfigured
+    // server never runs a tool call it has no vault for. The cost is that an
+    // invalid token here hears "not configured" rather than "bad token" — which
+    // is the more useful of the two anyway, since a server without a finished
+    // wizard has issued no valid tokens at all. A request with no credential
+    // never reaches this branch; it falls through and gets the 401.
+    if (!configured()) return notConfigured();
     const oauthResponse = await handleMcpWithOAuth(event.request);
     if (oauthResponse) {
       if (oauthResponse.status === 401) return authFailed();
@@ -107,7 +141,7 @@ export async function POST(event: APIEvent) {
     const opaque = accessFromOpaqueOAuth(bearer);
     if (opaque) {
       clearAuthFailures(ip);
-      return serveMcp(event.request, opaque);
+      return configured() ? serveMcp(event.request, opaque) : notConfigured();
     }
   }
 
@@ -115,7 +149,7 @@ export async function POST(event: APIEvent) {
   const keyAccess = await accessFromApiKey(event.request);
   if (keyAccess) {
     clearAuthFailures(ip);
-    return serveMcp(event.request, keyAccess);
+    return configured() ? serveMcp(event.request, keyAccess) : notConfigured();
   }
 
   return authFailed();

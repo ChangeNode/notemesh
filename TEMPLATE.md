@@ -378,6 +378,13 @@ the dashboard.
 
 ## 4. Connect an MCP client
 
+**Finish the wizard first.** Until the vault is linked the MCP endpoint answers
+"not configured yet" to anything holding a credential, and a connector added
+before then will not work — it may sit there looking connected, or fail with a
+message that says nothing about setup. Nothing breaks; add it again once the
+dashboard is up.
+
+
 Everything below is shown on the **Setup** tab with your own URL filled in and
 copy buttons, so you do not have to transcribe anything.
 

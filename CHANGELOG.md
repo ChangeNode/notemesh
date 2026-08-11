@@ -75,6 +75,14 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- Adding a connector before finishing the setup wizard no longer looks like a
+  broken server. The MCP endpoint checked readiness before authentication, so an
+  unconnected client got "service unavailable" and never the challenge that
+  tells it authentication exists — no authorize button, and nothing pointing at
+  the wizard as the reason. It now answers the challenge first, and reports
+  not-ready only to callers that have authenticated, with a `Retry-After` so a
+  client knows to come back rather than give up.
+
 - ChatGPT connectors work with OpenID left on. The authorization server
   advertised `profile` and `email` but would not grant them to a client that
   registered itself, so ChatGPT asked for what the metadata promised and its own

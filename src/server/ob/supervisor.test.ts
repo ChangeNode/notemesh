@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyActivityLine } from "./supervisor";
+import { applyActivityLine, looksLikeAuthFailure } from "./supervisor";
 import type { SyncActivity } from "../sync/types";
 
 // The transfer counters shown on the Status tab are derived by scraping the
@@ -222,5 +222,50 @@ describe("syncNow while the daemon is running", () => {
     } finally {
       sup.child = before;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Re-authentication after the Obsidian session is revoked.
+//
+// The failure this covers was reported from a live server: the operator reset
+// their Obsidian credentials, the daemon began failing every reconnect with
+// "Failed to authenticate: Not logged in", and the Status tab went on showing
+// "Watching for changes" under a green light. Nothing was syncing and nothing
+// said so.
+//
+// The cause was that the re-auth check hung off the child process exiting. This
+// particular failure never exits — the daemon stays up and retries every 30
+// seconds — so the check never ran.
+
+describe("spotting an auth failure in daemon output", () => {
+  it("matches what the daemon actually prints when the session is revoked", () => {
+    // Verbatim from the reported server log.
+    expect(looksLikeAuthFailure("Error: Failed to authenticate: Not logged in")).toBe(true);
+  });
+
+  it("matches the other phrasings the CLI uses", () => {
+    for (const line of ["No account logged in", "Please log in first", "not logged in"]) {
+      expect(looksLikeAuthFailure(line)).toBe(true);
+    }
+  });
+
+  it("ignores ordinary sync chatter", () => {
+    for (const line of [
+      "Fully synced ×23",
+      "Connection successful. Detecting changes...",
+      "Downloaded Notes/Alpha.md",
+      "Conflict strategy: merge",
+    ]) {
+      expect(looksLikeAuthFailure(line)).toBe(false);
+    }
+  });
+
+  it("also matches a filename that reads like one — which is why it only triggers a check", () => {
+    // A vault can contain "Not logged in.md", and its name reaches this log.
+    // The predicate deliberately does not try to tell the two apart: acting on
+    // the text is what would be unsafe, so the text never decides. See
+    // probeAuthAfterSuspiciousLine.
+    expect(looksLikeAuthFailure("Downloaded Notes/Not logged in.md")).toBe(true);
   });
 });

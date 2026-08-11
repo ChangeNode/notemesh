@@ -18,6 +18,27 @@ export { MAX_LOG_LINES };
 export type { LogLine, SyncActivity, SyncState };
 // A new file event after this much quiet starts a fresh activity burst.
 const BURST_GAP_MS = 15_000;
+
+// How often a suspicious log line may trigger the out-of-band auth check. The
+// daemon retries roughly every 30s, so this probes on every other failure.
+const AUTH_PROBE_INTERVAL_MS = 60_000;
+
+/**
+ * Does this daemon output line look like an authentication failure?
+ *
+ * A *trigger*, never a verdict. The daemon prints "Failed to authenticate: Not
+ * logged in" and keeps running, retrying forever, so nothing else would notice
+ * — but the log is also full of filenames, and a vault can contain a note
+ * called "Not logged in.md". Acting on the text directly would let anyone who
+ * can write a file into the vault switch off sync.
+ *
+ * So a match here only causes `obIsAuthenticated()` to run, and that answer —
+ * an actual authenticated command against Obsidian — decides. The worst an
+ * attacker gets is an extra `ob sync-list-remote` every 60 seconds.
+ */
+export function looksLikeAuthFailure(line: string): boolean {
+  return /failed to authenticate|not logged in|no account logged in|log ?in first/i.test(line);
+}
 // Activity counts as "in progress" if an event landed this recently.
 const ACTIVE_WINDOW_MS = 5_000;
 
@@ -67,7 +88,9 @@ export function applyActivityLine(a: SyncActivity, rawLine: string, now: number)
   a.lastEventAt = now;
 }
 
-class SyncSupervisor implements SyncBackend {
+// Exported for tests: the singleton below is what production uses, but the
+// re-auth wiring has to be exercised against a fresh instance with a stub child.
+export class SyncSupervisor implements SyncBackend {
   readonly kind = "obsidian" as const;
 
   state: SyncState = "stopped";
@@ -80,6 +103,8 @@ class SyncSupervisor implements SyncBackend {
   private backoffMs = 2_000;
   private stopping = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private authProbeAt = 0;
+  private authProbing = false;
 
   // Parse daemon output lines into a running tally of the current sync burst.
   private trackActivity(rawLine: string) {
@@ -101,6 +126,7 @@ class SyncSupervisor implements SyncBackend {
       appendLogLine(this.logs, t, level);
       this.lastActivityAt = Date.now();
       this.trackActivity(t);
+      if (looksLikeAuthFailure(t)) void this.probeAuthAfterSuspiciousLine();
     }
   }
 
@@ -185,6 +211,41 @@ class SyncSupervisor implements SyncBackend {
         this.start();
       }, this.backoffMs);
     });
+  }
+
+  /**
+   * Confirm, out of band, whether the daemon is actually locked out.
+   *
+   * The existing re-auth path hangs off the child exiting, which is right for
+   * every failure that ends the process. Revoking the Obsidian session does
+   * not: the daemon stays up and reconnects every 30 seconds, each attempt
+   * failing to authenticate, so the exit handler never runs and the dashboard
+   * goes on reporting a healthy sync over a daemon that has not moved a byte
+   * since the credentials were pulled.
+   *
+   * On a confirmed failure this only kills the child. It deliberately does not
+   * set the state itself — the exit handler already knows how to latch
+   * needs-reauth, and one decision site is easier to keep correct than two.
+   */
+  private async probeAuthAfterSuspiciousLine(): Promise<void> {
+    if (this.stopping || this.authProbing || this.state !== "running") return;
+    const now = Date.now();
+    if (now - this.authProbeAt < AUTH_PROBE_INTERVAL_MS) return;
+    this.authProbeAt = now;
+    this.authProbing = true;
+    try {
+      // Unreachable Obsidian looks the same as bad credentials from here, so on
+      // an error assume authenticated and let the next failure ask again.
+      const authed = await obIsAuthenticated().catch(() => true);
+      if (authed || this.stopping || !this.child) return;
+      this.note(
+        "[supervisor] the sync daemon cannot authenticate — stopping it to re-authenticate",
+        "error",
+      );
+      this.child.kill("SIGTERM");
+    } finally {
+      this.authProbing = false;
+    }
   }
 
   stop() {

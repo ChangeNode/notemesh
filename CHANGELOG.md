@@ -73,6 +73,22 @@ entry needing your attention cannot get lost among routine ones.
   and its explanation, where both previously returned the bare value. Clients
   cache the tool list, not the result shape, so nothing needs reconnecting.
 
+### Fixed
+
+- The dashboard no longer reports a healthy sync over a daemon that cannot log
+  in. Revoking or resetting your Obsidian credentials leaves the sync client
+  running — it reconnects every 30 seconds and fails to authenticate each time,
+  rather than exiting — and the re-authentication check only ran when the client
+  exited. So the Status tab kept showing "Watching for changes" under a green
+  light while nothing had synced since the credentials changed.
+
+  It now notices while the client is still running, and the tab shows **Needs
+  re-authentication** with the re-auth form, as it already did for every failure
+  that ends the process.
+
+  Worth knowing if you have ever changed your Obsidian password: an instance in
+  this state has been quietly not syncing, and the dashboard said otherwise.
+
 ### Internal
 
 Nothing here changes what your instance does. It is recorded because this file

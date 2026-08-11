@@ -106,6 +106,7 @@ describe("uniqueNote", () => {
 // else recovers it.
 const S = "\u0001";
 const E = "\u0002";
+// eslint-disable-next-line no-control-regex -- asserts the sanitizer strips control characters
 const CONTROL = /[\u0001\u0002]/;
 
 describe("splitHighlights", () => {

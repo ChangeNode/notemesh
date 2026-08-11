@@ -1,13 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getSetting } from "../db";
-import { withBoundary, fence, fenceEach, fenceDeep } from "./boundary";
+import { withBoundary, fenceEach, fenceDeep } from "./boundary";
 import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
 import { reindexPath } from "../vault/indexer";
 import {
-  readNote,
   readNoteRange,
   readAttachment,
   createNote,

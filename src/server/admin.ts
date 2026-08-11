@@ -5,7 +5,7 @@ import { auth, audit, MAX_OAUTH_CLIENTS } from "./auth";
 import { authFailureSnapshot } from "./mcp/ratelimit";
 import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
-import { db, deleteSetting, getSetting, setSetting } from "./db";
+import { db, getSetting, setSetting } from "./db";
 import { env, detectOriginMismatch, detectInsecureBaseUrl } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";

@@ -486,7 +486,6 @@ function ObsidianStep(props: { onDone: () => void }) {
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [mfa, setMfa] = createSignal("");
-  const [mfaRequired, setMfaRequired] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
 
@@ -497,7 +496,6 @@ function ObsidianStep(props: { onDone: () => void }) {
     const res = await api.setupObsidianLogin(email(), password(), mfa() || undefined);
     setBusy(false);
     if (!res.ok) {
-      if (res.mfaRequired) setMfaRequired(true);
       setError(res.message ?? "Login failed.");
       return;
     }
@@ -583,7 +581,7 @@ function VaultStep(props: { onDone: () => void }) {
       </header>
       <form onSubmit={submit}>
         {/* Status row: fetch state + refresh, separate from the picker. */}
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem">
+        <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", gap: "1rem" }}>
           <Show
             when={!list.loading}
             fallback={<span aria-busy="true">Fetching your remote vaults…</span>}
@@ -597,7 +595,7 @@ function VaultStep(props: { onDone: () => void }) {
           <button
             type="button"
             class="secondary outline"
-            style="margin:0; padding:0.25rem 0.75rem; font-size:0.85em; white-space:nowrap"
+            style={{ margin: 0, padding: "0.25rem 0.75rem", "font-size": "0.85em", "white-space": "nowrap" }}
             disabled={list.loading}
             onClick={() => {
               setVault("");

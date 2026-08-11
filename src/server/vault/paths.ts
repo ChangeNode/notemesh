@@ -94,6 +94,7 @@ export function lfsPointerError(): VaultPathError {
 // These enable filename spoofing and, for control chars, odd fs behavior.
 // Covers C0/C1 controls, LRM/RLM, and the LRE..RLO / LRI..PDI bidi formatters.
 const CONTROL_OR_BIDI =
+  // eslint-disable-next-line no-control-regex -- this regex exists to catch control and bidi characters in vault paths
   /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 
 // Resolve a user/LLM-supplied note path to an absolute path inside the vault.

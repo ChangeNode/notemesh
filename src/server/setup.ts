@@ -151,7 +151,7 @@ export async function setupGitRepo(
       message: "Use an HTTPS clone URL (https://…). SSH remotes aren't supported yet.",
     };
   }
-  if (!/^[\w.\-\/]+$/.test(ref)) {
+  if (!/^[\w.\-/]+$/.test(ref)) {
     return { ok: false, message: "Branch names are limited to letters, numbers, . - _ and /." };
   }
 

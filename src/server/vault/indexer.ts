@@ -24,6 +24,7 @@ export function parseNote(relPath: string, content: string) {
   const title = path
     .basename(relPath, ".md")
     .normalize("NFC")
+    // eslint-disable-next-line no-control-regex -- matching control and bidi characters is the point: they are stripped from indexed titles
     .replace(/[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "");
   const headings: string[] = [];
   const tags = new Set<string>();

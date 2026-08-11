@@ -3,7 +3,7 @@ import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
 import { resolveNotePath, toVaultRelative, VaultPathError } from "./paths";
-import { createNote, appendToNote, prependToNote, readNote, readNoteRange, noteExists } from "./notes";
+import { createNote, appendToNote, prependToNote, readNoteRange, noteExists } from "./notes";
 
 interface DailyConfig {
   folder: string;

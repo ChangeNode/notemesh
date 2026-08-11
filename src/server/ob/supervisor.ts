@@ -2,7 +2,6 @@ import { execa, type ResultPromise } from "execa";
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
-import { getSetting } from "../db";
 import { obIsAuthenticated, obSyncConfigured, obSyncOnce } from "./cli";
 import {
   MAX_LOG_LINES,

@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal, Show, type JSX } from "solid-js";
+import { createEffect, createResource, createSignal, For, Show, type JSX } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { authClient } from "~/lib/auth-client";
 import { api } from "~/lib/api";
@@ -92,14 +92,16 @@ export function AdminShell(props: { children: JSX.Element }) {
       </nav>
       <nav class="tabs">
         <ul>
-          {TABS.map((t) => (
-            <li>
-              {/* `end` so "/" is only active on the exact path, not every route. */}
-              <A href={t.href} end={t.href === "/"} activeClass="active">
-                {t.label}
-              </A>
-            </li>
-          ))}
+          <For each={TABS}>
+            {(t) => (
+              <li>
+                {/* `end` so "/" is only active on the exact path, not every route. */}
+                <A href={t.href} end={t.href === "/"} activeClass="active">
+                  {t.label}
+                </A>
+              </li>
+            )}
+          </For>
         </ul>
       </nav>
       {/* Render nothing until setup is known to be finished, so an incomplete

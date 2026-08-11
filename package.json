@@ -13,6 +13,8 @@
     "test:e2e": "playwright test",
     "start": "vinxi start",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src e2e scripts --max-warnings 0",
+    "lint:fix": "eslint src e2e scripts --fix",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -37,10 +39,15 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-solid": "^0.14.5",
+    "globals": "^17.9.0",
     "typescript": "^5.8.0",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^4.1.10"
   },
   "engines": {

@@ -75,6 +75,17 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- ChatGPT connectors work with OpenID left on. The authorization server
+  advertised `profile` and `email` but would not grant them to a client that
+  registered itself, so ChatGPT asked for what the metadata promised and its own
+  authorization refused it — `The following scopes are invalid: profile, email`.
+  Connecting meant finding OIDC in an advanced settings panel and switching it
+  off.
+
+  Advertised and granted are now one list. Nothing in your vault is gated on
+  those scopes; they exist so a connector can see which account it is attached
+  to.
+
 - Clients that probe the MCP endpoint with `GET` before anything else can now
   discover that it needs authenticating. It previously answered a bare `405`
   with no challenge, so such a client concluded the server offered no

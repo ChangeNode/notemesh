@@ -4,6 +4,23 @@ import { createAuthMiddleware, APIError } from "better-auth/api";
 import { apiKey } from "@better-auth/api-key";
 import { jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
+
+/**
+ * Every scope this authorization server both advertises and grants.
+ *
+ * `openid`, `profile` and `email` are here for OIDC clients: ChatGPT uses them
+ * to identify the signed-in user. Nothing in the vault is gated on them — that
+ * is what `vault:read` and `vault:write` are for — so granting them costs
+ * nothing on a single-user server, and withholding them costs the connector.
+ */
+export const OAUTH_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "vault:read",
+  "vault:write",
+] as const;
 import crypto from "node:crypto";
 import { db } from "./db";
 import { env } from "./env";
@@ -169,13 +186,20 @@ export const auth = betterAuth({
       // unauthenticated dynamic client registration, then use the PKCE flow.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
-      scopes: ["openid", "profile", "email", "offline_access", "vault:read", "vault:write"],
-      // Scopes a client GETS by default when it registers without asking.
-      clientRegistrationDefaultScopes: ["openid", "offline_access", "vault:read", "vault:write"],
-      // Scopes a client MAY additionally request at registration. The allowed
-      // set is the union of these with the defaults; without this, OIDC clients
-      // like Codex that request `profile`/`email` are rejected (invalid_scope).
-      clientRegistrationAllowedScopes: ["profile", "email"],
+      // Advertised and granted are the same list, deliberately. They used to
+      // differ — profile and email were advertised but only grantable if a
+      // client asked for them at registration — and ChatGPT does not ask. It
+      // reads scopes_supported, registers without a scope field, then requests
+      // what the metadata promised and is refused its own authorization with
+      // "The following scopes are invalid: profile, email". The only way out
+      // was for the operator to find OIDC in an advanced settings panel and
+      // switch it off.
+      //
+      // A client cannot be expected to know that a scope it was told about is
+      // not one it may have. One constant, used twice, so the two cannot drift
+      // apart again; server/oauth-scopes.test.ts pins them together.
+      scopes: [...OAUTH_SCOPES],
+      clientRegistrationDefaultScopes: [...OAUTH_SCOPES],
       // MCP clients pass the endpoint URL as the RFC 8707 resource indicator.
       //
       // SECURITY: every entry here must name the SAME resource server. On the

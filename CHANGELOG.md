@@ -75,6 +75,16 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- OAuth discovery now advertises only the scopes this server actually gates on,
+  `vault:read` and `vault:write`, and the unauthenticated challenge names them
+  directly. It previously also advertised `openid` and `offline_access`, which
+  the MCP specification says a protected resource should not do — a refresh
+  token is the client's business, not the vault's.
+
+  Visible if you connect with Codex, which prefers a server's advertised scopes
+  over its own configuration: the approval prompt asked for two permissions that
+  had nothing to do with your notes.
+
 - The dashboard no longer reports a healthy sync over a daemon that cannot log
   in. Revoking or resetting your Obsidian credentials leaves the sync client
   running — it reconnects every 30 seconds and fails to authenticate each time,

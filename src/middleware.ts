@@ -125,7 +125,16 @@ export default createMiddleware({
           JSON.stringify({
             resource: `${env.baseUrl}/api/mcp`,
             authorization_servers: [`${env.baseUrl}/api/auth`],
-            scopes_supported: ["vault:read", "vault:write", "openid", "offline_access"],
+            // Only what this resource actually gates on. The MCP spec says a
+            // protected resource SHOULD NOT advertise offline_access, since a
+            // refresh token is not a resource requirement — a client that wants
+            // one asks for it off the *authorization server's* metadata, which
+            // still offers it. openid goes for the same reason: it authenticates
+            // a user, it does not grant access to a vault.
+            //
+            // Not cosmetic. Codex prefers server-advertised scopes over its own
+            // config, so anything listed here is what it asks a user to approve.
+            scopes_supported: ["vault:read", "vault:write"],
             bearer_methods_supported: ["header"],
           }),
           { headers: { "Content-Type": "application/json" } },

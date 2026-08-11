@@ -322,6 +322,53 @@ describe("OAuth discovery", () => {
     const as = await (await fetch(`${server.url}/.well-known/oauth-authorization-server`)).json();
     expect(as.authorization_response_iss_parameter_supported).toBeUndefined();
   });
+
+  it("advertises only the scopes this resource actually gates on", async () => {
+    // The MCP spec: a protected resource SHOULD NOT list offline_access, since a
+    // refresh token is a client concern rather than a resource requirement. It
+    // matters in practice because Codex prefers server-advertised scopes over
+    // its own config, so whatever is here is what the user is asked to approve.
+    const pr = await (await fetch(`${server.url}/.well-known/oauth-protected-resource`)).json();
+    expect(pr.scopes_supported).toEqual(["vault:read", "vault:write"]);
+    expect(pr.scopes_supported).not.toContain("offline_access");
+    expect(pr.scopes_supported).not.toContain("openid");
+  });
+});
+
+describe("the unauthenticated MCP challenge", () => {
+  it("points at the metadata and names the scopes it needs", async () => {
+    // Both halves matter: resource_metadata is how a client finds the
+    // authorization server at all, and scope is what the spec has it prefer
+    // over the metadata document when deciding what to request.
+    const res = await fetch(`${server.url}/api/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
+    });
+    expect(res.status).toBe(401);
+
+    const challenge = res.headers.get("www-authenticate") ?? "";
+    expect(challenge).toContain(
+      `resource_metadata="${server.url}/.well-known/oauth-protected-resource"`,
+    );
+    expect(challenge).toContain('scope="vault:read vault:write"');
+  });
+
+  it("offers a challenge a client can actually follow to the metadata", async () => {
+    const res = await fetch(`${server.url}/api/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
+    });
+    const url = /resource_metadata="([^"]+)"/.exec(res.headers.get("www-authenticate") ?? "")?.[1];
+    expect(url).toBeTruthy();
+
+    // Walking the advertised URL has to reach JSON, not the SPA shell.
+    const meta = await fetch(url!);
+    expect(meta.status).toBe(200);
+    expect(meta.headers.get("content-type")).toContain("json");
+    expect((await meta.json()).authorization_servers).toEqual([`${server.url}/api/auth`]);
+  });
 });
 
 describe("page routes and the navigation guard", () => {

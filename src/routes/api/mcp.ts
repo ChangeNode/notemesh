@@ -34,7 +34,13 @@ function unauthorized(): Response {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "WWW-Authenticate": `Bearer resource_metadata="${env.baseUrl}/.well-known/oauth-protected-resource"`,
+        // scope= as well as resource_metadata: the spec has clients prefer the
+        // challenge over scopes_supported when choosing what to request, and
+        // says servers SHOULD provide it. Without it a client falls back to the
+        // metadata document and asks for whatever is listed there.
+        "WWW-Authenticate":
+          `Bearer resource_metadata="${env.baseUrl}/.well-known/oauth-protected-resource", ` +
+          `scope="vault:read vault:write"`,
       },
     },
   );

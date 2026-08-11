@@ -121,11 +121,37 @@ export async function POST(event: APIEvent) {
   return authFailed();
 }
 
-// Stateless mode: no SSE stream to resume and no session to delete.
-export function GET() {
-  return new Response(null, { status: 405, headers: { Allow: "POST" } });
+/**
+ * Stateless mode: there is no SSE stream to resume and no session to delete, so
+ * GET and DELETE have nothing to do — but an *unauthenticated* one still has to
+ * be answered as unauthenticated.
+ *
+ * These used to return a bare 405 with no WWW-Authenticate. The transport spec
+ * does allow 405 for a GET a server will not upgrade to a stream, so that read
+ * correctly in isolation; the authorization spec is what it missed, since a
+ * request carrying no valid token gets 401 whatever method it used. The two
+ * only conflict if you check the method first, which is what this did.
+ *
+ * The cost was not theoretical. A client that probes with GET before anything
+ * else — Codex does, and it is the only signal it has to go on — saw a 405 with
+ * no challenge, concluded the server offered no authentication it understood,
+ * and reported "Auth: Unsupported" with no authorization button anywhere. The
+ * 401 on POST was correct the whole time and nothing ever asked for it.
+ *
+ * So: authenticate first, answer 405 second.
+ */
+function guarded(event: APIEvent): Response {
+  // Presence of a credential, deliberately not its validity. These methods do
+  // nothing in stateless mode, so there is nothing to protect and no reason for
+  // a second validation path that could drift from the real one in POST. The
+  // only thing that has to be right is that a request arriving with no
+  // credential at all is told authentication exists and where to find it.
+  const presented =
+    Boolean(bearerToken(event.request)) || Boolean(event.request.headers.get("x-api-key"));
+  return presented
+    ? new Response(null, { status: 405, headers: { Allow: "POST" } })
+    : unauthorized();
 }
 
-export function DELETE() {
-  return new Response(null, { status: 405, headers: { Allow: "POST" } });
-}
+export const GET = guarded;
+export const DELETE = guarded;

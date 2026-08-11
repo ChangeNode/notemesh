@@ -354,6 +354,29 @@ describe("the unauthenticated MCP challenge", () => {
     expect(challenge).toContain('scope="vault:read vault:write"');
   });
 
+  it.each(["GET", "DELETE"])(
+    "answers an unauthenticated %s with the same challenge, not a bare 405",
+    async (method) => {
+      // A client that probes with GET before anything else — Codex does — used
+      // to get a 405 with no WWW-Authenticate, and reported the server as
+      // offering no authentication it understood. The method genuinely is not
+      // supported in stateless mode, but that is the second thing to say.
+      const res = await fetch(`${server.url}/api/mcp`, { method });
+      expect(res.status).toBe(401);
+      expect(res.headers.get("www-authenticate")).toContain("resource_metadata=");
+      expect(res.headers.get("www-authenticate")).toContain('scope="vault:read vault:write"');
+    },
+  );
+
+  it("still reports 405 for those methods once a credential is presented", async () => {
+    const res = await fetch(`${server.url}/api/mcp`, {
+      method: "GET",
+      headers: { Authorization: "Bearer whatever" },
+    });
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
+  });
+
   it("offers a challenge a client can actually follow to the metadata", async () => {
     const res = await fetch(`${server.url}/api/mcp`, {
       method: "POST",

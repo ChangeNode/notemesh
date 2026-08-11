@@ -75,6 +75,16 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- Clients that probe the MCP endpoint with `GET` before anything else can now
+  discover that it needs authenticating. It previously answered a bare `405`
+  with no challenge, so such a client concluded the server offered no
+  authentication it understood and never showed a sign-in option — Codex reports
+  this as `Auth: Unsupported`. The `POST` path was correct all along; nothing
+  ever got far enough to ask it.
+
+  If Codex or ChatGPT would not offer you an authorize button, this is likely
+  why.
+
 - OAuth discovery now advertises only the scopes this server actually gates on,
   `vault:read` and `vault:write`, and the unauthenticated challenge names them
   directly. It previously also advertised `openid` and `offline_access`, which

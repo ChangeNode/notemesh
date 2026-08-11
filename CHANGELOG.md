@@ -73,6 +73,18 @@ entry needing your attention cannot get lost among routine ones.
   and its explanation, where both previously returned the bare value. Clients
   cache the tool list, not the result shape, so nothing needs reconnecting.
 
+### Internal
+
+Nothing here changes what your instance does. It is recorded because this file
+is what you decide from, and "no reason to hurry" is worth being able to read
+rather than infer from a diff.
+
+- ESLint added, with the browser/server import boundary enforced in the editor
+  rather than only at build time. Clearing its first run removed some dead code
+  and moved a static list to `<For>`; no behaviour changed.
+- A transitive dependency advisory (`nanoid`) cleared. It was build tooling and
+  never present in the deployed image.
+
 ## 1.0.0 — 2026-08-06
 
 **Taking this update:** nothing to take — this is the first release. Deploying

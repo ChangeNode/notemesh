@@ -335,6 +335,48 @@ describe("OAuth discovery", () => {
   });
 });
 
+describe("the Origin header on the MCP endpoint", () => {
+  // The transport spec: "Servers MUST validate the Origin header on all
+  // incoming connections to prevent DNS rebinding attacks. If the Origin header
+  // is present and invalid, servers MUST respond with HTTP 403 Forbidden."
+  const call = (init: RequestInit = {}) =>
+    fetch(`${server.url}/api/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
+    });
+
+  it("refuses a request claiming another origin", async () => {
+    const res = await call({ headers: { Origin: "https://evil.example" } });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.message).toMatch(/origin/i);
+  });
+
+  it("refuses an unparseable one rather than giving it the benefit", async () => {
+    expect((await call({ headers: { Origin: "not a url" } })).status).toBe(403);
+  });
+
+  it("allows a request with no Origin at all", async () => {
+    // The one that matters most. Every connector reaches this server from
+    // Anthropic's or OpenAI's infrastructure, and none of them sends an Origin.
+    // Refusing these would disconnect every real client while stopping nothing:
+    // the attack is a web page making requests, and a web page cannot omit it.
+    expect((await call()).status).not.toBe(403);
+  });
+
+  it("allows the dashboard's own origin", async () => {
+    expect((await call({ headers: { Origin: server.url } })).status).not.toBe(403);
+  });
+
+  it.each(["GET", "DELETE"])("checks %s too, not only POST", async (method) => {
+    const res = await fetch(`${server.url}/api/mcp`, {
+      method,
+      headers: { Origin: "https://evil.example" },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("the unauthenticated MCP challenge", () => {
   it("points at the metadata and names the scopes it needs", async () => {
     // Both halves matter: resource_metadata is how a client finds the

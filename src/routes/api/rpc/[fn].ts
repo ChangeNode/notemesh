@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { PublicError } from "~/server/public-error";
+import { originAllowed } from "~/server/origin";
 
 /**
  * The one door between the browser and the server.
@@ -136,42 +137,6 @@ const MAX_BODY_BYTES = 256 * 1024;
 
 /** Arguments are spread into the handler, and a spread has a stack limit. */
 const MAX_ARGS = 32;
-
-/**
- * Same-origin only, when the caller says where it came from.
- *
- * The session cookie is SameSite=Lax, which already stops a browser sending it
- * on a cross-site POST — but that was the only thing standing between a page on
- * another origin and this route, and one control is not a spare. Chrome's
- * Lax+POST grace period alone leaves a couple of minutes after sign-in where
- * the cookie does travel.
- *
- * A missing Origin is allowed: every browser sends one on a cross-site POST, so
- * its absence means the caller is not a browser being tricked — it is curl, a
- * script, or a test. Compared against the request's own Host as well as the
- * configured base URL, so an instance reached at a domain it was not configured
- * with still works rather than locking the operator out of their own dashboard.
- */
-function originAllowed(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-
-  let host: string;
-  try {
-    host = new URL(origin).host;
-  } catch {
-    return false; // Unparseable Origin: not something to give the benefit of.
-  }
-
-  const requestHost = request.headers.get("host");
-  if (requestHost && host === requestHost) return true;
-
-  try {
-    return host === new URL(process.env.BASE_URL ?? "").host;
-  } catch {
-    return false;
-  }
-}
 
 /** Read the body with a byte cap, counting as it arrives rather than after. */
 async function readCappedBody(request: Request): Promise<string | null> {

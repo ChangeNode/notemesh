@@ -4,6 +4,7 @@ import { accessFromApiKey, accessFromOpaqueOAuth, bearerToken, looksLikeJwt } fr
 import { getSetting } from "~/server/db";
 import { runAuthMigrations } from "~/server/auth";
 import { env } from "~/server/env";
+import { originAllowed } from "~/server/origin";
 import { handleMcpWithOAuth } from "~/server/mcp/oauth";
 import { clientIp, authFailureBlock, noteAuthFailure, clearAuthFailures } from "~/server/mcp/ratelimit";
 
@@ -90,6 +91,11 @@ function unauthorized(): Response {
 const MAX_BODY_BYTES = 4 * 1000 * 1000;
 
 export async function POST(event: APIEvent) {
+  // First, before the body is read or a credential is looked at. A DNS
+  // rebinding attack is a web page talking to this endpoint from an origin it
+  // has no business using, and the cheapest place to end that is immediately.
+  if (!originAllowed(event.request)) return forbiddenOrigin();
+
   await runAuthMigrations();
 
   const lenHeader = event.request.headers.get("content-length");
@@ -174,7 +180,26 @@ export async function POST(event: APIEvent) {
  *
  * So: authenticate first, answer 405 second.
  */
+/**
+ * 403 for a request whose Origin is present and not ours.
+ *
+ * The transport spec's wording: the body **MAY** comprise a JSON-RPC error
+ * response that has no `id`. It has none because there is no request to answer
+ * — nothing has been parsed at the point this fires.
+ */
+function forbiddenOrigin(): Response {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: -32600, message: "Origin not allowed." },
+      id: null,
+    }),
+    { status: 403, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 function guarded(event: APIEvent): Response {
+  if (!originAllowed(event.request)) return forbiddenOrigin();
   // Presence of a credential, deliberately not its validity. These methods do
   // nothing in stateless mode, so there is nothing to protect and no reason for
   // a second validation path that could drift from the real one in POST. The

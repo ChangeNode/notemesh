@@ -75,6 +75,15 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- The MCP endpoint now validates the `Origin` header, which the Streamable HTTP
+  transport requires of every server: a request arriving with an origin that is
+  not this instance is refused with 403. Requests without an `Origin` are
+  unaffected — that is every real connector, since Claude and ChatGPT reach your
+  server from their own infrastructure and browsers cannot omit the header.
+
+  The guard this adds is against DNS rebinding, where a web page tricks a
+  browser into treating your server as its own.
+
 - Adding a connector before finishing the setup wizard no longer looks like a
   broken server. The MCP endpoint checked readiness before authentication, so an
   unconnected client got "service unavailable" and never the challenge that

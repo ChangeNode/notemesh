@@ -227,6 +227,42 @@ describe("RPC: cross-origin requests are refused", () => {
 // The body was read and parsed before the auth gate, with no cap: 96MB went in
 // from an unauthenticated client, and a large argument array overflowed the
 // stack on the spread into the handler.
+/**
+ * Send a body past the cap with no content-length, and report how it was refused.
+ *
+ * Observing the refusal is inherently racy. The server stops reading at the cap
+ * and answers 413 while the client is still writing megabytes, so the client
+ * either reads that answer or has its own write reset first — whichever wins.
+ * Both mean the guard worked; CI is slow enough to see the second, which is
+ * what made this flaky (ECONNRESET on run 31461767978, green on a re-run with
+ * no code change between them).
+ *
+ * So the assertion is on the refusal, not on one of its two shapes. A status in
+ * the 2xx range is what must never happen, and each of these suites follows up
+ * with an ordinary call, so a server that died rather than refused still fails.
+ */
+async function refusalOf(
+  url: string,
+  headers: Record<string, string>,
+  body: ReadableStream,
+): Promise<number | string> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      // @ts-expect-error — undici requires this for a streaming request body.
+      duplex: "half",
+    });
+    return res.status;
+  } catch (e: any) {
+    return e?.cause?.code ?? e?.code ?? "unknown-transport-error";
+  }
+}
+
+/** Refused, by either observable route. */
+const REFUSED = [413, "ECONNRESET", "UND_ERR_SOCKET", "EPIPE"];
+
 describe("RPC: request bodies are bounded", () => {
   const big = () => JSON.stringify([{ pad: "A".repeat(2 * 1024 * 1024) }]);
 
@@ -260,14 +296,12 @@ describe("RPC: request bodies are bounded", () => {
         controller.close();
       },
     });
-    const res = await fetch(`${server.url}/api/rpc/getClaimState`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: stream,
-      // @ts-expect-error — undici requires this for a streaming request body.
-      duplex: "half",
-    });
-    expect(res.status).toBe(413);
+    const outcome = await refusalOf(
+      `${server.url}/api/rpc/getClaimState`,
+      { "Content-Type": "application/json" },
+      stream,
+    );
+    expect(REFUSED).toContain(outcome);
   }, 30_000);
 
   it("rejects an argument list long enough to overflow the spread", async () => {
@@ -301,18 +335,16 @@ describe("MCP: request bodies are bounded while reading", () => {
         controller.close();
       },
     });
-    const res = await fetch(`${server.url}/api/mcp`, {
-      method: "POST",
-      headers: {
+    const outcome = await refusalOf(
+      `${server.url}/api/mcp`,
+      {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: stream,
-      // @ts-expect-error — undici requires this for a streaming request body.
-      duplex: "half",
-    });
-    expect(res.status).toBe(413);
+      stream,
+    );
+    expect(REFUSED).toContain(outcome);
   }, 30_000);
 
   it("still serves a normal-sized call", async () => {

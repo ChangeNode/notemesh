@@ -75,6 +75,15 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- The git setup step no longer assumes GitHub. **Username** is now required
+  rather than optional, and the placeholder and help text no longer name one
+  host. Left blank, it used to become `x-access-token` — GitHub's convention,
+  which a deploy token or a Bitbucket app password rejects — and the failure
+  arrived as a generic authentication error with nothing pointing at the field
+  that had been skipped.
+
+  Any HTTPS git host has always worked. Only the wizard suggested otherwise.
+
 - The MCP endpoint now validates the `Origin` header, which the Streamable HTTP
   transport requires of every server: a request arriving with an origin that is
   not this instance is refused with 403. Requests without an `Origin` are

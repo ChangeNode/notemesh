@@ -398,18 +398,19 @@ test.describe("branding", () => {
   });
 });
 
+/** Open the seeded instance's database. */
+async function openDb() {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const Database = (await import("better-sqlite3")).default;
+  const state = JSON.parse(
+    fs.readFileSync(path.join(os.tmpdir(), "notemesh-e2e-state.json"), "utf8"),
+  ) as { dataDir: string };
+  return new Database(path.join(state.dataDir, "app.sqlite"));
+}
+
 test.describe("the vault step", () => {
-  /** Open the seeded instance's database. */
-  async function openDb() {
-    const fs = await import("node:fs");
-    const os = await import("node:os");
-    const path = await import("node:path");
-    const Database = (await import("better-sqlite3")).default;
-    const state = JSON.parse(
-      fs.readFileSync(path.join(os.tmpdir(), "notemesh-e2e-state.json"), "utf8"),
-    ) as { dataDir: string };
-    return new Database(path.join(state.dataDir, "app.sqlite"));
-  }
 
   test("keeps the encryption password folded away, and still submits it", async ({ page }) => {
     // Blank is right for most vaults — Obsidian Sync defaults to managed
@@ -453,6 +454,75 @@ test.describe("the vault step", () => {
             "ON CONFLICT(key) DO UPDATE SET value='true'",
         )
         .run();
+      restore.close();
+    }
+  });
+});
+
+test.describe("the git step", () => {
+  test("requires a username, because only GitHub ignores it", async ({ page }) => {
+    // The field used to be optional with a placeholder reading "your GitHub
+    // username", and a blank value silently became `x-access-token` — GitHub's
+    // convention, which GitLab and Bitbucket reject. The failure arrived as a
+    // generic authentication error with nothing pointing at the skipped field.
+    //
+    // Reached by pointing the shared instance at the git backend and clearing
+    // vault_configured. Both restored in `finally`, so a failure here cannot
+    // strand the tests that run after it.
+    const db = await openDb();
+    const previousBackend = (
+      db.prepare("SELECT value FROM settings WHERE key = 'sync_backend'").get() as
+        | { value: string }
+        | undefined
+    )?.value;
+    db.prepare(
+      "INSERT INTO settings (key,value) VALUES ('sync_backend','git') " +
+        "ON CONFLICT(key) DO UPDATE SET value='git'",
+    ).run();
+    db.prepare("DELETE FROM settings WHERE key = 'vault_configured'").run();
+    db.close();
+
+    try {
+      await seedSession(page);
+      await page.goto("/setup");
+      await expect(page.getByText("Link your vault repository")).toBeVisible({ timeout: 15_000 });
+
+      const username = page.locator("#git-username");
+      await expect(username).toHaveAttribute("required", "");
+
+      // Not GitHub-specific. An earlier version read "your GitHub username",
+      // and the version after that named oauth2 — which is GitLab's magic value
+      // for OAuth2 access tokens only, the one credential a person setting this
+      // up is least likely to hold. Personal and project tokens ignore the
+      // username entirely.
+      const placeholder = await username.getAttribute("placeholder");
+      expect(placeholder).not.toMatch(/GitHub/i);
+      expect(placeholder).not.toMatch(/oauth2/i);
+
+      // Filling everything except the username must not submit.
+      await page.locator("#git-remote").fill("https://gitlab.com/you/vault.git");
+      await page.locator("#git-token").fill("a-token");
+      await page.getByRole("button", { name: /Link Repository/i }).click();
+      await expect(page.getByText("Link your vault repository")).toBeVisible();
+      await expect(username).toBeFocused();
+    } finally {
+      const restore = await openDb();
+      restore
+        .prepare(
+          "INSERT INTO settings (key,value) VALUES ('vault_configured','true') " +
+            "ON CONFLICT(key) DO UPDATE SET value='true'",
+        )
+        .run();
+      if (previousBackend) {
+        restore
+          .prepare(
+            "INSERT INTO settings (key,value) VALUES ('sync_backend',?) " +
+              "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          )
+          .run(previousBackend);
+      } else {
+        restore.prepare("DELETE FROM settings WHERE key = 'sync_backend'").run();
+      }
       restore.close();
     }
   });

@@ -453,7 +453,8 @@ function GitStep(props: { onDone: () => void }) {
             <input
               id="git-username"
               type="text"
-              placeholder="your GitHub username"
+              required
+              placeholder="your username on that host"
               value={username()}
               onInput={(e) => setUsername(e.currentTarget.value)}
             />
@@ -468,8 +469,13 @@ function GitStep(props: { onDone: () => void }) {
           onInput={(e) => setToken(e.currentTarget.value)}
         />
         <small class="muted">
-          On GitHub: a fine-grained personal access token scoped to this repository with{" "}
-          <b>Contents: read and write</b>. Revoke it any time without affecting anything else.
+          Any HTTPS git host works. On GitHub: a fine-grained personal access token scoped to this
+          repository with <b>Contents: read and write</b>. Elsewhere: whatever that host calls a
+          write-scoped token. Revoke it any time without affecting anything else.
+          <br />
+          Most hosts ignore the username when the password is a token, so your own is a safe
+          answer. Two exceptions: a <b>deploy token</b> wants the token's own username, and a
+          GitLab <b>OAuth2</b> token wants the literal <code>oauth2</code>.
         </small>
         <Show when={error()}>
           <p class="error">{error()}</p>

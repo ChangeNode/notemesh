@@ -85,6 +85,12 @@ entry needing your attention cannot get lost among routine ones.
   If you have ever revoked a connector and wondered whether it really stopped,
   this is why it might not have.
 
+  One deliberate exception: a download link already handed to you for a large
+  attachment keeps working for its 15 minutes. Those links are signed for a
+  single file and meant to be opened by you in a browser, so they are not tied
+  to the connector that produced them — no new ones can be minted after a
+  revoke, and an old one reaches only the file it already named.
+
 - The git setup step no longer assumes GitHub. **Username** is now required
   rather than optional, and the placeholder and help text no longer name one
   host. Left blank, it used to become `x-access-token` — GitHub's convention,

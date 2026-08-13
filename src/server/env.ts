@@ -70,6 +70,28 @@ function usableOrigin(value: string | undefined): string | null {
   return trimmed.replace(/\/$/, "");
 }
 
+/**
+ * Link back to this deployment's own Railway service, when it is one.
+ *
+ * Railway injects both IDs into every deployment, so their presence is the
+ * detection: absent means self-hosted, a container somewhere else, or a local
+ * run, and the Status page simply shows nothing rather than a dead link.
+ *
+ * The IDs are encoded on the way in. They are UUIDs in practice and this is not
+ * a security boundary — an operator who can set environment variables on their
+ * own server has easier things to do than this — but they are external input
+ * being pasted into a URL an admin will click, and encoding costs nothing.
+ */
+export function railwayServiceUrl(): string | null {
+  const project = process.env.RAILWAY_PROJECT_ID?.trim();
+  const service = process.env.RAILWAY_SERVICE_ID?.trim();
+  if (!project || !service) return null;
+  return (
+    `https://railway.com/project/${encodeURIComponent(project)}` +
+    `/service/${encodeURIComponent(service)}/settings`
+  );
+}
+
 export function ensureDataDirs() {
   for (const dir of [env.dataDir, env.vaultDir, env.obHomeDir]) {
     fs.mkdirSync(dir, { recursive: true });

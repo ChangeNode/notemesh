@@ -73,6 +73,16 @@ entry needing your attention cannot get lost among routine ones.
   and its explanation, where both previously returned the bare value. Clients
   cache the tool list, not the result shape, so nothing needs reconnecting.
 
+### Added
+
+- The Status page links back to this deployment's own Railway service, so
+  redeploying, checking variables or reading platform logs is one click from the
+  dashboard rather than a hunt through Railway for the right project. Shown only
+  when Railway's project and service IDs are present, which is how the app knows
+  it is running there — self-hosted deployments see nothing rather than a link
+  that goes somewhere wrong. Opens in a new tab, since the Status page is a live
+  view worth keeping.
+
 ### Fixed
 
 - **Security** — revoking a connector now ends its access immediately. Revoking

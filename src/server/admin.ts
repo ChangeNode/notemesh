@@ -6,7 +6,7 @@ import { authFailureSnapshot } from "./mcp/ratelimit";
 import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
-import { env, detectOriginMismatch, detectInsecureBaseUrl } from "./env";
+import { env, detectOriginMismatch, detectInsecureBaseUrl, railwayServiceUrl } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
@@ -120,6 +120,7 @@ export async function getStatusPage() {
   return {
     vault: vaultInfo(),
     disk: diskStatus(),
+    railwayUrl: railwayServiceUrl(),
     sync: sup.status(),
     logs: sup.getLogs().slice(-80),
     oauthClients: oauthClientRows().map((c) => ({

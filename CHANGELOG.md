@@ -75,6 +75,22 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — revoking a connector now ends its access immediately. Revoking
+  deleted the client, its tokens and its consent, which stopped connectors
+  holding an opaque token at once. A connector holding a JWT kept working for
+  the rest of that token's hour, because JWTs were verified by signature alone
+  and nothing checked whether the client still existed. The dashboard said the
+  connector was gone while the endpoint went on serving it.
+
+  If you have ever revoked a connector and wondered whether it really stopped,
+  this is why it might not have.
+
+  One deliberate exception: a download link already handed to you for a large
+  attachment keeps working for its 15 minutes. Those links are signed for a
+  single file and meant to be opened by you in a browser, so they are not tied
+  to the connector that produced them — no new ones can be minted after a
+  revoke, and an old one reaches only the file it already named.
+
 - The git setup step no longer assumes GitHub. **Username** is now required
   rather than optional, and the placeholder and help text no longer name one
   host. Left blank, it used to become `x-access-token` — GitHub's convention,

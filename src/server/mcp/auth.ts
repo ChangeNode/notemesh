@@ -15,6 +15,26 @@ export function looksLikeJwt(token: string): boolean {
 // bind, so the provider issues a random string. We are the authorization
 // server, so validate those locally against the token table, which stores
 // base64(sha256(token)).
+/**
+ * Does this client still exist?
+ *
+ * Revoking a connector deletes its row, its tokens, its refresh tokens and its
+ * consent. That ends access immediately for an opaque token, which is looked up
+ * below — but a JWT is verified against our JWKS with no database involved, so
+ * one already issued stays cryptographically valid for the rest of its hour no
+ * matter what the admin UI was told to do.
+ *
+ * This is the check that closes that. One indexed lookup on a request that
+ * already opens SQLite for everything else, in exchange for a Revoke button
+ * that revokes.
+ */
+export function oauthClientExists(clientId: string): boolean {
+  const row = db()
+    .prepare('SELECT 1 AS ok FROM "oauthClient" WHERE clientId = ? LIMIT 1')
+    .get(clientId) as { ok: number } | undefined;
+  return Boolean(row);
+}
+
 export function accessFromOpaqueOAuth(token: string): McpAccess | null {
   const digest = crypto.createHash("sha256").update(token).digest();
   // Try both base64 alphabets/paddings the provider might use.

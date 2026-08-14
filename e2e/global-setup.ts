@@ -55,5 +55,13 @@ exit 0
 }
 
 export default async function globalSetup() {
-  await startSeeded({ OB_BIN: fakeObDaemon() });
+  await startSeeded({
+    OB_BIN: fakeObDaemon(),
+    // Pretend this instance is a Railway deployment, so the Settings page's
+    // Server Configuration panel has something to render. The panel's absence
+    // when these are unset is covered in server/railway-url.test.ts, which can
+    // vary the environment per case in a way one shared server cannot.
+    RAILWAY_PROJECT_ID: "a0175de5-2870-4c27-9dda-3c0f80110512",
+    RAILWAY_SERVICE_ID: "6b3961eb-10f3-4702-b6cc-dc2896bb0fe3",
+  });
 }

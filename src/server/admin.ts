@@ -6,7 +6,7 @@ import { authFailureSnapshot } from "./mcp/ratelimit";
 import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
-import { env, detectOriginMismatch, detectInsecureBaseUrl, railwayServiceUrl } from "./env";
+import { env, detectOriginMismatch, detectInsecureBaseUrl, railwayLinks } from "./env";
 import { MAX_LOG_LINES } from "./ob/supervisor";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
@@ -120,7 +120,6 @@ export async function getStatusPage() {
   return {
     vault: vaultInfo(),
     disk: diskStatus(),
-    railwayUrl: railwayServiceUrl(),
     sync: sup.status(),
     logs: sup.getLogs().slice(-80),
     oauthClients: oauthClientRows().map((c) => ({
@@ -153,6 +152,7 @@ export async function getSettingsPage() {
   "use server";
   await requireAdmin();
   return {
+    railway: railwayLinks(),
     // Absent means on — see the registration in mcp/server.ts. Read the same
     // way here so the switch reflects what the tool surface actually does.
     deleteEnabled: getSetting("delete_enabled") !== "false",

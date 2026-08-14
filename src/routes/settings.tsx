@@ -10,6 +10,31 @@ export default function Settings() {
       <Show when={data()} keyed>
         {(d) => (
           <>
+            {/* First, because it is the way out of this page: everything else
+                here is a NoteMesh setting, and these two are the platform the
+                server runs on. Only rendered on Railway, where both IDs are
+                injected — anywhere else there is no panel at all rather than
+                links that go somewhere wrong.
+
+                New tabs: the dashboard is a live view of a running sync, and
+                sending it away loses what the operator was looking at. */}
+            <Show when={d.railway}>
+              <article>
+                <header>
+                  <strong>Server Configuration</strong>
+                </header>
+                <p>
+                  <a href={d.railway!.service} target="_blank" rel="noopener noreferrer">
+                    Check for updates
+                  </a>{" "}
+                  and{" "}
+                  <a href={d.railway!.project} target="_blank" rel="noopener noreferrer">
+                    configure
+                  </a>{" "}
+                  on Railway
+                </p>
+              </article>
+            </Show>
             <article>
               <header>
                 <strong>Vault writes</strong>

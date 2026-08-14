@@ -459,6 +459,44 @@ test.describe("the vault step", () => {
   });
 });
 
+test.describe("Server Configuration on Settings", () => {
+  const PROJECT = "https://railway.com/project/a0175de5-2870-4c27-9dda-3c0f80110512";
+
+  test("offers both Railway links, each opening away from the dashboard", async ({ page }) => {
+    await seedSession(page);
+    await page.goto("/settings");
+
+    const panel = page.locator("article", { hasText: "Server Configuration" }).first();
+    await expect(panel).toBeVisible();
+    // Reads as one sentence rather than two buttons.
+    await expect(panel).toContainText("Check for updates and configure on Railway");
+
+    // Updates are per service; configuration is the project.
+    const updates = panel.getByRole("link", { name: "Check for updates" });
+    await expect(updates).toHaveAttribute(
+      "href",
+      `${PROJECT}/service/6b3961eb-10f3-4702-b6cc-dc2896bb0fe3/settings`,
+    );
+    const configure = panel.getByRole("link", { name: "configure" });
+    await expect(configure).toHaveAttribute("href", PROJECT);
+
+    // The dashboard is a live view; neither link should replace it.
+    for (const link of [updates, configure]) {
+      await expect(link).toHaveAttribute("target", "_blank");
+      await expect(link).toHaveAttribute("rel", /noopener/);
+    }
+  });
+
+  test("sits at the top, above the NoteMesh settings", async ({ page }) => {
+    // It is the way out of this page — everything else here is a setting of
+    // this server, and this is the platform underneath it.
+    await seedSession(page);
+    await page.goto("/settings");
+    const headings = await page.locator("article header strong").allTextContents();
+    expect(headings[0]).toBe("Server Configuration");
+  });
+});
+
 test.describe("the git step", () => {
   test("requires a username, because only GitHub ignores it", async ({ page }) => {
     // The field used to be optional with a placeholder reading "your GitHub

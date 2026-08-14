@@ -75,13 +75,16 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Added
 
-- The Status page links back to this deployment's own Railway service, so
-  redeploying, checking variables or reading platform logs is one click from the
-  dashboard rather than a hunt through Railway for the right project. Shown only
-  when Railway's project and service IDs are present, which is how the app knows
-  it is running there — self-hosted deployments see nothing rather than a link
-  that goes somewhere wrong. Opens in a new tab, since the Status page is a live
-  view worth keeping.
+- A **Server Configuration** panel at the top of Settings, linking back to this
+  deployment on Railway: *Check for updates* goes to the service, where an
+  available update is applied, and *configure* goes to the project. Applying an
+  update is the one routine task the dashboard cannot do for you, so it is worth
+  one click rather than a hunt through Railway for the right service.
+
+  Shown only when Railway's project and service IDs are present, which is how
+  the app knows it is running there — self-hosted deployments see no panel
+  rather than links that go somewhere wrong. Both open in a new tab, since the
+  dashboard is a live view worth keeping.
 
 ### Fixed
 

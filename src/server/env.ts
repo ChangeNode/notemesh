@@ -71,25 +71,29 @@ function usableOrigin(value: string | undefined): string | null {
 }
 
 /**
- * Link back to this deployment's own Railway service, when it is one.
+ * Links back to this deployment on Railway, when it is one.
  *
  * Railway injects both IDs into every deployment, so their presence is the
- * detection: absent means self-hosted, a container somewhere else, or a local
- * run, and the Status page simply shows nothing rather than a dead link.
+ * detection: absent means self-hosted, another container platform, or a local
+ * run, and the dashboard shows nothing rather than a dead link.
  *
- * The IDs are encoded on the way in. They are UUIDs in practice and this is not
- * a security boundary — an operator who can set environment variables on their
- * own server has easier things to do than this — but they are external input
- * being pasted into a URL an admin will click, and encoding costs nothing.
+ * Both are returned together and gated together. `project` needs only the
+ * project ID, but a panel offering half its links is worse than no panel — and
+ * a deployment with one ID and not the other is not a shape Railway produces,
+ * so treating it as neither costs nothing real.
+ *
+ * The IDs are encoded on the way in. Not a security boundary — an operator who
+ * can set environment variables on their own server has easier things to do —
+ * but they are external input being pasted into URLs an admin will click, and a
+ * stray character should not silently reshape the path.
  */
-export function railwayServiceUrl(): string | null {
-  const project = process.env.RAILWAY_PROJECT_ID?.trim();
-  const service = process.env.RAILWAY_SERVICE_ID?.trim();
-  if (!project || !service) return null;
-  return (
-    `https://railway.com/project/${encodeURIComponent(project)}` +
-    `/service/${encodeURIComponent(service)}/settings`
-  );
+export function railwayLinks(): { project: string; service: string } | null {
+  const projectId = process.env.RAILWAY_PROJECT_ID?.trim();
+  const serviceId = process.env.RAILWAY_SERVICE_ID?.trim();
+  if (!projectId || !serviceId) return null;
+
+  const project = `https://railway.com/project/${encodeURIComponent(projectId)}`;
+  return { project, service: `${project}/service/${encodeURIComponent(serviceId)}/settings` };
 }
 
 export function ensureDataDirs() {

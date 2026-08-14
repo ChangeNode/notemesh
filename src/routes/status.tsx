@@ -184,17 +184,6 @@ export default function Status() {
                         · last sync activity{" "}
                         {new Date(sync().lastActivityAt!).toLocaleTimeString()}
                       </Show>
-                      {/* Only on Railway, where both IDs are injected. Anywhere
-                          else this is absent and nothing is shown, rather than a
-                          link that goes somewhere wrong. New tab because the
-                          dashboard is a live view — sending it away mid-sync
-                          loses what the operator was watching. */}
-                      <Show when={d().railwayUrl}>
-                        {" · "}
-                        <a href={d().railwayUrl!} target="_blank" rel="noopener noreferrer">
-                          Railway service
-                        </a>
-                      </Show>
                     </p>
                     {/* Disk. The volume is the hard ceiling on a deployment,
                         and a full one does not fail gracefully — writes return

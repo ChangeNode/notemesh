@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { railwayServiceUrl } from "./env";
+import { railwayLinks } from "./env";
 
 /**
  * The Status page's link back to the deployment's own Railway service.
@@ -15,14 +15,16 @@ afterEach(() => {
   process.env = { ...saved };
 });
 
-describe("railwayServiceUrl", () => {
-  it("builds the link when Railway injected both IDs", () => {
+describe("railwayLinks", () => {
+  it("builds both links when Railway injected both IDs", () => {
     process.env.RAILWAY_PROJECT_ID = "a0175de5-2870-4c27-9dda-3c0f80110512";
     process.env.RAILWAY_SERVICE_ID = "6b3961eb-10f3-4702-b6cc-dc2896bb0fe3";
-    expect(railwayServiceUrl()).toBe(
-      "https://railway.com/project/a0175de5-2870-4c27-9dda-3c0f80110512" +
+    expect(railwayLinks()).toEqual({
+      project: "https://railway.com/project/a0175de5-2870-4c27-9dda-3c0f80110512",
+      service:
+        "https://railway.com/project/a0175de5-2870-4c27-9dda-3c0f80110512" +
         "/service/6b3961eb-10f3-4702-b6cc-dc2896bb0fe3/settings",
-    );
+    });
   });
 
   it.each([
@@ -34,14 +36,15 @@ describe("railwayServiceUrl", () => {
     delete process.env.RAILWAY_SERVICE_ID;
     if (project) process.env.RAILWAY_PROJECT_ID = project;
     if (service) process.env.RAILWAY_SERVICE_ID = service;
-    // Half a link is a broken link, so one ID alone is not enough.
-    expect(railwayServiceUrl()).toBeNull();
+    // The project link needs only the project ID, but a panel offering half
+    // its links is worse than no panel, so one ID alone shows nothing.
+    expect(railwayLinks()).toBeNull();
   });
 
   it("treats blank and whitespace-only values as absent", () => {
     process.env.RAILWAY_PROJECT_ID = "   ";
     process.env.RAILWAY_SERVICE_ID = "6b3961eb";
-    expect(railwayServiceUrl()).toBeNull();
+    expect(railwayLinks()).toBeNull();
   });
 
   it("encodes what it is given", () => {
@@ -50,8 +53,8 @@ describe("railwayServiceUrl", () => {
     // clicks, and a stray character should not silently reshape the path.
     process.env.RAILWAY_PROJECT_ID = "a/b";
     process.env.RAILWAY_SERVICE_ID = "c d";
-    const url = railwayServiceUrl()!;
-    expect(url).toContain("/project/a%2Fb/");
-    expect(url).toContain("/service/c%20d/settings");
+    const links = railwayLinks()!;
+    expect(links.project).toBe("https://railway.com/project/a%2Fb");
+    expect(links.service).toContain("/service/c%20d/settings");
   });
 });

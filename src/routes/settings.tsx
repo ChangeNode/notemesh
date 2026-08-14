@@ -37,7 +37,7 @@ export default function Settings() {
             </Show>
             <article>
               <header>
-                <strong>Vault writes</strong>
+                <strong>Vault Writes</strong>
               </header>
               <label>
                 <input
@@ -56,7 +56,7 @@ export default function Settings() {
             <Show when={d.backend === "git"}>
               <article>
                 <header>
-                  <strong>Git sync</strong>
+                  <strong>Git Sync</strong>
                 </header>
                 <p class="muted">
                   Syncing <code>{d.gitRemote}</code> on <code>{d.gitBranch}</code>.
@@ -137,7 +137,7 @@ export default function Settings() {
 
             <article>
               <header>
-                <strong>Daily notes</strong>
+                <strong>Daily Notes</strong>
               </header>
               <label for="tz">Timezone</label>
               <div class="actions">
@@ -200,10 +200,10 @@ export default function Settings() {
 
             <article>
               <header>
-                <strong>Where logs go</strong>
+                <strong>Logs</strong>
               </header>
               <p class="muted">
-                Three separate destinations, only one of which is a file on disk.
+                Logs are sent to three destinations, only one of which is a file on disk.
               </p>
 
               <Check

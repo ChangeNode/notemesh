@@ -17,7 +17,7 @@ export default function Security() {
 
               <Check
                 state={d.isHttps ? "ok" : d.isLocalAddress ? "warn" : "err"}
-                label={d.isHttps ? "Served over HTTPS" : "Served over plain HTTP"}
+                label={d.isHttps ? "Served over HTTPS" : "Served over unencrypted HTTP"}
                 detail={
                   <>
                     <code>{d.baseUrl}</code>

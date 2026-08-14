@@ -175,25 +175,36 @@ test.describe("the connect instructions", () => {
     await signIn(page);
     // Every disclosure in the card, not just the ones wearing the attribute
     // that makes this work — otherwise a panel that drops out of the group
-    // leaves the locator too, and the count assertion fails in its place while
-    // the exclusivity assertion below never gets a chance to.
+    // leaves the locator too, and nothing here notices that it now stays open
+    // alongside its neighbours.
+    //
+    // That invariant is asserted directly rather than through a count of
+    // panels. A count says "five" when what is meant is "all of them", so it
+    // fails on the harmless change — someone adds a client — and the fix is to
+    // edit the number, which is no check at all.
     const panels = page.locator("article details");
-    await expect(panels).toHaveCount(5);
+    await expect(panels.first()).toBeVisible();
+    const ungrouped = await panels.evaluateAll((els) => els.filter((e) => e.getAttribute("name") !== "connect").map((e) => e.querySelector("summary")?.textContent ?? "(no summary)"));
+    expect(ungrouped).toEqual([]);
 
     const openCount = async () => await panels.evaluateAll((els) => els.filter((e) => (e as HTMLDetailsElement).open).length);
 
-    // Starts on the TL;DR, which is the one nearly every client needs.
+    // Starts on the first panel, the endpoint every client needs.
     expect(await openCount()).toBe(1);
     await expect(panels.first()).toHaveAttribute("open", "");
 
+    // By position rather than by label: which client sits in which panel is
+    // copy, and this test is about the disclosure behaviour underneath it.
+    const summaryOf = (i: number) => panels.nth(i).locator("summary");
+
     // Opening another closes it, rather than stacking.
-    await page.getByText("Claude Code", { exact: true }).click();
+    await summaryOf(3).click();
     expect(await openCount()).toBe(1);
     await expect(panels.first()).not.toHaveAttribute("open", "");
 
     // And again, from one non-default panel to another — the case that would
     // still stack if only the first were special-cased.
-    await page.getByText("Codex", { exact: true }).click();
+    await summaryOf(4).click();
     expect(await openCount()).toBe(1);
   });
 });

@@ -142,6 +142,20 @@ export const auth = betterAuth({
       // create throwaway registrations (a failed login leaves one behind).
       if (ctx.path === "/oauth2/register") {
         const d = db();
+
+        // Only the counting is inside the try, and the refusal is outside it.
+        // Both used to be in, which meant the catch needed
+        // `if (e instanceof APIError) throw e` to let the deliberate rejection
+        // back out of its own safety net. That worked, and it put the one
+        // control on this endpoint one edit away from being silently swallowed:
+        // anything that stopped the refusal matching that instanceof — a
+        // wrapped error, a subclass, a careless refactor — would have removed
+        // the cap with nothing failing.
+        //
+        // null means the count could not be established. Registration then
+        // proceeds, deliberately: a bookkeeping failure must not lock out a
+        // legitimate connector.
+        let count: number | null = null;
         try {
           d.prepare(
             `DELETE FROM "oauthClient"
@@ -150,17 +164,16 @@ export const auth = betterAuth({
                AND clientId NOT IN (SELECT clientId FROM "oauthRefreshToken")
                AND clientId NOT IN (SELECT clientId FROM "oauthConsent")`,
           ).run(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
-          const { n } = d.prepare('SELECT COUNT(*) AS n FROM "oauthClient"').get() as { n: number };
-          if (n >= MAX_OAUTH_CLIENTS) {
-            audit("oauth.register.rejected", { reason: "client_cap", count: n });
-            throw new APIError("TOO_MANY_REQUESTS", {
-              message: "Too many registered OAuth clients on this instance.",
-            });
-          }
+          count = (d.prepare('SELECT COUNT(*) AS n FROM "oauthClient"').get() as { n: number }).n;
         } catch (e) {
-          if (e instanceof APIError) throw e;
-          // A bookkeeping failure must not block legitimate registration.
           console.error("[auth] client-cap check failed:", e);
+        }
+
+        if (count !== null && count >= MAX_OAUTH_CLIENTS) {
+          audit("oauth.register.rejected", { reason: "client_cap", count });
+          throw new APIError("TOO_MANY_REQUESTS", {
+            message: "Too many registered OAuth clients on this instance.",
+          });
         }
       }
     }),

@@ -1,5 +1,5 @@
 import type { ResetOutcome } from "./reset";
-import type { ResetState } from "../lib/reset-view";
+import type { ResetState } from "~/lib/reset-view";
 
 // Server-function wrappers for the reset flow. Both are deliberately
 // unauthenticated — the whole point is that nobody can sign in — so what

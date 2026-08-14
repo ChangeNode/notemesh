@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { audit } from "./audit";
 import { db } from "./db";
 import { claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
-import type { ResetState } from "../lib/reset-view";
+import type { ResetState } from "~/lib/reset-view";
 
 // Re-exported so server callers need only this module; the definitions live
 // in lib/ because the sign-in page imports them and route imports are

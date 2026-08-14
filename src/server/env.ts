@@ -9,8 +9,7 @@ function required(name: string): string {
 
 export const env = {
   get dataDir(): string {
-    const dir = path.resolve(process.env.DATA_DIR ?? "./data");
-    return dir;
+    return path.resolve(process.env.DATA_DIR ?? "./data");
   },
   get vaultDir(): string {
     return path.join(this.dataDir, "vault");

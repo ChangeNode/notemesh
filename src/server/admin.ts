@@ -7,7 +7,7 @@ import { CLAIM_WINDOW_MINUTES } from "./claim";
 import { requireAdmin } from "./session";
 import { db, getSetting, setSetting } from "./db";
 import { env, detectOriginMismatch, detectInsecureBaseUrl, railwayLinks } from "./env";
-import { MAX_LOG_LINES } from "./ob/supervisor";
+import { MAX_LOG_LINES } from "~/server/sync";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
 import { diskStatus } from "./vault/disk";

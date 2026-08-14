@@ -42,13 +42,13 @@ async function seed(rel: string, content: string) {
   const abs = path.join(vault, rel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, content);
-  const { reindexPath } = await import("../vault/indexer");
+  const { reindexPath } = await import("~/server/vault/indexer");
   reindexPath(rel);
 }
 
 /** One connect / tools/call / close cycle, same transport the catalogue uses. */
 async function call(name: string, args: Record<string, unknown> = {}) {
-  const { createMcpServer } = await import("./server");
+  const { createMcpServer } = await import("~/server/mcp/server");
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

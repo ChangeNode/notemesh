@@ -20,6 +20,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # First, because it is the cheapest gate and one of its rules is load
+      # bearing: the browser/server import boundary. `check-client-bundle` in
+      # the build step catches the same mistake, but only after a full build,
+      # and only for what actually reached an emitted asset. Linting says so in
+      # seconds, and names the import.
+      #
+      # `--max-warnings 0` is in the script, so a warning fails here too. That
+      # is the point — a warning nobody has to fix is one nobody fixes.
+      - name: Lint
+        run: pnpm lint
+
       - name: Typecheck
         run: pnpm typecheck
 

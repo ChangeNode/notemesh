@@ -13,8 +13,8 @@
     "test:e2e": "playwright test",
     "start": "vinxi start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src e2e scripts --max-warnings 0",
-    "lint:fix": "eslint src e2e scripts --fix",
+    "lint": "eslint src tests e2e scripts --max-warnings 0",
+    "lint:fix": "eslint src tests e2e scripts --fix",
     "test": "vitest run",
     "test:watch": "vitest"
   },

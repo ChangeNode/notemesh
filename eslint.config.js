@@ -129,11 +129,14 @@ export default tseslint.config(
     files: [
       "src/server/**/*.{ts,tsx}",
       "src/routes/api/**/*.{ts,tsx}",
-      "src/http/**/*.{ts,tsx}",
       "src/middleware.ts",
       "src/entry-server.tsx",
       "scripts/**/*.{ts,js,mjs}",
       "e2e/**/*.{ts,tsx}",
+      // Integration tests boot the built server and talk to it over HTTP, so
+      // they are Node programs — including harness.ts, which is not a .test.ts
+      // and would otherwise fall through to the browser defaults below.
+      "tests/**/*.{ts,tsx}",
       "*.config.{ts,js,mjs}",
     ],
     languageOptions: {
@@ -145,7 +148,7 @@ export default tseslint.config(
 
   // Tests: Node host, and fixtures legitimately need `any`.
   {
-    files: ["**/*.test.{ts,tsx}", "e2e/**/*.{ts,tsx}"],
+    files: ["**/*.test.{ts,tsx}", "e2e/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"],
     languageOptions: {
       globals: {
         ...globals.node,

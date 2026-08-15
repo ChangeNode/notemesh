@@ -696,7 +696,7 @@ function VaultStep(props: { onDone: () => void }) {
                         onInput={(e) => setPassword(e.currentTarget.value)}
                     />
                     <small class="muted">
-                        Only for a vault you chose to end-to-end encrypt when you created it. This is
+                        Only for a vault you chose to end-to-end encrypt when you created it. This is{" "}
                         <b>not</b> your Obsidian account password — that was the previous step. Stored
                         encrypted on this server, because the sync client needs it on every reconnect.
                     </small>

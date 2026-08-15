@@ -23,9 +23,14 @@ export default function Setup() {
                                 <header>
                                     <strong>Client Set Up</strong>
                                 </header>
+                                {/* The {" "} is load-bearing. JSX drops a whitespace run that
+                    contains a newline, so a link ending one line and text
+                    starting the next render flush together — this read
+                    "ChangeNode YouTubefor video instructions". */}
                                 <p>
-                                    <a href="https://www.youtube.com/@changenode" target="_blank">ChangeNode YouTube</a>
-                                    for video instructions</p>
+                                    <a href="https://www.youtube.com/@changenode" target="_blank">ChangeNode YouTube</a>{" "}
+                                    for video instructions
+                                </p>
 
                                 <Show when={d.originMismatch}>
                                     <div class="callout warn">
@@ -48,7 +53,7 @@ export default function Setup() {
                                         <p>
                                             <b>This server is on a local address.</b> Claude Desktop and claude.ai
                                             connect from Anthropic's servers rather than from your machine, so they
-                                            can't reach
+                                            can't reach{" "}
                                             <code>{d.baseUrl}</code>. Deploy to a public HTTPS URL to use them.
                                         </p>
                                         <p class="muted">

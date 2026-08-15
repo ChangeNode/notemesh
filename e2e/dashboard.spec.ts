@@ -87,7 +87,11 @@ test.describe("signing in", () => {
     await signInThroughTheForm(page);
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("link", { name: "Setup" })).toBeVisible();
+    // exact, because getByRole matches the accessible name as a substring by
+    // default: the card's "Video Setup Guides" link also contains "Setup", and
+    // an ambiguous locator fails as a strict-mode violation rather than as
+    // anything to do with signing in.
+    await expect(page.getByRole("link", { name: "Setup", exact: true })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("Uncaught");
     expect(errors).toEqual([]);
   });
@@ -114,7 +118,7 @@ test.describe("signing in", () => {
 // The title on the Setup card, used as proof that page rendered. Named once
 // because two tests want it, and it is copy: rewording it broke both at the
 // same time, which reads as two failures rather than one edit.
-const SETUP_HEADING = "Client Set Up";
+const SETUP_HEADING = "Video Setup Guides";
 
 test.describe("every tab renders", () => {
   // A page that throws on render returns a perfectly good 200 first, so only a
@@ -194,13 +198,18 @@ test.describe("the connect instructions", () => {
     // all a screen reader has to go on.
     const expandedCount = async () => await buttons.evaluateAll((els) => els.filter((e) => e.getAttribute("aria-expanded") === "true").length);
 
-    // Starts on the first panel, the endpoint every client needs.
+    // Nothing open at load: the card reads as a list of clients to choose
+    // between rather than leading with one of them already answered.
+    expect(await openCount()).toBe(0);
+    expect(await expandedCount()).toBe(0);
+
+    // By position rather than by label: which client sits in which panel is
+    // copy, and this test is about the disclosure behaviour underneath it.
+    await buttons.first().click();
     expect(await openCount()).toBe(1);
     expect(await expandedCount()).toBe(1);
     await expect(panels.first()).toBeVisible();
 
-    // By position rather than by label: which client sits in which panel is
-    // copy, and this test is about the disclosure behaviour underneath it.
     // Opening another closes it, rather than stacking.
     await buttons.nth(3).click();
     expect(await openCount()).toBe(1);
@@ -208,8 +217,8 @@ test.describe("the connect instructions", () => {
     await expect(panels.first()).toBeHidden();
     await expect(panels.nth(3)).toBeVisible();
 
-    // And again, from one non-default panel to another — the case that would
-    // still stack if only the first were special-cased.
+    // And again, between two panels neither of which was the one opened first —
+    // the case that would still stack if only the opening move were handled.
     await buttons.nth(4).click();
     expect(await openCount()).toBe(1);
     expect(await expandedCount()).toBe(1);
@@ -517,8 +526,12 @@ test.describe("Server Configuration on Settings", () => {
     // this server, and this is the platform underneath it.
     await seedSession(page);
     await page.goto("/settings");
-    const headings = await page.locator("article header strong").allTextContents();
-    expect(headings[0]).toBe("Server Configuration");
+    // toHaveText rather than reading allTextContents() and indexing it: the
+    // read does not auto-wait, so on a client-rendered page it returns [] for
+    // cards that have not appeared yet and the assertion fails on `undefined`,
+    // which says nothing about the ordering being tested. This waits, and
+    // names what it wants.
+    await expect(page.locator("article header strong").first()).toHaveText("Server Configuration");
   });
 });
 

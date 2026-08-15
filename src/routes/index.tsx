@@ -21,16 +21,10 @@ export default function Setup() {
                         <>
                             <article>
                                 <header>
-                                    <strong>Client Set Up</strong>
+                                    <strong><a href="https://www.youtube.com/@changenode" target="_blank">Video Setup
+                                        Guides</a>
+                                    </strong>
                                 </header>
-                                {/* The {" "} is load-bearing. JSX drops a whitespace run that
-                    contains a newline, so a link ending one line and text
-                    starting the next render flush together — this read
-                    "ChangeNode YouTubefor video instructions". */}
-                                <p>
-                                    <a href="https://www.youtube.com/@changenode" target="_blank">ChangeNode YouTube</a>{" "}
-                                    for video instructions
-                                </p>
 
                                 <Show when={d.originMismatch}>
                                     <div class="callout warn">
@@ -67,11 +61,11 @@ export default function Setup() {
                     answers to the same question, so two open at once is just a
                     longer page to scroll past the part you need.
 
-                    First entry, and the only one open by default: nearly every
-                    client needs just this URL, and the per-client sections
-                    below are for the ones that want the exact incantation. */}
+                    None open at load, so the card arrives as a list of clients
+                    to pick from rather than leading with one of them already
+                    answered. */}
                                 <Accordion>
-                                    <AccordionPanel summary="Point any MCP client at this endpoint" open>
+                                    <AccordionPanel summary="Default Setup">
                                         <Snippet text={endpoint}/>
                                         <p>Clients authenticate one of two ways:</p>
                                         <ul>

@@ -112,25 +112,40 @@ nav.tabs ul li a.active {
   font-weight: 600;
 }
 
-/* Code line with a copy button pinned to its right. The spacing lives on the
-   wrapper rather than the <pre> so the wrapper's box is exactly the code
-   block, letting the button centre against the text instead of against the
-   text plus its trailing margin. */
+/* Code line with a copy button beside it.
+
+   The button used to be absolutely positioned over the <pre>, held clear of the
+   text by `padding-right: 5.5rem`. That fails for exactly the snippets that
+   need it: the padding is inside the scroll container, so it scrolls away with
+   the content and long text runs under the button, and the horizontal scrollbar
+   spans the pre's full width — including the strip the button sits on.
+
+   A flex row instead, so the code box simply ends where the button begins. Its
+   scrollbar ends there too, because it is now the width of its own box. */
 .snippet {
-  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
   margin-bottom: var(--pico-spacing);
 }
 
+/* `flex: 1 1 0` with `min-width: 0` is the whole trick. A flex item will not
+   shrink below the intrinsic width of its content by default, so a long
+   unbroken command would push the button off the row instead of scrolling —
+   min-width: 0 is what allows the box to be narrower than the text it holds. */
 .snippet pre {
-  padding-right: 5.5rem;
+  flex: 1 1 0;
+  min-width: 0;
   margin-bottom: 0;
+  overflow-x: auto;
 }
 
+/* Centred against the code block rather than pinned to its top, which is where
+   it sat before and reads better on the one-line snippets that are most of
+   them. On the three-line Codex block it lands beside the middle line. */
 .snippet button {
-  position: absolute;
-  top: 50%;
-  right: 0.5rem;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
+  align-self: center;
   width: auto;
   margin: 0;
   padding: 0.2rem 0.7rem;

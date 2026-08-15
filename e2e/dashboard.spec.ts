@@ -178,39 +178,48 @@ test.describe("creating an API key", () => {
 test.describe("the connect instructions", () => {
   test("keep only one disclosure open at a time", async ({ page }) => {
     await signIn(page);
-    // Every disclosure in the card, not just the ones wearing the attribute
-    // that makes this work — otherwise a panel that drops out of the group
-    // leaves the locator too, and nothing here notices that it now stays open
-    // alongside its neighbours.
-    //
-    // That invariant is asserted directly rather than through a count of
-    // panels. A count says "five" when what is meant is "all of them", so it
-    // fails on the harmless change — someone adds a client — and the fix is to
-    // edit the number, which is no check at all.
-    const panels = page.locator("article details");
-    await expect(panels.first()).toBeVisible();
-    const ungrouped = await panels.evaluateAll((els) => els.filter((e) => e.getAttribute("name") !== "connect").map((e) => e.querySelector("summary")?.textContent ?? "(no summary)"));
-    expect(ungrouped).toEqual([]);
+    // Every accordion button in the card, and the panel each one discloses.
+    // Counting neither: how many clients are listed is content, and a test that
+    // knows the number fails when one is added, which is the harmless change.
+    const buttons = page.locator("article button.accordion");
+    const panels = page.locator("article .panel");
+    await expect(buttons.first()).toBeVisible();
 
-    const openCount = async () => await panels.evaluateAll((els) => els.filter((e) => (e as HTMLDetailsElement).open).length);
+    // Panels stay in the DOM and hide with `display: none`, so "open" is a
+    // question about visibility rather than about a count of elements.
+    const openCount = async () => await panels.evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).length);
+
+    // The button's state has to agree with what is on screen. Checking only
+    // visibility would pass while `aria-expanded` said the opposite, which is
+    // all a screen reader has to go on.
+    const expandedCount = async () => await buttons.evaluateAll((els) => els.filter((e) => e.getAttribute("aria-expanded") === "true").length);
 
     // Starts on the first panel, the endpoint every client needs.
     expect(await openCount()).toBe(1);
-    await expect(panels.first()).toHaveAttribute("open", "");
+    expect(await expandedCount()).toBe(1);
+    await expect(panels.first()).toBeVisible();
 
     // By position rather than by label: which client sits in which panel is
     // copy, and this test is about the disclosure behaviour underneath it.
-    const summaryOf = (i: number) => panels.nth(i).locator("summary");
-
     // Opening another closes it, rather than stacking.
-    await summaryOf(3).click();
+    await buttons.nth(3).click();
     expect(await openCount()).toBe(1);
-    await expect(panels.first()).not.toHaveAttribute("open", "");
+    expect(await expandedCount()).toBe(1);
+    await expect(panels.first()).toBeHidden();
+    await expect(panels.nth(3)).toBeVisible();
 
     // And again, from one non-default panel to another — the case that would
     // still stack if only the first were special-cased.
-    await summaryOf(4).click();
+    await buttons.nth(4).click();
     expect(await openCount()).toBe(1);
+    expect(await expandedCount()).toBe(1);
+    await expect(panels.nth(3)).toBeHidden();
+
+    // Clicking the open one closes it, leaving none open — the toggle half of
+    // the behaviour, which exclusivity alone does not imply.
+    await buttons.nth(4).click();
+    expect(await openCount()).toBe(0);
+    expect(await expandedCount()).toBe(0);
   });
 });
 

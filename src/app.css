@@ -324,6 +324,80 @@ pre.logs .repeat {
   white-space: pre;
 }
 
+/* Accordion: a button and the panel it discloses, per src/components/Accordion.tsx.
+   Structure follows the W3Schools example — .accordion / .panel / .active, with
+   a +/− marker in ::after. The colours do not: that example hardcodes light-page
+   greys (#eee on #fff, #444 text), and this console is pinned to Pico's dark
+   theme in entry-server.tsx, where a near-white bar would be the brightest thing
+   on the page. Every colour here is a Pico variable instead, and only ones
+   already relied on elsewhere in this file.
+
+   Note that the buttons carry Pico's own transition, so colour and border ease
+   between states over ~0.2s rather than switching outright. Worth knowing before
+   reading a screenshot taken immediately after a click: it will show the
+   previous state part-way faded, which looks like the class failed to apply. */
+.accordion {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.35rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 4px;
+  background: var(--pico-card-sectioning-background-color);
+  color: var(--pico-color);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.accordion:hover {
+  border-color: var(--pico-primary);
+}
+
+/* The open button and its panel read as one box: the seam between them is
+   dropped, and only the outer corners stay rounded. */
+.accordion.active {
+  margin-bottom: 0;
+  border-color: var(--pico-primary);
+  border-bottom-color: transparent;
+  border-radius: 4px 4px 0 0;
+  color: var(--pico-primary);
+}
+
+/* Decoration only — aria-expanded on the button is what conveys state, so this
+   is not the accessible signal and does not need to be announced. */
+.accordion::after {
+  content: "+";
+  float: right;
+  margin-left: 0.5rem;
+  color: var(--pico-muted-color);
+}
+
+.accordion.active::after {
+  content: "\2212";
+  color: var(--pico-primary);
+}
+
+.panel {
+  display: none;
+  padding: 0 1rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--pico-primary);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+}
+
+.panel.open {
+  display: block;
+  padding-top: 0.9rem;
+}
+
+/* The panel's own padding closes the box, so the last child does not also need
+   its bottom margin — without this the gap under an open panel is doubled. */
+.panel > :last-child {
+  margin-bottom: 0.9rem;
+}
+
 /* Disk usage on the Status tab. */
 .disk {
   margin-bottom: var(--pico-spacing);

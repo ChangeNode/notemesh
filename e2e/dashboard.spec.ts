@@ -111,11 +111,16 @@ test.describe("signing in", () => {
   });
 });
 
+// The title on the Setup card, used as proof that page rendered. Named once
+// because two tests want it, and it is copy: rewording it broke both at the
+// same time, which reads as two failures rather than one edit.
+const SETUP_HEADING = "Client Set Up";
+
 test.describe("every tab renders", () => {
   // A page that throws on render returns a perfectly good 200 first, so only a
   // browser can tell the difference.
   const TABS = [
-    ["Setup", "/", "Set up your client"],
+    ["Setup", "/", SETUP_HEADING],
     ["Tools", "/tools", "MCP tools"],
     ["Status", "/status", "Sync log"],
     ["Keys", "/keys", "API keys"],
@@ -249,7 +254,7 @@ test.describe("on a phone", () => {
     await expect(page.locator("a.brand img.brand-mark")).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign Out" })).toBeVisible();
     // The tab row must not have pushed the content off the bottom either.
-    await expect(page.getByText("Set up your client")).toBeVisible();
+    await expect(page.getByText(SETUP_HEADING)).toBeVisible();
   });
 });
 

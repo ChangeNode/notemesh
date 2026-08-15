@@ -20,9 +20,11 @@ export default function Setup() {
                     return (
                         <>
                             <article>
-                                <header>
-                                    <strong><a href="https://www.youtube.com/@changenode" target="_blank">Video Setup
-                                        Guides</a>
+                                <header class="card-title">
+                                    <strong>
+                                        <a href="https://www.youtube.com/@changenode" target="_blank" rel="noopener noreferrer">
+                                            Video Setup Guides
+                                        </a>
                                     </strong>
                                 </header>
 

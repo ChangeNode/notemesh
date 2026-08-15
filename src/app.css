@@ -339,6 +339,31 @@ pre.logs .repeat {
   white-space: pre;
 }
 
+/* A card header holding one centred title. Opt-in rather than a rule for every
+   `article > header`, because the other cards title a page section and read
+   better ranged left; this one is a single link and is the card's whole heading.
+
+   Flex rather than `text-align` alone, for the vertical half. Left to the line
+   box, the title sat 2px nearer the top than the bottom — a `line-height` taller
+   than the text distributes the leftover as half-leading, and the rounding does
+   not land even. Centring as a flex item removes that.
+
+   The 1px translate is the optical correction on top of the geometric one. A
+   font reserves descender depth below the baseline whether or not the glyphs use
+   it, and "Video Setup Guides" reaches down only with the p — so a box centred
+   by measurement still reads high, and the underline being the lowest ink
+   emphasises it. One pixel is the whole adjustment; more starts to look low. */
+.card-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.card-title strong {
+  transform: translateY(1px);
+}
+
 /* Accordion: a button and the panel it discloses, per src/components/Accordion.tsx.
    Structure follows the W3Schools example — .accordion / .panel / .active, with
    a +/− marker in ::after. The colours do not: that example hardcodes light-page

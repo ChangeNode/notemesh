@@ -68,7 +68,7 @@ export default function Setup() {
                     First entry, and the only one open by default: nearly every
                     client needs just this URL, and the per-client sections
                     below are for the ones that want the exact incantation. */}
-                                <details name="connect" class="primary" open>
+                                <details name="connect" role="button" class="primary" open>
                                     <summary>Point any MCP client at this endpoint</summary>
                                     <Snippet text={endpoint}/>
                                     <p>
@@ -82,7 +82,7 @@ export default function Setup() {
                                     </p>
                                     <p class="muted">Make sure to select the Streamable HTTP(S) option</p>
                                 </details>
-                                <details name="connect" class="secondary" >
+                                <details name="connect" role="button"  class="secondary" >
                                     <summary>Anthropic: Claude Desktop and claude.ai</summary>
                                     <p>
                                         Add NoteMesh as a <b>custom connector</b> using the <a
@@ -101,7 +101,7 @@ export default function Setup() {
                                         so you'll see both names around.) There is no bundle to install for NoteMesh.
                                     </p>
                                 </details>
-                                <details name="connect" class="secondary">
+                                <details name="connect" role="button"  class="secondary">
                                     <summary>OpenAI: ChatGPT</summary>
                                     <p>Go to <a href="https://chatgpt.com/plugins">ChatGPT plugins setup</a>.
                                         Click the + in the upper-right. Add the endpoint URL and hit Create. Then
@@ -110,14 +110,14 @@ export default function Setup() {
                                     <Snippet text={endpoint}/>
                                 </details>
 
-                                <details name="connect"  class="secondary">
+                                <details name="connect" role="button"  class="secondary">
                                     <summary>Anthropic: Claude Code</summary>
                                     <p>Register the server, then run <code>/mcp</code> inside Claude Code to sign in.
                                     </p>
                                     <Snippet text={`claude mcp add --transport http notemesh ${endpoint}`}/>
                                 </details>
 
-                                <details name="connect" class="secondary">
+                                <details name="connect" role="button"  class="secondary">
                                     <summary>OpenAI: Codex</summary>
                                     <p class="muted">
                                         Add this to <code>~/.codex/config.toml</code>. The approval mode lets Codex call
@@ -128,7 +128,7 @@ export default function Setup() {
                                     />
                                 </details>
 
-                                <details name="connect" class="secondary">
+                                <details name="connect" role="button"  class="secondary">
                                     <summary>Other Client (API key)</summary>
                                     <p>
                                         For command-line tools and anything else with no browser to complete a sign-in,

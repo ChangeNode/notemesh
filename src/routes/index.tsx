@@ -22,7 +22,7 @@ export default function Setup() {
                             <article>
                                 <header class="card-title">
                                     <strong>
-                                        <a href="https://www.youtube.com/@changenode" target="_blank" rel="noopener noreferrer">
+                                        <a href="https://www.youtube.com/playlist?list=PLUT1MufZhNJE" target="_blank" rel="noopener noreferrer">
                                             Video Setup Guides
                                         </a>
                                     </strong>

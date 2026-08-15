@@ -373,9 +373,19 @@ test.describe("branding", () => {
     await expect(mark).toBeVisible();
 
     // Visible is not the same as loaded — a broken src still occupies a box and
-    // still passes toBeVisible. naturalWidth is 0 until the image decodes.
-    const loaded = await mark.evaluate((el) => (el as HTMLImageElement).naturalWidth > 0);
-    expect(loaded, "the brand mark resolved and decoded").toBe(true);
+    // still passes toBeVisible, because width and height are on the tag.
+    // naturalWidth is 0 until the image decodes.
+    //
+    // Polled, not read once. The mark is a separate request for /favicon.svg,
+    // so "has it decoded yet" is a question with a different answer a moment
+    // later; a single read asks it at the earliest possible moment. Delaying
+    // that response by 1.5s makes the one-shot version report 0 and fail on an
+    // image that is perfectly fine — which is what a cold CI runner is.
+    await expect
+      .poll(async () => await mark.evaluate((el) => (el as HTMLImageElement).naturalWidth > 0), {
+        message: "the brand mark resolved and decoded",
+      })
+      .toBe(true);
 
     // Upper left, on the same line as the wordmark it belongs to.
     const markBox = (await mark.boundingBox())!;

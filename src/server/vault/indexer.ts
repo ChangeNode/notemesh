@@ -1,23 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
-import matter from "gray-matter";
-import { countWords, splitLines } from "./text";
+import { countWords } from "./text";
+import { extractStructure, splitFrontmatter } from "./markdown";
 import { db } from "../db";
 import { env } from "../env";
 import { toVaultRelative, isSafeVaultPath, MAX_NOTE_BYTES } from "./paths";
 
-// Parses one markdown note into everything the index stores.
+// Parses one markdown note into everything the index stores. The structure —
+// headings, links, tags, tasks — comes from markdown.ts, the same function
+// get_outline reads, so the two cannot disagree about what a heading is.
 export function parseNote(relPath: string, content: string) {
-  let data: Record<string, unknown> = {};
-  let body = content;
-  try {
-    const parsed = matter(content);
-    data = parsed.data ?? {};
-    body = parsed.content;
-  } catch {
-    // Bad frontmatter — index the raw content.
-  }
+  const { data, body, fmOffset } = splitFrontmatter(content);
 
   // Strip control chars and bidi overrides from the display title so a
   // maliciously-named synced file can't spoof UIs that render titles.
@@ -26,10 +20,7 @@ export function parseNote(relPath: string, content: string) {
     .normalize("NFC")
     // eslint-disable-next-line no-control-regex -- matching control and bidi characters is the point: they are stripped from indexed titles
     .replace(/[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "");
-  const headings: string[] = [];
   const tags = new Set<string>();
-  const links: string[] = [];
-  const tasks: { line: number; text: string; done: boolean }[] = [];
 
   // Frontmatter tags (string or array).
   const fmTags = (data as any).tags ?? (data as any).tag;
@@ -39,38 +30,13 @@ export function parseNote(relPath: string, content: string) {
     fmTags.filter((t) => typeof t === "string").forEach((t) => tags.add(t.replace(/^#/, "")));
   }
 
-  // Normalised, so a CRLF note still yields its headings and tasks — see text.ts.
-  const lines = splitLines(body);
-  // Frontmatter offset so task line numbers match the file on disk.
-  const fmOffset = content.length === body.length ? 0 : content.slice(0, content.length - body.length).split("\n").length - 1;
-
-  let inCodeBlock = false;
-  lines.forEach((line, i) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inCodeBlock = !inCodeBlock;
-      return;
-    }
-    if (inCodeBlock) return;
-
-    const h = line.match(/^#{1,6}\s+(.+)$/);
-    if (h) headings.push(h[1].trim());
-
-    for (const m of line.matchAll(/\[\[([^\]|#^]+)(?:[#^][^\]|]*)?(?:\|[^\]]*)?\]\]/g)) {
-      const target = m[1].trim();
-      if (target) links.push(target);
-    }
-
-    for (const m of line.matchAll(/(^|\s)#([A-Za-z0-9_][A-Za-z0-9_/-]*)/g)) {
-      // Obsidian requires at least one non-numeric character in a tag; a bare
-      // "#1" in prose is not a tag.
-      if (!/^\d+$/.test(m[2])) tags.add(m[2]);
-    }
-
-    const task = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/);
-    if (task) {
-      tasks.push({ line: i + 1 + fmOffset, text: task[2].trim(), done: task[1] !== " " });
-    }
-  });
+  const structure = extractStructure(body);
+  for (const t of structure.tags) tags.add(t);
+  const headings = structure.headings.map((h) => h.text);
+  const links = structure.links;
+  // Task line numbers are made file-absolute here, so toggle_task lands on
+  // the right line of the file on disk, frontmatter included.
+  const tasks = structure.tasks.map((t) => ({ ...t, line: t.line + fmOffset }));
 
   const wordCount = countWords(body);
 

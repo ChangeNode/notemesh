@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import matter from "gray-matter";
-import { countWords, splitLines, stripCr  } from "./text";
+import { countWords, stripCr } from "./text";
+import { extractStructure, splitFrontmatter } from "./markdown";
 import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
@@ -228,14 +228,9 @@ function syncNote(): string {
 export function wordCount(notePath?: string): { path: string | null; words: number; bytes: number } {
   if (notePath) {
     const { content, path } = readNote(notePath);
-    // Frontmatter is metadata, not writing. Unparseable frontmatter is counted
-    // as body, exactly as parseNote indexes it.
-    let body = content;
-    try {
-      body = matter(content).content;
-    } catch {
-      // fall through with the raw content
-    }
+    // Frontmatter is metadata, not writing — split off exactly as the indexer
+    // splits it, unparseable frontmatter included.
+    const { body } = splitFrontmatter(content);
     return { path, words: countWords(body), bytes: fs.statSync(resolveNotePath(notePath)).size };
   }
   const words = (db().prepare("SELECT COALESCE(SUM(word_count),0) AS n FROM notes").get() as { n: number }).n;
@@ -243,20 +238,20 @@ export function wordCount(notePath?: string): { path: string | null; words: numb
   return { path: null, words, bytes };
 }
 
+// The same extraction the index runs, on the same text: the body, with the
+// frontmatter split off. It used to be a second copy of the heading scan run
+// over the whole file, so a YAML comment came back as an H1 that search had
+// never indexed. Line numbers are made file-absolute with the same offset the
+// indexer applies to tasks, so get_outline and toggle_task agree about which
+// line is which.
 export function outline(notePath: string): { level: number; heading: string; line: number }[] {
   const { content } = readNote(notePath);
-  const out: { level: number; heading: string; line: number }[] = [];
-  let inCodeBlock = false;
-  splitLines(content).forEach((line, i) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inCodeBlock = !inCodeBlock;
-      return;
-    }
-    if (inCodeBlock) return;
-    const m = line.match(/^(#{1,6})\s+(.+)$/);
-    if (m) out.push({ level: m[1].length, heading: m[2].trim(), line: i + 1 });
-  });
-  return out;
+  const { body, fmOffset } = splitFrontmatter(content);
+  return extractStructure(body).headings.map((h) => ({
+    level: h.level,
+    heading: h.text,
+    line: h.line + fmOffset,
+  }));
 }
 
 export function randomNote() {

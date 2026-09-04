@@ -127,6 +127,21 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- `get_outline` and search now agree about what a heading is. They ran two
+  copies of the same scan, and the copies had drifted: the outline read the
+  whole file, frontmatter included, so a `#` comment in a note's YAML came
+  back as a top-level heading that search had never indexed. One shared pass
+  now feeds both, over the body only, and while it was being unified it
+  learned three things neither copy knew — a heading underlined with `===`
+  or `---`, a heading inside an HTML comment (not one), and a code block made
+  by indentation rather than fences (not headings or tasks either). Nested
+  list items indented by four spaces are still list items, not code.
+
+- A `[[wikilink]]` or `#tag` inside inline code is no longer indexed. A note
+  *about* Obsidian syntax used to invent links that then appeared as broken in
+  `list_link_issues`; tags were spared only by an accident of the pattern. Code
+  spans are now masked before either is extracted.
+
 - The server now runs under an init process (`tini`) inside the container.
   Nothing changes on a healthy instance. On one whose git remote times out now
   and then — a flaky network, a slow host — each timeout could leave a dead

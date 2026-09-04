@@ -229,7 +229,7 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
     // Reported to every client on connect, so it is the deployment's version
     // rather than a number that happens to live here. A test keeps it in step
     // with package.json.
-    version: "1.0.0",
+    version: "1.1.0",
   });
 
   const writable = access.write;

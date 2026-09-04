@@ -44,9 +44,12 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
-## Unreleased (1.1.0)
+## 1.1.0 — 2026-09-04
 
-**Taking this update:** redeploy. Nothing else.
+**Taking this update:** redeploy, then restart or reconnect your MCP client so it
+sees the two new tools, `edit_note` and `preview_edit`. Every existing tool keeps
+working in the meantime: clients cache the tool list when they connect, and
+nothing was renamed or removed.
 
 ### Changed
 

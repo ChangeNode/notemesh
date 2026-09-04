@@ -50,6 +50,14 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Changed
 
+- **Breaking** — `search_vault` can now be paged, and returns the same envelope
+  as every list tool: `{ total, offset, count, hasMore, items }`, with a new
+  `offset` argument. It used to return a bare `results` array capped at
+  `limit` — default 20, at most 100 — with nothing to say the cut had happened,
+  so a query matching 140 notes quietly answered with 100. The key `results`
+  is now `items`. Limits are unchanged; clients cache the tool list, not
+  result shapes, so nothing needs reconnecting.
+
 - Note text that reaches an assistant is now marked as content rather than
   instruction in more places. Headings (`get_outline`), task text
   (`list_tasks`), frontmatter values (`read_properties`) and search snippets are

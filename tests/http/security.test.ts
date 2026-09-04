@@ -487,8 +487,8 @@ describe("MCP: vault content is fenced as untrusted", () => {
     expect(res.status).toBe(200);
     const payload = JSON.parse(res.json.result.content[0].text);
     expect(payload.boundary).toMatch(/^%[0-9a-f]{8}%$/);
-    expect(Array.isArray(payload.results)).toBe(true);
-    for (const hit of payload.results) {
+    expect(Array.isArray(payload.items)).toBe(true);
+    for (const hit of payload.items) {
       expect(hit.snippet.split(payload.boundary).length - 1).toBe(2);
     }
   });

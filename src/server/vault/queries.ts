@@ -42,27 +42,48 @@ export function splitHighlights(raw: string): { snippet: string; matches: string
   return { snippet, matches: [...new Set(matches)] };
 }
 
-export function searchVault(query: string, opts: { limit?: number; context?: boolean } = {}): SearchHit[] {
+export interface SearchPage {
+  hits: SearchHit[];
+  /** Every match for the query, not only this page — what lets a caller tell it was paged. */
+  total: number;
+}
+
+export function searchVault(
+  query: string,
+  opts: { limit?: number; offset?: number; context?: boolean } = {},
+): SearchPage {
+  // Search keeps its own limits (20 / 100) rather than the list tools' 100 / 500:
+  // every hit carries a snippet, so a page here is far heavier than a page of
+  // paths. With offset a caller who wants more can page.
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
+  const offset = Math.max(opts.offset ?? 0, 0);
   // Sanitize into FTS5 term queries (quoted phrases per token, OR-free AND default).
   const terms = query
     .split(/\s+/)
     .filter(Boolean)
     .map((t) => `"${t.replace(/"/g, '""')}"`)
     .join(" ");
-  if (!terms) return [];
+  if (!terms) return { hits: [], total: 0 };
   const snippetTokens = opts.context ? 24 : 10;
+  // A COUNT over the same MATCH is a posting-list walk — far cheaper than the
+  // snippet() query below, which builds text for every row it returns. It is
+  // what lets the envelope say hasMore honestly instead of leaving a caller to
+  // guess from a full page. LIMIT and OFFSET stay in SQL so the whole result
+  // set is never materialised; that is why this cannot go through page().
+  const total = (
+    db().prepare(`SELECT COUNT(*) AS n FROM notes_fts WHERE notes_fts MATCH ?`).get(terms) as { n: number }
+  ).n;
   const rows = db()
     .prepare(
       `SELECT path, title, snippet(notes_fts, 3, ?, ?, ' … ', ?) AS snippet
-       FROM notes_fts WHERE notes_fts MATCH ? ORDER BY rank LIMIT ?`,
+       FROM notes_fts WHERE notes_fts MATCH ? ORDER BY rank LIMIT ? OFFSET ?`,
     )
-    .all(HL_START, HL_END, snippetTokens, terms, limit) as {
+    .all(HL_START, HL_END, snippetTokens, terms, limit, offset) as {
     path: string;
     title: string;
     snippet: string;
   }[];
-  return rows.map((r) => ({ path: r.path, title: r.title, ...splitHighlights(r.snippet) }));
+  return { hits: rows.map((r) => ({ path: r.path, title: r.title, ...splitHighlights(r.snippet) })), total };
 }
 
 // Normalize a note path the way the index stores it (vault-relative, .md).

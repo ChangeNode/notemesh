@@ -132,8 +132,8 @@ describe("free text lifted out of notes", () => {
     await seed("Hostile.md", HOSTILE);
     const { json } = await call("search_vault", { query: "ordinary" });
 
-    expect(json.results.length).toBeGreaterThan(0);
-    expect(unfence(json.results[0].snippet).inner).toContain("ordinary body text");
+    expect(json.items.length).toBeGreaterThan(0);
+    expect(unfence(json.items[0].snippet).inner).toContain("ordinary body text");
   });
 });
 
@@ -181,5 +181,68 @@ describe("the explanation", () => {
     const { token } = unfence(json.headings[0].heading);
     expect(token).toBe(json.boundary);
     expect(json.boundaryNote).toContain(token);
+  });
+});
+
+describe("search_vault paging", () => {
+  // Thirty notes that all match, so a default page cannot hold them. The
+  // envelope is the same one every list tool returns; what is asserted here
+  // is that search actually honours it, because it used to return a bare
+  // array capped at `limit` with nothing to say it had been cut.
+  async function seedThirty() {
+    for (let i = 0; i < 30; i++) {
+      await seed(`Paged/note-${String(i).padStart(2, "0")}.md`, `# Note ${i}\n\nzebra crossing number ${i}\n`);
+    }
+  }
+
+  it("says how many there are and that there are more", async () => {
+    await seedThirty();
+    const { json } = await call("search_vault", { query: "zebra", limit: 10 });
+    expect(json.total).toBe(30);
+    expect(json.offset).toBe(0);
+    expect(json.count).toBe(10);
+    expect(json.hasMore).toBe(true);
+    expect(json.items).toHaveLength(10);
+  });
+
+  it("pages through every hit exactly once", async () => {
+    await seedThirty();
+    const seen: string[] = [];
+    let offset = 0;
+    for (let guard = 0; guard < 10; guard++) {
+      const { json } = await call("search_vault", { query: "zebra", limit: 10, offset });
+      expect(json.total).toBe(30);
+      expect(json.offset).toBe(offset);
+      for (const hit of json.items) seen.push(hit.path);
+      if (!json.hasMore) break;
+      offset += json.count;
+    }
+    // No overlap, no gap: the pages partition the result set.
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen).toHaveLength(30);
+  });
+
+  it("answers an offset past the end with an empty page, not an error", async () => {
+    await seedThirty();
+    const { json } = await call("search_vault", { query: "zebra", limit: 10, offset: 500 });
+    expect(json.total).toBe(30);
+    expect(json.count).toBe(0);
+    expect(json.hasMore).toBe(false);
+    expect(json.items).toEqual([]);
+  });
+
+  it("carries the list-tool envelope and nothing else", async () => {
+    await seedThirty();
+    const { json } = await call("search_vault", { query: "zebra" });
+    expect(Object.keys(json).sort()).toEqual(
+      ["boundary", "boundaryNote", "count", "hasMore", "items", "offset", "total"].sort(),
+    );
+  });
+
+  it("fences snippets on a later page, not only the first", async () => {
+    await seedThirty();
+    const { json } = await call("search_vault", { query: "zebra", limit: 10, offset: 20 });
+    expect(json.items.length).toBeGreaterThan(0);
+    for (const hit of json.items) expect(unfence(hit.snippet).inner).toContain("zebra");
   });
 });

@@ -290,6 +290,122 @@ export function prependToNote(notePath: string, content: string): string {
   return toVaultRelative(abs);
 }
 
+export interface EditResult {
+  path: string;
+  /** Replacements made: one, or every occurrence under replaceAll. */
+  replaced: number;
+  /** 1-based line in the note as it was before the edit, where each replacement began. */
+  lines: number[];
+}
+
+/**
+ * Replace text in a note by naming it.
+ *
+ * `oldString` must occur exactly once, or the edit is refused with the line
+ * numbers of every occurrence — so the next call can pass `line` to choose one,
+ * or expand `oldString` until it is unique. This is not a diff algorithm; it is
+ * indexOf and a count, and that is the point. Two properties follow from it.
+ *
+ * Precision: nothing is replaced that the caller did not spell out. The
+ * alternative, rewriting the whole note with update_note, cannot be done
+ * safely for a note read in pages, and turns a one-line change into a
+ * whole-file commit on the git backend.
+ *
+ * Safety under sync: the vault changes underneath the model. If Obsidian Sync
+ * or a pull rewrote the note between the read and this call, `oldString`
+ * simply no longer matches, and the edit is refused rather than applied to
+ * the wrong place. A line-numbered patch would have applied anyway.
+ *
+ * `line` is an assertion, never a search key on its own: with a single match
+ * it must agree or the edit is refused; with several it chooses between them.
+ * A repeat on the same line is refused with the advice to expand `oldString`.
+ */
+export function editNote(
+  notePath: string,
+  oldString: string,
+  newString: string,
+  opts: { line?: number; replaceAll?: boolean } = {},
+): EditResult {
+  if (oldString === "") throw new VaultPathError("oldString must not be empty");
+  if (oldString === newString) {
+    throw new VaultPathError("oldString and newString are identical; there is nothing to change");
+  }
+  if (opts.replaceAll && opts.line !== undefined) {
+    throw new VaultPathError(
+      "line and replaceAll cannot be combined: line chooses one occurrence, replaceAll takes all of them",
+    );
+  }
+  const abs = resolveNotePath(notePath);
+  if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
+  const rel = toVaultRelative(abs);
+  const content = readVaultFile(abs);
+
+  // A note synced from Windows carries \r\n. A caller passing \n-only strings
+  // would never match it, and one that did would write mixed endings. So when
+  // the file uses CRLF and the caller's strings carry no CR, their breaks are
+  // treated as CRLF: the file keeps its convention, as toggleTask keeps it.
+  const crlf = content.includes("\r\n");
+  const asFile = (s: string) => (crlf && !s.includes("\r") ? s.replace(/\n/g, "\r\n") : s);
+  const needle = asFile(oldString);
+  const replacement = asFile(newString);
+
+  const positions: number[] = [];
+  for (let i = content.indexOf(needle); i !== -1; i = content.indexOf(needle, i + needle.length)) {
+    positions.push(i);
+  }
+  const lineAt = (pos: number) => content.slice(0, pos).split("\n").length;
+  const lines = positions.map(lineAt);
+
+  if (positions.length === 0) {
+    throw new VaultPathError(
+      `oldString was not found in ${rel}. Read the note again; it may have changed since it was last read.`,
+    );
+  }
+
+  let chosen: number[];
+  if (opts.replaceAll) {
+    chosen = positions;
+  } else if (positions.length === 1) {
+    if (opts.line !== undefined && opts.line !== lines[0]) {
+      throw new VaultPathError(
+        `oldString occurs once in ${rel}, at line ${lines[0]}, not line ${opts.line}. ` +
+          `Read the note again; it may have changed since it was last read.`,
+      );
+    }
+    chosen = positions;
+  } else if (opts.line === undefined) {
+    throw new VaultPathError(
+      `oldString occurs ${positions.length} times in ${rel}, at lines ${lines.join(", ")}. ` +
+        `Pass line to choose one, expand oldString to include surrounding text so it is unique, or set replaceAll.`,
+    );
+  } else {
+    const at = positions.filter((_, k) => lines[k] === opts.line);
+    if (at.length === 0) {
+      throw new VaultPathError(
+        `oldString occurs ${positions.length} times in ${rel} (lines ${lines.join(", ")}), but not at line ${opts.line}.`,
+      );
+    }
+    if (at.length > 1) {
+      throw new VaultPathError(
+        `oldString occurs ${at.length} times on line ${opts.line} of ${rel}. ` +
+          `Expand oldString to include surrounding text so it names one of them.`,
+      );
+    }
+    chosen = at;
+  }
+
+  let out = "";
+  let last = 0;
+  for (const p of chosen) {
+    out += content.slice(last, p) + replacement;
+    last = p + needle.length;
+  }
+  out += content.slice(last);
+  assertWriteSize(out);
+  fs.writeFileSync(abs, out, "utf8");
+  return { path: rel, replaced: chosen.length, lines: chosen.map(lineAt) };
+}
+
 export function moveNote(notePath: string, newPath: string): { from: string; to: string } {
   const absFrom = resolveNotePath(notePath);
   const absTo = resolveNotePath(newPath);

@@ -6,6 +6,7 @@ import {
   appendToNote,
   createNote,
   deleteNote,
+  editNote,
   listAttachments,
   listFolders,
   listNotes,
@@ -406,5 +407,96 @@ describe("modified times", () => {
     for (const entry of [...listNotes(), ...listAttachments()]) {
       expect(Number.isInteger(entry.mtime)).toBe(true);
     }
+  });
+});
+
+describe("editNote", () => {
+  // The rule is exact-once. Everything below is either that rule holding, or
+  // a refusal that says what to do next.
+  it("replaces the one occurrence and reports where it was", () => {
+    put("Note.md", "alpha\nfoo\nomega\n");
+    const res = editNote("Note.md", "foo", "bar");
+    expect(res).toEqual({ path: "Note.md", replaced: 1, lines: [2] });
+    expect(get("Note.md")).toBe("alpha\nbar\nomega\n");
+  });
+
+  it("refuses when the text is not there, and leaves the note alone", () => {
+    put("Note.md", "alpha\n");
+    expect(() => editNote("Note.md", "nope", "x")).toThrow(/was not found in Note\.md/);
+    expect(get("Note.md")).toBe("alpha\n");
+  });
+
+  it("refuses an ambiguous match and lists every line it occurs on", () => {
+    put("Note.md", "x\nfoo\ny\nfoo\n");
+    expect(() => editNote("Note.md", "foo", "bar")).toThrow(/2 times in Note\.md, at lines 2, 4/);
+    expect(get("Note.md")).toBe("x\nfoo\ny\nfoo\n");
+  });
+
+  it("uses line to choose between occurrences", () => {
+    put("Note.md", "x\nfoo\ny\nfoo\n");
+    const res = editNote("Note.md", "foo", "bar", { line: 4 });
+    expect(res.lines).toEqual([4]);
+    expect(get("Note.md")).toBe("x\nfoo\ny\nbar\n");
+  });
+
+  it("refuses when line disagrees with the only occurrence, naming the real line", () => {
+    put("Note.md", "x\nfoo\ny\n");
+    expect(() => editNote("Note.md", "foo", "bar", { line: 5 })).toThrow(/at line 2, not line 5/);
+    expect(get("Note.md")).toBe("x\nfoo\ny\n");
+  });
+
+  it("refuses a line that holds none of several occurrences", () => {
+    put("Note.md", "x\nfoo\ny\nfoo\n");
+    expect(() => editNote("Note.md", "foo", "bar", { line: 3 })).toThrow(/but not at line 3/);
+  });
+
+  it("refuses a repeat on the same line and says to expand the text", () => {
+    put("Note.md", "foo and foo\n");
+    expect(() => editNote("Note.md", "foo", "bar", { line: 1 })).toThrow(/2 times on line 1.*Expand oldString/);
+    // Expanding it is exactly what works.
+    expect(editNote("Note.md", "and foo", "and bar", { line: 1 }).replaced).toBe(1);
+    expect(get("Note.md")).toBe("foo and bar\n");
+  });
+
+  it("replaces every occurrence with replaceAll and counts them", () => {
+    put("Note.md", "foo\nfoo bar foo\nz\n");
+    const res = editNote("Note.md", "foo", "qux", { replaceAll: true });
+    expect(res.replaced).toBe(3);
+    expect(res.lines).toEqual([1, 2, 2]);
+    expect(get("Note.md")).toBe("qux\nqux bar qux\nz\n");
+  });
+
+  it("refuses line together with replaceAll", () => {
+    put("Note.md", "foo\n");
+    expect(() => editNote("Note.md", "foo", "bar", { line: 1, replaceAll: true })).toThrow(/cannot be combined/);
+  });
+
+  it("refuses an empty or unchanged oldString", () => {
+    put("Note.md", "foo\n");
+    expect(() => editNote("Note.md", "", "bar")).toThrow(/must not be empty/);
+    expect(() => editNote("Note.md", "foo", "foo")).toThrow(/identical/);
+  });
+
+  it("matches text that spans lines", () => {
+    put("Note.md", "a\nfoo\nbar\nb\n");
+    const res = editNote("Note.md", "foo\nbar", "one\ntwo\nthree");
+    expect(res.lines).toEqual([2]);
+    expect(get("Note.md")).toBe("a\none\ntwo\nthree\nb\n");
+  });
+
+  it("keeps CRLF line endings when the caller passes LF", () => {
+    put("Note.md", "a\r\nfoo\r\nb\r\n");
+    const res = editNote("Note.md", "foo", "bar\nbaz");
+    expect(res.lines).toEqual([2]);
+    const after = get("Note.md");
+    expect(after).toBe("a\r\nbar\r\nbaz\r\nb\r\n");
+    // No bare LF crept in.
+    expect(after.replace(/\r\n/g, "")).not.toContain("\n");
+  });
+
+  it("respects the write cap", () => {
+    put("Note.md", "foo\n");
+    expect(() => editNote("Note.md", "foo", "x".repeat(10 * 1000 * 1000 + 1))).toThrow(/limit is/);
+    expect(get("Note.md")).toBe("foo\n");
   });
 });

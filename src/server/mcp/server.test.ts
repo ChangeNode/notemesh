@@ -66,6 +66,7 @@ const WRITE_TOOLS = [
   "create_note",
   // Present unless the setting turns it off — see the delete_note block below.
   "delete_note",
+  "edit_note",
   "move_note",
   "prepend_to_note",
   "remove_property",

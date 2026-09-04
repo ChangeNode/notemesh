@@ -15,6 +15,7 @@ import {
   prependToNote,
   moveNote,
   deleteNote,
+  editNote,
   listNotes,
   listFolders,
   listAttachments,
@@ -118,6 +119,10 @@ const EDIT = { readOnlyHint: false, destructiveHint: false, idempotentHint: true
 const REPLACE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
 // Deletes or moves; the second call finds nothing at the path.
 const REMOVE = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } as const;
+// Replaces exactly the text named in the call: nothing is lost that the caller
+// did not spell out, and sync keeps every version. A second identical call
+// finds nothing to replace and is refused.
+const REWRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
 
 // Index a just-written note immediately so index-backed tools (search,
 // list_tasks, tags, links) reflect the change on the very next call rather
@@ -354,6 +359,58 @@ export function createMcpServer(access: McpAccess): McpServer {
       },
       safe(({ path, content }: { path: string; content: string }) =>
         text(`Prepended to ${w(prependToNote(path, content), "prepend_to_note")}`),
+      ),
+    );
+
+    server.registerTool(
+      "edit_note",
+      {
+        title: "Edit note",
+        annotations: REWRITE,
+        description:
+          "Replace text in a note by naming it. oldString must occur exactly once, or the edit is " +
+          "refused with the line numbers of every occurrence, so the next call can pass line to pick " +
+          "one or expand oldString until it is unique. line is also a check: with one occurrence the " +
+          "edit is refused if it is elsewhere. replaceAll changes every occurrence instead. This is the " +
+          "tool for changing part of a note; update_note replaces the whole thing, and a note read in " +
+          "pages must never be rewritten from one page. If the note changed since it was read, " +
+          "oldString will not match and nothing is written.",
+        inputSchema: {
+          path: z.string().describe("Vault-relative path of the note"),
+          oldString: z.string().describe("The exact text to replace, as it appears in the note"),
+          newString: z.string().describe("What to put in its place"),
+          line: z
+            .number()
+            .int()
+            .min(1)
+            .optional()
+            .describe(
+              "1-based line where oldString is expected to start. Refused if it is elsewhere; chooses between occurrences when there are several",
+            ),
+          replaceAll: z
+            .boolean()
+            .optional()
+            .describe("Replace every occurrence rather than requiring exactly one; cannot be combined with line"),
+        },
+      },
+      safe(
+        ({
+          path,
+          oldString,
+          newString,
+          line,
+          replaceAll,
+        }: {
+          path: string;
+          oldString: string;
+          newString: string;
+          line?: number;
+          replaceAll?: boolean;
+        }) => {
+          const res = editNote(path, oldString, newString, { line, replaceAll });
+          w(res.path, "edit_note");
+          return json(res);
+        },
       ),
     );
 

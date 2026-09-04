@@ -125,6 +125,18 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Added
 
+- **`edit_note`** — change part of a note by naming the text to replace. Until
+  now the only ways to change a note were to append, prepend, or replace the
+  whole thing with `update_note`, so changing one sentence meant rewriting the
+  note — impossible to do safely for a note long enough to be read in pages,
+  and a whole-file commit on the git backend for a one-line change. The named
+  text must occur exactly once, or the edit is refused with the line numbers
+  of every occurrence; `line` then picks one, or `replaceAll` takes them all.
+  Because the match is exact, a note that changed on another device since it
+  was read simply fails to match, and nothing is written to the wrong place.
+  With it the server offers 28 tools covering notes, attachments, daily notes,
+  search, properties, tasks, links and tags.
+
 - Every tool now declares MCP **annotations** — whether it only reads, whether
   it can discard content a person wrote, whether repeating it changes anything
   more — and every parameter carries a description. Clients that honour the

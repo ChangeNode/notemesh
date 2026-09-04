@@ -44,7 +44,7 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
-## Unreleased
+## Unreleased (1.1.0)
 
 **Taking this update:** redeploy. Nothing else.
 
@@ -87,6 +87,14 @@ entry needing your attention cannot get lost among routine ones.
   dashboard is a live view worth keeping.
 
 ### Fixed
+
+- The server now runs under an init process (`tini`) inside the container.
+  Nothing changes on a healthy instance. On one whose git remote times out now
+  and then — a flaky network, a slow host — each timeout could leave a dead
+  helper process behind that was never cleaned up, because `node` as the
+  container's first process does not reap orphans. Over weeks that quietly
+  used up process slots until sync could no longer start a git command, and
+  the dashboard had no way to say why. Redeploying picks this up.
 
 - **Security** — revoking a connector now ends its access immediately. Revoking
   deleted the client, its tokens and its consent, which stopped connectors

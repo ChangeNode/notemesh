@@ -83,3 +83,66 @@ jobs:
       # shouldn't wedge unrelated pull requests, but it should be visible.
       - name: Audit production dependencies
         run: pnpm audit --prod || true
+
+  # The image is what actually runs on Railway, and nothing above builds it:
+  # the HTTP suite boots the compiled server with node directly. So the
+  # ENTRYPOINT, the apt packages, the ob pin and the volume layout were only
+  # ever exercised by a deploy. This builds it and checks the two things that
+  # matter and are cheap to check: that it boots, and that tini is PID 1 with
+  # node as its child and reaps orphans — the reason tini is there at all.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t notemesh:ci .
+
+      # DATA_DIR=/tmp rather than the default /data: there is no volume here and
+      # /tmp is guaranteed writable. ENCRYPTION_KEY is the only required variable.
+      - name: Start a container
+        run: |
+          docker run -d --name nm \
+            -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+            -e DATA_DIR=/tmp \
+            notemesh:ci
+
+      - name: It boots and answers /api/health
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec nm node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "never became healthy"; exit 1
+
+      # /proc rather than ps: the slim image has no procps, and /proc is the
+      # source ps reads anyway.
+      - name: tini is PID 1 and node is its child
+        run: |
+          pid1=$(docker exec nm cat /proc/1/comm)
+          echo "PID 1: $pid1"
+          test "$pid1" = "tini"
+          children=$(docker exec nm sh -c 'for s in /proc/[0-9]*/status; do grep -q "^PPid:[[:space:]]*1$" "$s" && sed -n "s/^Name:[[:space:]]*//p" "$s"; done')
+          echo "children of PID 1: $children"
+          echo "$children" | grep -qx node
+
+      # Spawn a shell that backgrounds a sleep and exits, orphaning the sleep
+      # onto PID 1. Once the sleep ends, an init reaps it; a bare node would
+      # leave it as a zombie. This is the failure the ENTRYPOINT exists to stop.
+      - name: PID 1 reaps orphans
+        run: |
+          docker exec nm sh -c 'sh -c "sleep 1 & exit 0"; sleep 3'
+          zombies=$(docker exec nm sh -c 'grep -l "^State:[[:space:]]*Z" /proc/[0-9]*/status 2>/dev/null | wc -l')
+          echo "zombies: $zombies"
+          test "$zombies" -eq 0
+
+      - name: Container logs
+        if: failure()
+        run: docker logs nm
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f nm >/dev/null 2>&1 || true

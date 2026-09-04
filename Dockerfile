@@ -19,7 +19,7 @@ WORKDIR /app
 # pointer files in place of every attachment, which contain no NUL bytes and so
 # read as text — the server would hand those to a model as if they were images.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
+    && apt-get install -y --no-install-recommends git git-lfs ca-certificates tini \
     && rm -rf /var/lib/apt/lists/* \
     && git lfs install --system
 RUN npm install -g obsidian-headless@0.0.14
@@ -28,4 +28,14 @@ ENV NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/data
 EXPOSE 3000
+# tini as PID 1, node as its child. PID 1 is expected to reap orphaned
+# processes; node only ever waits on its own direct children. This server
+# spawns a lot of children — the ob sync daemon, every git call under a 120 s
+# timeout — and kills them individually, so their grandchildren (git-remote-https,
+# LFS filters, the sh credential helper) are orphaned onto PID 1 whenever a
+# parent is killed mid-flight. Under node they were never reaped: one zombie per
+# timeout, accumulating for the life of the container until PID exhaustion
+# stopped spawn() and sync with it. Docker's --init does the same thing but is
+# a runtime flag Railway does not expose, so it is baked in.
+ENTRYPOINT ["tini", "--"]
 CMD ["node", ".output/server/index.mjs"]

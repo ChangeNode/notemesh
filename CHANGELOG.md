@@ -125,6 +125,15 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Added
 
+- Every tool now declares MCP **annotations** — whether it only reads, whether
+  it can discard content a person wrote, whether repeating it changes anything
+  more — and every parameter carries a description. Clients that honour the
+  hints (Claude does) may ask before a call marked destructive: `delete_note`,
+  `update_note` and `move_note`. Property edits and task toggles are not
+  marked, since sync history keeps every version. The five thinnest tool
+  descriptions gained a sentence on when to reach for them, and the Tools tab
+  shows the parameter descriptions and the destructive marker.
+
 - A **Server Configuration** panel at the top of Settings, linking back to this
   deployment on Railway: *Check for updates* goes to the service, where an
   available update is applied, and *configure* goes to the project. Applying an

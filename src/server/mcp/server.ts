@@ -99,6 +99,26 @@ function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
 }
 
+// Tool annotations, per the MCP spec. A client may use them to decide whether
+// to ask the person before calling. The protocol's defaults are the cautious
+// ones — destructiveHint true, openWorldHint true — so every tool below sets
+// them rather than inheriting a guess. openWorldHint is false throughout: the
+// vault is a closed world, and nothing here reaches outside it (read_attachment
+// hands back a URL but never fetches one). "Destructive" is read in the
+// everyday sense — can lose content a person wrote — so a full replace, a
+// delete or a move carries it, and a property edit or a checkbox toggle does
+// not. The hints must agree with the descriptions; the catalogue test checks
+// they agree with the registration conditionals.
+const READ = { readOnlyHint: true, openWorldHint: false } as const;
+// Adds content and never removes any; calling twice adds twice.
+const ADD = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
+// Edits a small thing in place; calling twice with the same arguments changes nothing more.
+const EDIT = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+// Replaces a whole note; the same content twice is the same note.
+const REPLACE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
+// Deletes or moves; the second call finds nothing at the path.
+const REMOVE = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } as const;
+
 // Index a just-written note immediately so index-backed tools (search,
 // list_tasks, tags, links) reflect the change on the very next call rather
 // than after the watcher's debounce.
@@ -159,6 +179,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "read_note",
     {
       title: "Read note",
+      annotations: READ,
       description:
         "Read a note. Returns up to 2000 lines (100KB) per call with totalLines/offset/count/hasMore — " +
         "page through a long note with offset. Binary attachments are refused here; use read_attachment. " +
@@ -178,6 +199,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_notes",
     {
       title: "List notes",
+      annotations: READ,
       description:
         "List markdown notes in the vault (optionally within a folder), with modified time and size. " +
         "An entry too large to index carries indexed: false — it is readable with read_note but absent " +
@@ -196,6 +218,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_attachments",
     {
       title: "List attachments",
+      annotations: READ,
       description:
         "List non-markdown vault files (images, PDFs, audio…), with modified time and size. " +
         "Embeds are written by filename (![[screen.png]]) while the file lives in its own " +
@@ -214,6 +237,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "read_attachment",
     {
       title: "Read attachment",
+      annotations: READ,
       description:
         "Read a binary vault file (image, PDF, …) as base64; images come back as viewable image content. " +
         "Files over 1 MB are not inlined — the result carries a short-lived download URL instead, " +
@@ -257,7 +281,10 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_folders",
     {
       title: "List folders",
-      description: "List every folder in the vault.",
+      annotations: READ,
+      description:
+        "List every folder path in the vault. Use it to learn the vault's layout before creating a note " +
+        "somewhere sensible, or to pick a folder to pass to list_notes.",
       inputSchema: { ...PAGE_ARGS },
     },
     safe(({ limit, offset }: { limit?: number; offset?: number }) =>
@@ -270,6 +297,7 @@ export function createMcpServer(access: McpAccess): McpServer {
       "create_note",
       {
         title: "Create note",
+        annotations: ADD,
         description: "Create a new note. Fails if the note already exists (use update_note to replace).",
         inputSchema: {
           path: z.string().describe("Vault-relative path for the new note"),
@@ -285,9 +313,10 @@ export function createMcpServer(access: McpAccess): McpServer {
       "update_note",
       {
         title: "Update note",
+        annotations: REPLACE,
         description: "Replace the full contents of an existing note.",
         inputSchema: {
-          path: z.string(),
+          path: z.string().describe("Vault-relative path of the note to replace"),
           content: z.string().describe("New markdown content (replaces everything)"),
         },
       },
@@ -300,8 +329,12 @@ export function createMcpServer(access: McpAccess): McpServer {
       "append_to_note",
       {
         title: "Append to note",
+        annotations: ADD,
         description: "Append markdown to the end of an existing note. The safest way to add content.",
-        inputSchema: { path: z.string(), content: z.string() },
+        inputSchema: {
+          path: z.string().describe("Vault-relative path of an existing note"),
+          content: z.string().describe("Markdown to add; it becomes its own block at the end"),
+        },
       },
       safe(({ path, content }: { path: string; content: string }) =>
         text(`Appended to ${w(appendToNote(path, content), "append_to_note")}`),
@@ -312,8 +345,12 @@ export function createMcpServer(access: McpAccess): McpServer {
       "prepend_to_note",
       {
         title: "Prepend to note",
+        annotations: ADD,
         description: "Insert markdown at the top of a note, after any YAML frontmatter.",
-        inputSchema: { path: z.string(), content: z.string() },
+        inputSchema: {
+          path: z.string().describe("Vault-relative path of an existing note"),
+          content: z.string().describe("Markdown to insert; it becomes its own block below the frontmatter"),
+        },
       },
       safe(({ path, content }: { path: string; content: string }) =>
         text(`Prepended to ${w(prependToNote(path, content), "prepend_to_note")}`),
@@ -324,6 +361,7 @@ export function createMcpServer(access: McpAccess): McpServer {
       "move_note",
       {
         title: "Move / rename note",
+        annotations: REMOVE,
         description: "Move or rename a note within the vault. Fails if the target exists.",
         inputSchema: {
           path: z.string().describe("Current vault-relative path"),
@@ -347,10 +385,11 @@ export function createMcpServer(access: McpAccess): McpServer {
         "delete_note",
         {
           title: "Delete note",
+          annotations: REMOVE,
           description:
             "Delete a note. The deletion syncs to all devices. The file remains in the vault's " +
             "history (Obsidian Sync version history, or the previous git commit) and can be restored.",
-          inputSchema: { path: z.string() },
+          inputSchema: { path: z.string().describe("Vault-relative path of the note to delete") },
         },
         safe(({ path }: { path: string }) => text(`Deleted ${w(deleteNote(path), "delete_note")}`)),
       );
@@ -362,10 +401,13 @@ export function createMcpServer(access: McpAccess): McpServer {
     "daily_note",
     {
       title: "Daily note",
+      annotations: writable ? ADD : READ,
       description:
         "Work with daily notes: read today's (or a given date's) note, append/prepend to it (creating it if needed), or get its path. Uses the vault's daily-notes settings.",
       inputSchema: {
-        action: z.enum(writable ? ["read", "append", "prepend", "path"] : ["read", "path"]),
+        action: z
+          .enum(writable ? ["read", "append", "prepend", "path"] : ["read", "path"])
+          .describe("read the note, append or prepend content (creating it if needed), or path to get its location"),
         content: z.string().optional().describe("Markdown content (for append/prepend)"),
         date: z.string().optional().describe("Date as YYYY-MM-DD; defaults to today"),
       },
@@ -393,6 +435,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "search_vault",
     {
       title: "Search vault",
+      annotations: READ,
       description:
         "Full-text search across all notes (titles, headings, body). Returns {boundary, " +
         "boundaryNote, total, offset, count, hasMore, items} — the same envelope as the list " +
@@ -432,9 +475,10 @@ export function createMcpServer(access: McpAccess): McpServer {
     "read_properties",
     {
       title: "Read properties",
+      annotations: READ,
       description:
         "Read a note's frontmatter properties, or (with no path) survey all property names used in the vault with usage counts.",
-      inputSchema: { path: z.string().optional() },
+      inputSchema: { path: z.string().optional().describe("Vault-relative note path; omit to survey the whole vault") },
     },
     safe(({ path }: { path?: string }) =>
       json(
@@ -450,13 +494,16 @@ export function createMcpServer(access: McpAccess): McpServer {
       "set_property",
       {
         title: "Set property",
+        annotations: EDIT,
         description:
           "Set a frontmatter property on a note (creates frontmatter if missing). Returns "
           + "changed:false, and leaves the file untouched, if the property already had this value.",
         inputSchema: {
-          path: z.string(),
-          name: z.string(),
-          value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+          path: z.string().describe("Vault-relative path of the note"),
+          name: z.string().describe("Property name, as it appears in the frontmatter"),
+          value: z
+            .union([z.string(), z.number(), z.boolean(), z.array(z.string())])
+            .describe("New value: a string, number, boolean, or list of strings"),
         },
       },
       safe(({ path, name, value }: { path: string; name: string; value: unknown }) => {
@@ -471,10 +518,14 @@ export function createMcpServer(access: McpAccess): McpServer {
       "remove_property",
       {
         title: "Remove property",
+        annotations: EDIT,
         description:
           "Remove a frontmatter property from a note. Returns changed:false, and leaves the " +
           "file untouched, if the property was not set.",
-        inputSchema: { path: z.string(), name: z.string() },
+        inputSchema: {
+          path: z.string().describe("Vault-relative path of the note"),
+          name: z.string().describe("Property name to remove"),
+        },
       },
       safe(({ path, name }: { path: string; name: string }) => {
         const res = removeProperty(path, name);
@@ -490,8 +541,15 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_tasks",
     {
       title: "List tasks",
+      annotations: READ,
       description: "List markdown tasks (- [ ] / - [x]) across the vault. Filter: all, todo, or daily (today's note).",
-      inputSchema: { filter: z.enum(["all", "todo", "daily"]).optional(), ...PAGE_ARGS },
+      inputSchema: {
+        filter: z
+          .enum(["all", "todo", "daily"])
+          .optional()
+          .describe("all tasks, only unfinished ones (todo), or those in today's daily note; default all"),
+        ...PAGE_ARGS,
+      },
     },
     safe(({ filter, limit, offset }: { filter?: "all" | "todo" | "daily"; limit?: number; offset?: number }) =>
       page(listTasks(filter ?? "all"), limit, offset, "text"),
@@ -503,8 +561,12 @@ export function createMcpServer(access: McpAccess): McpServer {
       "toggle_task",
       {
         title: "Toggle task",
+        annotations: EDIT,
         description: "Toggle a task's completion state, identified by note path and line number (from list_tasks).",
-        inputSchema: { path: z.string(), line: z.number().int().min(1) },
+        inputSchema: {
+          path: z.string().describe("Vault-relative path of the note holding the task"),
+          line: z.number().int().min(1).describe("1-based line number of the task, as reported by list_tasks"),
+        },
       },
       safe(({ path, line }: { path: string; line: number }) => {
         const res = toggleTask(path, line);
@@ -519,10 +581,16 @@ export function createMcpServer(access: McpAccess): McpServer {
     "get_links",
     {
       title: "Get links",
-      description: "Get a note's backlinks (notes linking to it) or outgoing wikilinks.",
+      annotations: READ,
+      description:
+        "Get a note's backlinks (notes linking to it) or outgoing wikilinks. Use it to see what a note " +
+        "connects to before editing or moving it; for vault-wide broken links or orphans use " +
+        "list_link_issues instead.",
       inputSchema: {
-        path: z.string(),
-        direction: z.enum(["backlinks", "outgoing"]),
+        path: z.string().describe("Vault-relative path of the note"),
+        direction: z
+          .enum(["backlinks", "outgoing"])
+          .describe("backlinks: notes that link to this one; outgoing: notes this one links to"),
       },
     },
     safe(({ path, direction }: { path: string; direction: string }) =>
@@ -534,9 +602,15 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_link_issues",
     {
       title: "Link issues",
+      annotations: READ,
       description:
         "Vault link health: unresolved (broken wikilinks), orphans (notes nothing links to), or deadends (notes with no outgoing links).",
-      inputSchema: { type: z.enum(["unresolved", "orphans", "deadends"]), ...PAGE_ARGS },
+      inputSchema: {
+        type: z
+          .enum(["unresolved", "orphans", "deadends"])
+          .describe("unresolved: links to notes that do not exist; orphans: notes nothing links to; deadends: notes with no outgoing links"),
+        ...PAGE_ARGS,
+      },
     },
     safe(({ type, limit, offset }: { type: string; limit?: number; offset?: number }) =>
       page<{ source: string; target: string } | { path: string }>(
@@ -551,6 +625,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_tags",
     {
       title: "List tags",
+      annotations: READ,
       description: "All tags in the vault with usage counts (frontmatter and inline #tags).",
       inputSchema: { ...PAGE_ARGS },
     },
@@ -561,6 +636,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "notes_by_tag",
     {
       title: "Notes by tag",
+      annotations: READ,
       description: "List the notes carrying a given tag.",
       inputSchema: { tag: z.string().describe("Tag name, with or without leading #"), ...PAGE_ARGS },
     },
@@ -574,6 +650,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "get_vault_info",
     {
       title: "Vault info",
+      annotations: READ,
       description:
         "Vault name, note count, word totals, how many notes are too large to be searchable " +
         "(unindexedNotes), and sync daemon status.",
@@ -586,8 +663,12 @@ export function createMcpServer(access: McpAccess): McpServer {
     "get_outline",
     {
       title: "Note outline",
-      description: "Heading structure of a note with levels and line numbers.",
-      inputSchema: { path: z.string() },
+      annotations: READ,
+      description:
+        "Heading structure of a note: each heading with its level and 1-based line number. Use it to " +
+        "find where a section starts before reading part of a long note with read_note's offset, " +
+        "rather than reading the whole note to locate it.",
+      inputSchema: { path: z.string().describe("Vault-relative note path") },
     },
     safe(({ path }: { path: string }) =>
       json(withBoundary({ headings: fenceEach(outline(path), "heading") })),
@@ -598,8 +679,13 @@ export function createMcpServer(access: McpAccess): McpServer {
     "word_count",
     {
       title: "Word count",
-      description: "Word and byte counts for one note, or totals for the vault. Words are counted in the body only (frontmatter is metadata); bytes are size on disk. With a path, both numbers equal that note's contribution to the vault totals.",
-      inputSchema: { path: z.string().optional() },
+      annotations: READ,
+      description:
+        "Word and byte counts for one note, or totals for the vault. Use it to size a note before " +
+        "reading it, or to report on the vault as a whole. Words are counted in the body only " +
+        "(frontmatter is metadata); bytes are size on disk. With a path, both numbers equal that " +
+        "note's contribution to the vault totals.",
+      inputSchema: { path: z.string().optional().describe("Vault-relative note path; omit for vault totals") },
     },
     safe(({ path }: { path?: string }) => json(wordCount(path))),
   );
@@ -608,7 +694,11 @@ export function createMcpServer(access: McpAccess): McpServer {
     "random_note",
     {
       title: "Random note",
-      description: "Return a random note from the vault.",
+      annotations: READ,
+      description:
+        "Return one note chosen at random, windowed like read_note. For serendipity — resurfacing " +
+        "something forgotten, picking a note to review — not for finding a specific note; use " +
+        "search_vault for that.",
       inputSchema: {},
     },
     safe(() => json(randomNote())),
@@ -619,8 +709,9 @@ export function createMcpServer(access: McpAccess): McpServer {
       "unique_note",
       {
         title: "Create unique note",
+        annotations: ADD,
         description: "Create a Zettelkasten-style timestamped note (YYYYMMDDHHmm) with optional content.",
-        inputSchema: { content: z.string().optional() },
+        inputSchema: { content: z.string().optional().describe("Initial markdown content; omit for an empty note") },
       },
       safe(({ content }: { content?: string }) => text(`Created ${w(uniqueNote(content), "unique_note")}`)),
     );

@@ -159,3 +159,41 @@ describe("the reported version", () => {
     expect((await catalog()).length).toBe(claimed);
   });
 });
+
+// What a tool says about itself has to be true of how it is registered. The
+// `write` flag is derived from the registration conditionals; the annotations
+// are declared by hand next to each tool. These check the two never disagree,
+// and that no parameter is left for a model to guess at.
+describe("tool definitions, as a client reads them", () => {
+  it("describes every parameter of every tool", async () => {
+    for (const t of await catalog()) {
+      for (const p of t.params) {
+        expect(p.description, `${t.name}.${p.name} has a description`).toBeTruthy();
+      }
+    }
+  });
+
+  it("annotates every tool, and never as open-world", async () => {
+    for (const t of await catalog()) {
+      expect(t.annotations, `${t.name} has annotations`).toBeDefined();
+      expect(t.annotations!.readOnlyHint, `${t.name} says whether it only reads`).toBeTypeOf("boolean");
+      // The vault is a closed world; nothing here reaches outside it.
+      expect(t.annotations!.openWorldHint, `${t.name} is not open-world`).toBe(false);
+    }
+  });
+
+  it("agrees with the registration conditionals about who can write", async () => {
+    for (const t of await catalog()) {
+      const ro = t.annotations!.readOnlyHint;
+      // A tool only a write credential gets must not claim to be read-only...
+      if (t.write) expect(ro, `${t.name} needs write scope, so cannot be read-only`).toBe(false);
+      // ...and a tool that claims to be read-only must be available without one.
+      if (ro) expect(t.write, `${t.name} is read-only, so must not need write scope`).toBe(false);
+      // Every tool that can write says whether it can discard content.
+      if (!ro) expect(t.annotations!.destructiveHint, `${t.name} says whether it is destructive`).toBeTypeOf("boolean");
+    }
+    // The three that can lose content a person wrote, and only those.
+    const destructive = (await catalog()).filter((t) => t.annotations!.destructiveHint).map((t) => t.name).sort();
+    expect(destructive).toEqual(["delete_note", "move_note", "update_note"]);
+  });
+});

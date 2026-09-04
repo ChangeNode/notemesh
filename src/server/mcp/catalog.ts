@@ -24,6 +24,13 @@ export interface ToolParam {
   description?: string;
 }
 
+export interface ToolAnnotationsDoc {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 export interface ToolDoc {
   name: string;
   title?: string;
@@ -31,6 +38,8 @@ export interface ToolDoc {
   params: ToolParam[];
   /** Needs a write-scoped credential. Derived, not declared — see listMcpTools. */
   write: boolean;
+  /** What the tool declares about itself to clients. Declared, unlike `write`; the test checks the two agree. */
+  annotations?: ToolAnnotationsDoc;
 }
 
 /** One connect/list/close cycle. */
@@ -88,6 +97,14 @@ export async function listMcpTools(): Promise<ToolDoc[]> {
       description: t.description,
       params: paramsOf(t.inputSchema),
       write: !readNames.has(t.name),
+      annotations: t.annotations
+        ? {
+            readOnlyHint: t.annotations.readOnlyHint,
+            destructiveHint: t.annotations.destructiveHint,
+            idempotentHint: t.annotations.idempotentHint,
+            openWorldHint: t.annotations.openWorldHint,
+          }
+        : undefined,
     }))
     .sort((a, b) => (a.write === b.write ? a.name.localeCompare(b.name) : a.write ? 1 : -1));
 }

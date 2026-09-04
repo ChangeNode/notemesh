@@ -42,6 +42,9 @@ export default function Tools() {
                       {(t) => (
                         <div class="tool">
                           <code class="tool-name">{t.name}</code>
+                          <Show when={t.annotations?.destructiveHint}>
+                            <span class="muted tool-type"> · can discard content; a client may ask first</span>
+                          </Show>
                           <p>{t.description}</p>
                           <Show when={t.params.length}>
                             <p class="muted tool-params">
@@ -55,6 +58,9 @@ export default function Tools() {
                                       {p.type}
                                       {p.required ? "" : "?"}
                                     </span>
+                                    <Show when={p.description}>
+                                      <span class="tool-type"> — {p.description}</span>
+                                    </Show>
                                   </>
                                 )}
                               </For>

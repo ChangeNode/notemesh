@@ -189,3 +189,30 @@ describe("preview_edit", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 });
+
+// A full disk is the one native error a tool names, because the fix is the
+// operator's. The write guard refuses most of them first; this is the write
+// that crosses the line anyway — here the index's, which safe() alone sees.
+describe("a full disk, as a tool reports it", () => {
+  afterEach(() => vi.doUnmock("../vault/notes"));
+
+  it("names the volume instead of the generic failure", async () => {
+    vi.doMock("../vault/notes", async (original) => ({
+      ...(await original<typeof import("../vault/notes")>()),
+      createNote: () => {
+        throw Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" });
+      },
+    }));
+    const { createMcpServer } = await import("./server");
+    const server = createMcpServer({ read: true, write: true, label: "test" }) as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: unknown, extra: unknown) => { content: { text: string }[]; isError?: boolean } }
+      >;
+    };
+    const res = server._registeredTools.create_note.handler({ path: "New.md", content: "x" }, {});
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/volume is full/);
+    expect(res.content[0].text).not.toMatch(/server logs/);
+  });
+});

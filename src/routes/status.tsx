@@ -31,11 +31,9 @@ function fmtBytes(n: number): string {
   return `${(n / 1e9).toFixed(1)} GB`;
 }
 
-/** Bar colour: green until it is worth thinking about, amber, then red. */
-function diskLevel(percentUsed: number): string {
-  if (percentUsed >= 90) return "err";
-  if (percentUsed >= 80) return "warn";
-  return "ok";
+/** Bar colour from the server's level: green, amber under 100 MB free, red under 50 MB. */
+function diskClass(level: "ok" | "warn" | "critical"): string {
+  return level === "critical" ? "err" : level;
 }
 
 const STATE_LABEL: Record<string, { cls: string; label: string }> = {
@@ -195,7 +193,7 @@ export default function Status() {
                         <Show when={d().disk.filesystem}>
                           <div class="disk-bar">
                             <div
-                              class={`disk-fill ${diskLevel(d().disk.filesystem!.percentUsed)}`}
+                              class={`disk-fill ${diskClass(d().disk.filesystem!.level)}`}
                               style={{ width: `${Math.min(d().disk.filesystem!.percentUsed, 100)}%` }}
                             />
                           </div>
@@ -219,8 +217,11 @@ export default function Status() {
                             vault. On a deployment with a mounted volume they describe the volume.
                           </small>
                         </Show>
-                        <Show when={(d().disk.filesystem?.percentUsed ?? 0) >= 80 && !d().disk.filesystem?.sharedWithRoot}>
+                        <Show when={d().disk.filesystem && d().disk.filesystem!.level !== "ok" && !d().disk.filesystem?.sharedWithRoot}>
                           <small class="muted">
+                            {d().disk.filesystem!.level === "critical"
+                              ? "Under 50 MB free: writes that would not leave room for the index are being refused. "
+                              : "Under 100 MB free. "}
                             Worth growing the volume now. Railway resizes live with no downtime
                             until it is full; at 100% the resize goes offline and restarts the
                             service.

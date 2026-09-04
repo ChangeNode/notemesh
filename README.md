@@ -210,7 +210,16 @@ against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 | Note indexed | 1 MB | larger notes are listed (with `indexed: false`) and readable, but absent from search, tags, tasks and links |
 | Note read or written | 10 MB | `read_note` pages through it; `create_note`, `edit_note`, `update_note`, `append_to_note` and `prepend_to_note` refuse a result over the limit |
 | Full replace | one read window | `update_note` on a note over 2,000 lines or 100 KB needs `expectedLines`, the `totalLines` that `read_note` reported |
+| Disk headroom | warns under 100 MB free, critical under 50 MB | a write that would leave less than the reserve (50 MB, or the index database's size if larger) is refused with a message naming the fix |
 | Request body | 4 MB | `/api/mcp` — the ceiling on a single `create_note`/`update_note` |
+
+The data volume is the hard ceiling: Railway does not grow it on its own, and a
+full one does not fail gracefully. The server watches it — the Status tab shows
+the bar, `get_vault_info` reports `disk.level`, and the log says when it crosses
+a line. Grow the volume *before* it is full: the resize is then live, with no
+downtime; at 100% it goes offline and restarts the service. Plan ceilings are
+0.5 GB on Free and Trial, 5 GB on Hobby and 50 GB on Pro, and Pro can also set
+a disk-usage monitor in Railway's own metrics.
 
 `read_note` returns `{totalLines, offset, count, hasMore}` alongside `content`,
 so a long note is paged with `offset` rather than dumped in one response — a

@@ -1,3 +1,4 @@
+import { ensureDiskWatched } from "./disk";
 import fs from "node:fs";
 import path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -399,6 +400,9 @@ let indexBootChecked = false;
 export function ensureIndexerStarted() {
   if (indexBootChecked) return;
   indexBootChecked = true;
+  // The disk watcher rides the same first-request hook: the other thing the
+  // process should be doing from its first request onward.
+  ensureDiskWatched();
   void indexer()
     .start()
     .catch((e) => console.error("[indexer] failed to start:", e));

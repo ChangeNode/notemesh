@@ -14,6 +14,7 @@ import {
   MAX_INDEX_BYTES,
   MAX_WRITE_BYTES,
 } from "./paths";
+import { writeVaultFile } from "./disk";
 
 export interface NoteInfo {
   path: string;
@@ -243,7 +244,7 @@ export function createNote(notePath: string, content: string): string {
   }
   assertWriteSize(content);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, content, "utf8");
+  writeVaultFile(abs, content);
   return toVaultRelative(abs);
 }
 
@@ -295,7 +296,7 @@ export function updateNote(notePath: string, content: string, opts: UpdateOption
         `to confirm the whole note was read; or use edit_note to change part of it.`,
     );
   }
-  fs.writeFileSync(abs, content, "utf8");
+  writeVaultFile(abs, content);
   return rel;
 }
 
@@ -315,7 +316,7 @@ export function appendToNote(notePath: string, content: string): string {
   }
   const next = existing + sep + content + (content.endsWith("\n") ? "" : "\n");
   assertWriteSize(next);
-  fs.writeFileSync(abs, next, "utf8");
+  writeVaultFile(abs, next);
   return toVaultRelative(abs);
 }
 
@@ -333,7 +334,7 @@ export function prependToNote(notePath: string, content: string): string {
     ? existing.slice(0, fmMatch[0].length) + block + existing.slice(fmMatch[0].length)
     : block + existing;
   assertWriteSize(next);
-  fs.writeFileSync(abs, next, "utf8");
+  writeVaultFile(abs, next);
   return toVaultRelative(abs);
 }
 
@@ -550,7 +551,7 @@ export function editNote(
     last = p + needle.length;
   }
   out += content.slice(last);
-  fs.writeFileSync(site.abs, out, "utf8");
+  writeVaultFile(site.abs, out);
   return { path: site.rel, replaced: choice.chosen.length, lines: choice.chosen.map((k) => site.lines[k]) };
 }
 

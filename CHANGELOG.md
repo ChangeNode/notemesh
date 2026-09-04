@@ -136,6 +136,20 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Added
 
+- **Disk headroom.** The server now watches its data volume rather than only
+  drawing it. It warns in the log under 100 MB free and calls it critical under
+  50 MB — once, when the line is crossed, not every minute — and a write that
+  would leave less than the reserve (50 MB, or the index database's own size if
+  larger, since SQLite needs room to rewrite itself) is refused with a message
+  naming the volume and the fix. A write that fills the disk anyway, the
+  index's included, comes back as that same message instead of the generic
+  failure. `get_vault_info` reports `disk.availableBytes` and `disk.level`, and
+  the Status tab colours its bar from the server's level instead of its own
+  percentage rule. The thresholds are absolute on purpose: this is a markdown
+  vault, and a percentage reads wrong on both a 0.5 GB Free volume and a 50 GB
+  Pro one. Overriding them is #47, if anyone asks. Sync keeps running on a low
+  disk; a failed pull already surfaces as a sync error.
+
 - **`edit_note`** — change part of a note by naming the text to replace. Until
   now the only ways to change a note were to append, prepend, or replace the
   whole thing with `update_note`, so changing one sentence meant rewriting the

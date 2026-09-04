@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { db } from "../db";
 import { env } from "../env";
+import { VaultPathError, formatBytes } from "./paths";
 
 /**
  * How much room the vault has left, and what is using it.
@@ -31,6 +32,8 @@ export interface DiskStatus {
      * roomy vault.
      */
     sharedWithRoot: boolean;
+    /** ok, warn under DISK_WARN_BYTES available, critical under DISK_CRITICAL_BYTES. */
+    level: DiskLevel;
   } | null;
   /** What this deployment accounts for, from the index and the database file. */
   vaultBytes: number;
@@ -64,6 +67,7 @@ function filesystemStatus(): DiskStatus["filesystem"] {
       usedBytes,
       percentUsed: Math.round((usedBytes / totalBytes) * 100),
       sharedWithRoot,
+      level: diskLevel(availableBytes),
     };
   } catch {
     // statfs is not available everywhere, and a missing figure is better than
@@ -72,23 +76,27 @@ function filesystemStatus(): DiskStatus["filesystem"] {
   }
 }
 
+// What the index costs on disk. The write-ahead log is part of it, and on a
+// busy vault it is not a rounding error.
+function databaseBytesOnDisk(): number {
+  let bytes = 0;
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try {
+      bytes += fs.statSync(`${env.dbPath}${suffix}`).size;
+    } catch {
+      // Not present — nothing to add.
+    }
+  }
+  return bytes;
+}
+
 export function diskStatus(): DiskStatus {
   const d = db();
   const sum = (table: string) =>
     (d.prepare(`SELECT COALESCE(SUM(size), 0) AS n FROM ${table}`).get() as { n: number }).n;
   const count = (table: string) =>
     (d.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
-
-  let databaseBytes = 0;
-  for (const suffix of ["", "-wal", "-shm"]) {
-    // The write-ahead log is part of what the database costs on disk, and on a
-    // busy vault it is not a rounding error.
-    try {
-      databaseBytes += fs.statSync(`${env.dbPath}${suffix}`).size;
-    } catch {
-      // Not present — nothing to add.
-    }
-  }
+  const databaseBytes = databaseBytesOnDisk();
 
   return {
     filesystem: filesystemStatus(),
@@ -97,4 +105,131 @@ export function diskStatus(): DiskStatus {
     noteCount: count("notes"),
     attachmentCount: count("attachments"),
   };
+}
+
+// ---- Headroom: the thresholds, the write guard, and the watcher ------------
+
+/**
+ * Thresholds on available bytes, absolute rather than a fraction of the
+ * volume. This is a markdown vault: 100 MB is a great many notes, and a
+ * percentage reads wrong at both ends — 10% of a 0.5 GB Free volume is
+ * 50 MB, 10% of a 50 GB Pro one is more than most vaults. Decimal, as disks
+ * are sold. Overrides are #47, not done until someone asks.
+ */
+export const DISK_WARN_BYTES = 100 * 1000 * 1000;
+export const DISK_CRITICAL_BYTES = 50 * 1000 * 1000;
+
+export type DiskLevel = "ok" | "warn" | "critical";
+
+export function diskLevel(availableBytes: number): DiskLevel {
+  if (availableBytes < DISK_CRITICAL_BYTES) return "critical";
+  if (availableBytes < DISK_WARN_BYTES) return "warn";
+  return "ok";
+}
+
+/** The filesystem half alone — two statfs calls, no SQL — for the write path and get_vault_info. */
+export function headroom(): DiskStatus["filesystem"] {
+  return filesystemStatus();
+}
+
+/**
+ * What a write must leave behind: the critical threshold, or the index
+ * database if that is larger. SQLite needs room to rewrite itself, and a
+ * vault whose notes fit but whose index cannot checkpoint is wedged too.
+ */
+export function reserveBytes(): number {
+  return Math.max(DISK_CRITICAL_BYTES, databaseBytesOnDisk());
+}
+
+function where(f: NonNullable<DiskStatus["filesystem"]>): string {
+  return f.sharedWithRoot ? "The disk holding the data directory" : "The server's data volume";
+}
+
+const GROW =
+  "Grow the Railway volume now — the resize is live while the volume is not yet full — or remove attachments from the vault.";
+
+/**
+ * Refuse a write that would not leave the reserve. Checked before the write
+ * rather than after: ENOSPC arrives from whichever write happens to cross the
+ * line, which may be the index's rather than the caller's, and a refused
+ * write costs nothing to retry once the volume is grown.
+ */
+export function assertHeadroom(bytes: number): void {
+  const f = filesystemStatus();
+  // The platform will not say; let the write try, and a full disk is
+  // translated when it answers.
+  if (!f) return;
+  const reserve = reserveBytes();
+  if (f.availableBytes - bytes < reserve) {
+    throw new VaultPathError(
+      `${where(f)} has ${formatBytes(f.availableBytes)} free; writing ${formatBytes(bytes)} would leave less than ` +
+        `the ${formatBytes(reserve)} the index needs to keep working. ${GROW}`,
+    );
+  }
+}
+
+/** True for the errors a full disk produces, from the filesystem or from SQLite. */
+export function isDiskFull(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === "ENOSPC" || code === "SQLITE_FULL") return true;
+  const message = e instanceof Error ? e.message : "";
+  return /\bENOSPC\b|database or disk is full/i.test(message);
+}
+
+export function diskFullMessage(): string {
+  return `The server's data volume is full, so the write failed. ${GROW} At 100% the resize goes offline and restarts the service.`;
+}
+
+/**
+ * The one way vault content is written. Every note write goes through here so
+ * the guard and the translation cannot be forgotten at a new call site; a test
+ * scans the vault sources for a raw writeFileSync.
+ */
+export function writeVaultFile(abs: string, content: string): void {
+  assertHeadroom(Buffer.byteLength(content, "utf8"));
+  try {
+    fs.writeFileSync(abs, content, "utf8");
+  } catch (e) {
+    if (isDiskFull(e)) throw new VaultPathError(diskFullMessage());
+    throw e;
+  }
+}
+
+// The watcher. A level is logged when it changes, not every minute, so the
+// log tail on the Status tab says when the volume crossed a line rather than
+// filling with the same warning. #7 will carry the level to the assistant.
+export const DISK_CHECK_MS = 60_000;
+let lastLevel: DiskLevel | null = null;
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+
+/** The level the last check saw; null before the first, or when the platform cannot say. */
+export function lastDiskLevel(): DiskLevel | null {
+  return lastLevel;
+}
+
+export function checkDisk(): DiskLevel | null {
+  const f = filesystemStatus();
+  const level = f ? f.level : null;
+  if (f && level !== lastLevel) {
+    const free = `${formatBytes(f.availableBytes)} free`;
+    if (level === "critical") {
+      console.error(
+        `[disk] ${where(f)} has ${free}: critical. Writes that would not leave the reserve are refused. ${GROW}`,
+      );
+    } else if (level === "warn") {
+      console.warn(`[disk] ${where(f)} has ${free}: low. ${GROW}`);
+    } else if (lastLevel !== null) {
+      console.log(`[disk] ${where(f)} has ${free}: back above the warning line.`);
+    }
+  }
+  lastLevel = level;
+  return level;
+}
+
+export function ensureDiskWatched(): void {
+  if (watchTimer) return;
+  checkDisk();
+  watchTimer = setInterval(checkDisk, DISK_CHECK_MS);
+  // Never the reason the process stays up.
+  watchTimer.unref();
 }

@@ -88,3 +88,95 @@ describe("diskStatus", () => {
     expect(after.noteCount).toBe(s.noteCount);
   });
 });
+
+// The write guard and the watcher. statfs is faked by spying on fs, which is
+// the same object disk.ts reads it from.
+describe("headroom", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function fakeFree(megabytes: number) {
+    vi.spyOn(fs, "statfsSync").mockReturnValue({
+      blocks: 10_000,
+      bsize: 1_000_000,
+      bfree: megabytes + 5,
+      bavail: megabytes,
+    } as unknown as ReturnType<typeof fs.statfsSync>);
+  }
+
+  it("levels on what an unprivileged process can use", async () => {
+    const { diskLevel, DISK_WARN_BYTES, DISK_CRITICAL_BYTES } = await import("./disk");
+    expect(diskLevel(DISK_WARN_BYTES)).toBe("ok");
+    expect(diskLevel(DISK_WARN_BYTES - 1)).toBe("warn");
+    expect(diskLevel(DISK_CRITICAL_BYTES)).toBe("warn");
+    expect(diskLevel(DISK_CRITICAL_BYTES - 1)).toBe("critical");
+  });
+
+  it("refuses a write that would not leave the reserve, and names the fix", async () => {
+    fakeFree(55);
+    const { assertHeadroom } = await import("./disk");
+    expect(() => assertHeadroom(4_000_000)).not.toThrow();
+    expect(() => assertHeadroom(6_000_000)).toThrow(/would leave less than.*Grow the Railway volume/);
+  });
+
+  it("grows the reserve with the index database", async () => {
+    // A 120 MB database (sparse, so it costs nothing) needs 120 MB of room to
+    // rewrite itself; 150 MB free minus a 40 MB write is not that.
+    fs.writeFileSync(path.join(root, "app.sqlite"), "");
+    fs.truncateSync(path.join(root, "app.sqlite"), 120_000_000);
+    fakeFree(150);
+    const { assertHeadroom, reserveBytes } = await import("./disk");
+    expect(reserveBytes()).toBe(120_000_000);
+    expect(() => assertHeadroom(40_000_000)).toThrow(/would leave less than/);
+    expect(() => assertHeadroom(20_000_000)).not.toThrow();
+  });
+
+  it("lets a write through when the platform cannot say", async () => {
+    vi.spyOn(fs, "statfsSync").mockImplementation(() => {
+      throw new Error("ENOSYS");
+    });
+    const { assertHeadroom } = await import("./disk");
+    expect(() => assertHeadroom(6_000_000)).not.toThrow();
+  });
+
+  it("translates a full disk into a message naming the volume", async () => {
+    fakeFree(1000);
+    vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+      throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    });
+    const { writeVaultFile, isDiskFull } = await import("./disk");
+    expect(() => writeVaultFile(path.join(root, "vault", "a.md"), "x")).toThrow(/volume is full/);
+    // SQLite's version of the same condition, as better-sqlite3 raises it.
+    expect(isDiskFull(Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" }))).toBe(true);
+    expect(isDiskFull(new Error("EACCES: permission denied"))).toBe(false);
+  });
+
+  it("logs a level change once, not every check", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { checkDisk, lastDiskLevel } = await import("./disk");
+    fakeFree(30);
+    expect(checkDisk()).toBe("critical");
+    checkDisk();
+    checkDisk();
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0][0]).toMatch(/^\[disk\] .*critical/);
+    fakeFree(80);
+    expect(checkDisk()).toBe("warn");
+    expect(warn).toHaveBeenCalledTimes(1);
+    fakeFree(500);
+    expect(checkDisk()).toBe("ok");
+    expect(lastDiskLevel()).toBe("ok");
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0][0]).toMatch(/back above/);
+  });
+
+  it("is how every vault write happens", () => {
+    // The guard and the translation live in one function; a new write site
+    // that bypasses it would silently lose both.
+    for (const f of fs.readdirSync(__dirname)) {
+      if (!f.endsWith(".ts") || f.endsWith(".test.ts") || f === "disk.ts") continue;
+      expect(fs.readFileSync(path.join(__dirname, f), "utf8"), f).not.toMatch(/fs\.writeFileSync\(/);
+    }
+  });
+});

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import matter from "gray-matter";
 import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
+import { writeVaultFile } from "./disk";
 import { db } from "../db";
 
 export function readProperties(notePath: string): Record<string, unknown> {
@@ -49,7 +50,7 @@ export function setProperty(notePath: string, name: string, value: unknown): Pro
   ) {
     return { changed: false, properties: existing };
   }
-  fs.writeFileSync(abs, matter.stringify(parsed.content, data), "utf8");
+  writeVaultFile(abs, matter.stringify(parsed.content, data));
   return { changed: true, properties: data };
 }
 
@@ -77,7 +78,7 @@ export function removeProperty(notePath: string, name: string): PropertyEdit {
   delete data[name];
   const body = parsed.content;
   const next = Object.keys(data).length > 0 ? matter.stringify(body, data) : body.replace(/^\n+/, "");
-  fs.writeFileSync(abs, next, "utf8");
+  writeVaultFile(abs, next);
   return { changed: true, properties: data };
 }
 

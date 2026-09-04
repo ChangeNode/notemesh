@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
 import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
+import { headroom, writeVaultFile } from "./disk";
 import { readNote, readNoteRange, createNote } from "./notes";
 import { dailyNotePath , timestampInZone, configuredTimeZone} from "./daily";
 
@@ -187,7 +188,7 @@ export function toggleTask(notePath: string, line: number): TaskItem {
   if (!m) throw new VaultPathError(`Line ${line} is not a task`);
   const nowDone = m[2] === " ";
   lines[idx] = m[1] + (nowDone ? "x" : " ") + m[3] + (hadCr ? "\r" : "");
-  fs.writeFileSync(abs, lines.join("\n"), "utf8");
+  writeVaultFile(abs, lines.join("\n"));
   const text = stripCr(lines[idx]).replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, "");
   return { path: notePath, line, text, done: nowDone };
 }
@@ -210,6 +211,9 @@ export function vaultInfo() {
     // count above and not searchable. Reported so "no results" for a note
     // that plainly exists has an explanation.
     unindexedNotes: indexerStatus().unindexedNotes,
+    // How much room the volume has left, and whether that is a problem yet.
+    // Null when the platform will not say.
+    disk: headroom(),
   };
 }
 

@@ -5,6 +5,7 @@ import { withBoundary, fenceEach, fenceDeep } from "./boundary";
 import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
+import { isDiskFull, diskFullMessage } from "../vault/disk";
 import { reindexPath } from "../vault/indexer";
 import {
   readNoteRange,
@@ -179,6 +180,11 @@ function safe<A extends unknown[], R>(fn: (...args: A) => R) {
       return fn(...args);
     } catch (e: any) {
       if (e instanceof VaultPathError) return err(e.message);
+      // A full volume is the one native error worth naming: the fix is the
+      // operator's, and the generic message would send them to the logs to
+      // find out. The write guard catches most of these first; this is for
+      // the write that crosses the line anyway, the index's included.
+      if (isDiskFull(e)) return err(diskFullMessage());
       console.error("[mcp] tool error:", e);
       return err("The operation failed. Check the server logs for details.");
     }
@@ -746,7 +752,8 @@ export function createMcpServer(access: McpAccess): McpServer {
       annotations: READ,
       description:
         "Vault name, note count, word totals, how many notes are too large to be searchable " +
-        "(unindexedNotes), and sync daemon status.",
+        "(unindexedNotes), sync daemon status, and disk headroom: disk.availableBytes with disk.level ok, " +
+        "warn (under 100 MB free) or critical (under 50 MB; writes that would not leave the reserve are refused).",
       inputSchema: {},
     },
     safe(() => json({ ...vaultInfo(), sync: syncBackend().status() })),

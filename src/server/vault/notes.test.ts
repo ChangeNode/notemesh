@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -647,5 +647,32 @@ describe("updateNote, against a half-read note", () => {
     put("Note.md", "line\n".repeat(DEFAULT_READ_LINES - 1));
     updateNote("Note.md", "x");
     expect(get("Note.md")).toBe("x");
+  });
+});
+
+describe("writes on a nearly full disk", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("every note writer refuses rather than filling the volume", () => {
+    put("Note.md", "a\nfoo\n");
+    // 55 MB free; the reserve is 50 MB. A 6 MB write does not fit, a 4 MB one does.
+    vi.spyOn(fs, "statfsSync").mockReturnValue({
+      blocks: 10_000,
+      bsize: 1_000_000,
+      bfree: 60,
+      bavail: 55,
+    } as unknown as ReturnType<typeof fs.statfsSync>);
+    const big = "x".repeat(6_000_000);
+    const writers: [string, () => unknown][] = [
+      ["createNote", () => createNote("New.md", big)],
+      ["updateNote", () => updateNote("Note.md", big)],
+      ["appendToNote", () => appendToNote("Note.md", big)],
+      ["prependToNote", () => prependToNote("Note.md", big)],
+      ["editNote", () => editNote("Note.md", "foo", big)],
+    ];
+    for (const [name, run] of writers) expect(run, name).toThrow(/would leave less than/);
+    expect(get("Note.md")).toBe("a\nfoo\n");
+    expect(fs.existsSync(path.join(vault, "New.md"))).toBe(false);
+    expect(() => createNote("New.md", "x".repeat(4_000_000))).not.toThrow();
   });
 });

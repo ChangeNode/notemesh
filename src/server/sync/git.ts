@@ -1,3 +1,4 @@
+import { postNotice } from "../notices";
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
@@ -78,7 +79,16 @@ export function isGitRepo(dir: string): boolean {
 class GitBackend implements SyncBackend {
   readonly kind = "git" as const;
 
-  state: SyncState = "stopped";
+  private _state: SyncState = "stopped";
+  /** When `state` last changed. */
+  stateSince: number | null = null;
+  get state(): SyncState {
+    return this._state;
+  }
+  set state(next: SyncState) {
+    if (next !== this._state) this.stateSince = Date.now();
+    this._state = next;
+  }
   startedAt: number | null = null;
   lastActivityAt: number | null = null;
   restartCount = 0;
@@ -171,6 +181,7 @@ class GitBackend implements SyncBackend {
     return {
       kind: this.kind,
       state: this.state,
+      stateSince: this.stateSince,
       startedAt: this.startedAt,
       lastActivityAt: this.lastActivityAt,
       restartCount: this.restartCount,
@@ -321,6 +332,16 @@ class GitBackend implements SyncBackend {
     // pushed; the user picks it up in Obsidian. The state stays whatever the
     // cycle makes it — running, once the push lands.
     this.conflicts.push({ at: Date.now(), paths: outcome.paths, copies: outcome.copies });
+    // The one-shot notice to connectors. A conflict is found here, on a timer,
+    // never inside a tool call, so it rides the next call from each connector.
+    outcome.paths.forEach((p, i) => {
+      const copy = outcome.copies?.[i];
+      postNotice(
+        copy
+          ? `a sync conflict on ${p} was resolved by saving your assistant's version as ${copy}. Ask the user how they would like the two merged.`
+          : `a sync conflict on ${p} was resolved in favour of the other device's version.`,
+      );
+    });
     if (this.conflicts.length > MAX_RECENT_CONFLICTS) {
       this.conflicts.splice(0, this.conflicts.length - MAX_RECENT_CONFLICTS);
     }

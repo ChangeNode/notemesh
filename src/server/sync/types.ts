@@ -41,6 +41,8 @@ export interface SyncStatus {
    */
   kind: SyncKind;
   state: SyncState;
+  /** When the current state began; the backoff-duration alert reads it. */
+  stateSince?: number | null;
   startedAt: number | null;
   lastActivityAt: number | null;
   restartCount: number;

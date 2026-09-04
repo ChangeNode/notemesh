@@ -137,3 +137,21 @@ describe("the wipe at the top of a rebuild", () => {
     expect(indexer().ready).toBe(true);
   });
 });
+
+describe("a rebuild that fails", () => {
+  it("is remembered until one succeeds", async () => {
+    seed(3);
+    const { indexer, db } = await load();
+    const i = indexer();
+    vi.spyOn(db(), "exec").mockImplementationOnce(() => {
+      throw new Error("SQLITE_BUSY: simulated");
+    });
+    await expect(i.rebuild()).rejects.toThrow(/simulated/);
+    const { indexerStatus } = await import("~/server/vault/indexer");
+    expect(indexerStatus().lastRebuildError).toMatch(/simulated/);
+    expect(indexerStatus().ready).toBe(false);
+    await i.rebuild();
+    expect(indexerStatus().lastRebuildError).toBeNull();
+    expect(indexerStatus().ready).toBe(true);
+  });
+});

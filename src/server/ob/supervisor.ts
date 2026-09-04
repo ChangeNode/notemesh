@@ -93,7 +93,16 @@ export function applyActivityLine(a: SyncActivity, rawLine: string, now: number)
 export class SyncSupervisor implements SyncBackend {
   readonly kind = "obsidian" as const;
 
-  state: SyncState = "stopped";
+  private _state: SyncState = "stopped";
+  /** When `state` last changed. */
+  stateSince: number | null = null;
+  get state(): SyncState {
+    return this._state;
+  }
+  set state(next: SyncState) {
+    if (next !== this._state) this.stateSince = Date.now();
+    this._state = next;
+  }
   lastActivityAt: number | null = null;
   startedAt: number | null = null;
   restartCount = 0;
@@ -301,6 +310,7 @@ export class SyncSupervisor implements SyncBackend {
     return {
       kind: this.kind,
       state: this.state,
+      stateSince: this.stateSince,
       startedAt: this.startedAt,
       lastActivityAt: this.lastActivityAt,
       restartCount: this.restartCount,

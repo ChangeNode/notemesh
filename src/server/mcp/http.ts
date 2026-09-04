@@ -82,7 +82,10 @@ export async function serveMcp(request: Request, access: McpAccess): Promise<Res
 
   startLoopLagMonitor();
   ensureIndexerStarted();
-  const server = createMcpServer(access);
+  const server = createMcpServer(access, {
+    host: request.headers.get("host"),
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+  });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });

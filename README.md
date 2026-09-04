@@ -221,6 +221,17 @@ downtime; at 100% it goes offline and restarts the service. Plan ceilings are
 0.5 GB on Free and Trial, 5 GB on Hobby and 50 GB on Pro, and Pro can also set
 a disk-usage monitor in Railway's own metrics.
 
+**Alerts.** When something needs the operator — sync stopped on rejected
+credentials, sync failing for over fifteen minutes, no vault linked, the volume
+low, the index rebuilding or failed, notes too large to index, the server
+reached at a different origin than configured — every tool result carries an
+extra text block beginning `NoteMesh:` after the fenced payload: on every call
+while the condition holds, gone when it does not. Vault content is always
+inside the boundary markers, so an unfenced `NoteMesh:` block is the server by
+construction, and the boundary explanation says so. A git conflict the server
+resolved by writing a conflicted copy is delivered the same way, once per
+connector.
+
 `read_note` returns `{totalLines, offset, count, hasMore}` alongside `content`,
 so a long note is paged with `offset` rather than dumped in one response — a
 465 KB note would otherwise be ~121k tokens in a single tool call.

@@ -31,6 +31,7 @@ beforeEach(() => {
   // reads the first test's index and marker.
   delete (globalThis as Record<string, unknown>).__vaultIndexer;
   delete (globalThis as Record<string, unknown>).__notemeshBoundaryToken;
+  delete (globalThis as Record<string, unknown>).__notemeshNotices;
 });
 
 afterEach(() => {
@@ -57,8 +58,17 @@ async function call(name: string, args: Record<string, unknown> = {}) {
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const res = await client.callTool({ name, arguments: args });
-    const text = (res.content as { type: string; text: string }[])[0].text;
-    return { text, json: JSON.parse(text) as Record<string, any> };
+    const blocks = (res.content as { type: string; text?: string }[])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text!);
+    const text = blocks[0];
+    let json: Record<string, any> = {};
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // An error result is plain text.
+    }
+    return { text, json, blocks, isError: res.isError === true };
   } finally {
     await client.close().catch(() => {});
     await server.close().catch(() => {});
@@ -244,5 +254,59 @@ describe("search_vault paging", () => {
     const { json } = await call("search_vault", { query: "zebra", limit: 10, offset: 20 });
     expect(json.items.length).toBeGreaterThan(0);
     for (const hit of json.items) expect(unfence(hit.snippet).inner).toContain("zebra");
+  });
+});
+
+// The server's own voice: an extra text block after the payload, outside the
+// fence, present while the condition holds and gone when it does not. The
+// index is never ready in this harness — seed() indexes files without a
+// rebuild — so the warming alert is the one every call carries here.
+describe("alerts", () => {
+  const warming = /^NoteMesh: the search index is rebuilding/;
+  const indexed = [
+    ["search_vault", { query: "ordinary" }],
+    ["list_tasks", { filter: "all" }],
+    ["list_tags", {}],
+  ] as const;
+
+  it("rides three index-backed tools while the index warms, and leaves when it is ready", async () => {
+    await seed("Hostile.md", HOSTILE);
+    for (const [name, args] of indexed) {
+      const { blocks } = await call(name, args);
+      expect(blocks.some((b) => warming.test(b)), `${name} while warming`).toBe(true);
+    }
+    const { indexer } = await import("~/server/vault/indexer");
+    indexer().ready = true;
+    for (const [name, args] of indexed) {
+      const { blocks } = await call(name, args);
+      expect(blocks.some((b) => warming.test(b)), `${name} once ready`).toBe(false);
+    }
+  });
+
+  it("sits outside the fence, after the payload, and the explanation names it", async () => {
+    await seed("Hostile.md", HOSTILE);
+    const { json, blocks } = await call("get_outline", { path: "Hostile.md" });
+    const alert = blocks.find((b) => warming.test(b));
+    expect(alert).toBeDefined();
+    expect(blocks.indexOf(alert!)).toBeGreaterThan(0);
+    expect(alert).not.toContain(json.boundary);
+    expect(blocks[0]).not.toContain(alert!);
+    expect(json.boundaryNote).toContain("NoteMesh:");
+  });
+
+  it("rides an error result too", async () => {
+    const { isError, blocks } = await call("read_note", { path: "Missing.md" });
+    expect(isError).toBe(true);
+    expect(blocks.some((b) => warming.test(b))).toBe(true);
+  });
+
+  it("delivers a notice once per connector, ahead of the alerts", async () => {
+    const { postNotice } = await import("~/server/notices");
+    postNotice("a sync conflict on A.md was resolved by saving your assistant's version as A (copy).md.");
+    const first = await call("list_folders");
+    const idx = first.blocks.findIndex((b) => /^NoteMesh: a sync conflict on A\.md/.test(b));
+    expect(idx).toBe(1);
+    const second = await call("list_folders");
+    expect(second.blocks.some((b) => /sync conflict/.test(b))).toBe(false);
   });
 });

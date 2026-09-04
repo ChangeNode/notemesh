@@ -136,6 +136,27 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Added
 
+- **The server can now tell the assistant that something is wrong.** The
+  failures that matter most were silent — the volume filling, the sync daemon
+  stopped on rejected credentials, the index failing to rebuild — and the
+  operator found out by opening the dashboard, which is exactly what they do
+  not do for weeks, while the assistant talks to the server every day. Every
+  tool result now carries the server's alerts as extra text blocks after the
+  payload, each beginning `NoteMesh:`. An alert is a state, not an event: it
+  is present on every call while the condition holds and absent the moment it
+  does not, with fixed wording and coarse numbers so a model that has already
+  mentioned it sees nothing new. It sits outside the boundary fence, which is
+  what makes it trustworthy — note text is always inside the markers, so an
+  unfenced `NoteMesh:` block is the server by construction, and the boundary
+  explanation now says so. The conditions: credentials rejected or no longer
+  decryptable, sync in backoff (an error after fifteen minutes), no vault
+  linked, the volume under 100 MB or 50 MB free, the index rebuilding, failed
+  to rebuild, or holding notes too large to index, and the server reached at a
+  different origin or over HTTPS while configured as http. At most three
+  blocks; the last says how many more are on the Status tab. A git conflict
+  the server resolved by writing a conflicted copy is delivered the same way,
+  once per connector, naming the copy.
+
 - **Disk headroom.** The server now watches its data volume rather than only
   drawing it. It warns in the log under 100 MB free and calls it critical under
   50 MB — once, when the line is crossed, not every minute — and a write that

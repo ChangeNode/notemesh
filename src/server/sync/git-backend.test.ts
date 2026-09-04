@@ -159,3 +159,33 @@ describe("a conflict, end to end", () => {
     expect(backend.status().conflicts).toBeUndefined();
   });
 });
+
+describe("what a conflict tells connectors", () => {
+  it("posts a one-shot notice naming the copy, and the state says when it changed", async () => {
+    const { clearNotices, takeNotices } = await import("~/server/notices");
+    clearNotices();
+    const { backend, vault } = await configuredBackend();
+    write(vault, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n- [ ] ASSISTANT\n");
+    commitAll(vault, "assistant: append");
+    write(device, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n- [ ] DEVICE\n");
+    commitAll(device, "device: append");
+    git(device, "push", "-q");
+    expect(takeNotices("phone")).toEqual([]);
+
+    const before = Date.now();
+    const result = await backend.syncNow();
+    expect(result.ok, result.output).toBe(true);
+
+    const copy = backend.status().conflicts![0].copies![0];
+    const notices = takeNotices("phone");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("Daily/2026-08-03.md");
+    expect(notices[0]).toContain(copy);
+    expect(notices[0]).toMatch(/Ask the user/);
+    expect(takeNotices("phone")).toEqual([]);
+
+    const status = backend.status();
+    expect(status.state).toBe("running");
+    expect(status.stateSince).toBeGreaterThanOrEqual(before);
+  });
+});

@@ -6,6 +6,7 @@ import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
 import { isDiskFull, diskFullMessage } from "../vault/disk";
+import { alertBlocks, type RequestInfo } from "./alerts";
 import { reindexPath } from "../vault/indexer";
 import {
   readNoteRange,
@@ -170,30 +171,55 @@ function err(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
 }
 
-// Wrap a handler so vault errors surface as tool errors, not protocol errors.
-// Only VaultPathError messages (already vault-relative and safe) are returned
-// verbatim; any other error (e.g. a native fs error carrying an absolute path
-// and OS username) is logged server-side and replaced with a generic message.
-function safe<A extends unknown[], R>(fn: (...args: A) => R) {
-  return (...args: A) => {
-    try {
-      return fn(...args);
-    } catch (e: any) {
-      if (e instanceof VaultPathError) return err(e.message);
-      // A full volume is the one native error worth naming: the fix is the
-      // operator's, and the generic message would send them to the logs to
-      // find out. The write guard catches most of these first; this is for
-      // the write that crosses the line anyway, the index's included.
-      if (isDiskFull(e)) return err(diskFullMessage());
-      console.error("[mcp] tool error:", e);
-      return err("The operation failed. Check the server logs for details.");
-    }
+type ToolResult = { content: unknown[]; isError?: boolean };
+
+// What a thrown error becomes. Only VaultPathError messages (already
+// vault-relative and safe) are returned verbatim; any other error (e.g. a
+// native fs error carrying an absolute path and OS username) is logged
+// server-side and replaced with a generic message.
+function recover(e: unknown): ToolResult {
+  if (e instanceof VaultPathError) return err(e.message);
+  // A full volume is the one native error worth naming: the fix is the
+  // operator's, and the generic message would send them to the logs to
+  // find out. The write guard catches most of these first; this is for
+  // the write that crosses the line anyway, the index's included.
+  if (isDiskFull(e)) return err(diskFullMessage());
+  console.error("[mcp] tool error:", e);
+  return err("The operation failed. Check the server logs for details.");
+}
+
+// Wrap a handler so vault errors surface as tool errors, not protocol errors,
+// and so every result — error or not — carries the server's alerts as extra
+// text blocks after the payload. See alerts.ts for why they sit outside the
+// fence and why they repeat. One wrapper per server, because the alerts are
+// per connector (the one-shot notices) and per request (the origin checks).
+function safeFor(label: string, req: RequestInfo) {
+  const finish = <R extends ToolResult>(r: R): R => {
+    const alerts = alertBlocks(label, req);
+    if (alerts.length === 0) return r;
+    return { ...r, content: [...r.content, ...alerts.map((text) => ({ type: "text" as const, text }))] };
+  };
+  return function safe<A extends unknown[], R extends ToolResult>(fn: (...args: A) => R) {
+    return (...args: A): R => {
+      try {
+        const r = fn(...args);
+        // Handlers are synchronous today; if one becomes a promise, the
+        // alerts still ride its result rather than being pasted onto it.
+        if (r instanceof Promise) {
+          return r.then(finish, (e: unknown) => finish(recover(e) as R)) as unknown as R;
+        }
+        return finish(r);
+      } catch (e: unknown) {
+        return finish(recover(e) as R);
+      }
+    };
   };
 }
 
 // The tool surface mirrors the official Obsidian CLI's vault-level commands,
 // reimplemented against the synced files (the desktop app isn't running here).
-export function createMcpServer(access: McpAccess): McpServer {
+export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpServer {
+  const safe = safeFor(access.label, req);
   const server = new McpServer({
     // `name` is the identifier and stays lowercase — clients and configs may
     // key on it, and changing it would be a rename of the thing rather than of

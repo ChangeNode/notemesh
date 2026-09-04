@@ -262,6 +262,8 @@ class VaultIndexer {
   private resolveTimer: ReturnType<typeof setTimeout> | null = null;
   private building: Promise<void> | null = null;
   lastFullIndexAt: number | null = null;
+  /** The message of the last rebuild that threw; null once one succeeds. Alerted on. */
+  lastRebuildError: string | null = null;
   // False until a full rebuild finishes, and false again while one is in
   // flight — the tables are wiped at the start of every rebuild, not only the
   // first. Index-backed tools still answer while warming; they just may see a
@@ -331,9 +333,20 @@ class VaultIndexer {
       resolveAllLinks();
       this.lastFullIndexAt = Date.now();
       this.ready = true;
-    })().finally(() => {
-      this.building = null;
-    });
+    })()
+      .then(
+        () => {
+          this.lastRebuildError = null;
+        },
+        (e: unknown) => {
+          // Remembered, so the alert can say so; ensureIndexerStarted only logs.
+          this.lastRebuildError = e instanceof Error ? e.message : String(e);
+          throw e;
+        },
+      )
+      .finally(() => {
+        this.building = null;
+      });
     return this.building;
   }
 
@@ -410,5 +423,10 @@ export function ensureIndexerStarted() {
 
 export function indexerStatus() {
   const i = indexer();
-  return { ready: i.ready, lastFullIndexAt: i.lastFullIndexAt, unindexedNotes: oversized.size };
+  return {
+    ready: i.ready,
+    lastFullIndexAt: i.lastFullIndexAt,
+    lastRebuildError: i.lastRebuildError,
+    unindexedNotes: oversized.size,
+  };
 }

@@ -13,11 +13,14 @@ import {
   moveNote,
   noteExists,
   prependToNote,
+  previewEdit,
   readAttachment,
   readNote,
   readNoteRange,
   updateNote,
+  EXCERPT_CHARS,
   MAX_ATTACHMENT_BYTES,
+  MAX_PREVIEW_MATCHES,
   MAX_READ_BYTES,
 } from "./notes";
 import { VaultPathError } from "./paths";
@@ -498,5 +501,106 @@ describe("editNote", () => {
     put("Note.md", "foo\n");
     expect(() => editNote("Note.md", "foo", "x".repeat(10 * 1000 * 1000 + 1))).toThrow(/limit is/);
     expect(get("Note.md")).toBe("foo\n");
+  });
+});
+
+describe("previewEdit", () => {
+  it("lists every occurrence with its line and text, predicts the refusal, and writes nothing", () => {
+    put("Note.md", "x\nfoo one\ny\nfoo two\n");
+    const res = previewEdit("Note.md", "foo", "bar");
+    expect(res).toEqual({
+      path: "Note.md",
+      count: 2,
+      matches: [
+        { line: 2, text: "foo one" },
+        { line: 4, text: "foo two" },
+      ],
+      wouldReplace: 0,
+      refusal: expect.stringMatching(/2 times in Note\.md, at lines 2, 4/),
+    });
+    expect(get("Note.md")).toBe("x\nfoo one\ny\nfoo two\n");
+  });
+
+  it("reports nothing found as an outcome, not an error", () => {
+    put("Note.md", "x\n");
+    expect(previewEdit("Note.md", "foo", "bar")).toEqual({
+      path: "Note.md",
+      count: 0,
+      matches: [],
+      wouldReplace: 0,
+      refusal: expect.stringMatching(/was not found/),
+    });
+  });
+
+  it("still throws on a wrong call", () => {
+    put("Note.md", "foo\n");
+    expect(() => previewEdit("Note.md", "foo", "foo")).toThrow(/identical/);
+    expect(() => previewEdit("Note.md", "foo", "bar", { line: 1, replaceAll: true })).toThrow(/cannot be combined/);
+    expect(() => previewEdit("Missing.md", "foo", "bar")).toThrow(/not found/i);
+  });
+
+  it("predicts the write cap without building the result", () => {
+    put("Note.md", "foo\n");
+    const res = previewEdit("Note.md", "foo", "x".repeat(10 * 1000 * 1000 + 1));
+    expect(res.wouldReplace).toBe(0);
+    expect(res.refusal).toMatch(/limit is/);
+  });
+
+  it("clips a long line around the occurrence", () => {
+    const line = "a".repeat(500) + "foo" + "b".repeat(500);
+    put("Note.md", `${line}\nfoo\n`);
+    const res = previewEdit("Note.md", "foo", "bar");
+    expect(res.count).toBe(2);
+    const [long, short] = res.matches.map((m) => m.text);
+    expect(short).toBe("foo");
+    expect(long.length).toBeLessThanOrEqual(EXCERPT_CHARS + 2);
+    expect(long).toMatch(/^…a+foob+…$/);
+  });
+
+  it("shows a CRLF line without its CR", () => {
+    put("Note.md", "a\r\nfoo bar\r\nb\r\n");
+    expect(previewEdit("Note.md", "foo", "x").matches).toEqual([{ line: 2, text: "foo bar" }]);
+  });
+
+  it("lists at most MAX_PREVIEW_MATCHES matches but counts them all", () => {
+    put("Note.md", "foo\n".repeat(MAX_PREVIEW_MATCHES + 5));
+    const res = previewEdit("Note.md", "foo", "bar", { replaceAll: true });
+    expect(res.count).toBe(MAX_PREVIEW_MATCHES + 5);
+    expect(res.matches).toHaveLength(MAX_PREVIEW_MATCHES);
+    expect(res.matches[MAX_PREVIEW_MATCHES - 1].line).toBe(MAX_PREVIEW_MATCHES);
+    expect(res.wouldReplace).toBe(MAX_PREVIEW_MATCHES + 5);
+  });
+
+  it("predicts exactly what editNote does, cell by cell", () => {
+    // Every cell of the matrix: the preview's wouldReplace equals the edit's
+    // replaced, and where the preview names a refusal the edit throws it.
+    const grid: [string, { line?: number; replaceAll?: boolean }[]][] = [
+      ["foo\nbar foo\nfoo foo\nz\n", [{}, { line: 1 }, { line: 2 }, { line: 3 }, { line: 4 }, { replaceAll: true }]],
+      ["one\nfoo\n", [{}, { line: 2 }, { line: 5 }, { replaceAll: true }]],
+    ];
+    let refused = 0;
+    let applied = 0;
+    for (const [note, cases] of grid) {
+      for (const opts of cases) {
+        put("Note.md", note);
+        const p = previewEdit("Note.md", "foo", "qux", opts);
+        const label = JSON.stringify(opts);
+        if (p.refusal) {
+          expect(p.wouldReplace, label).toBe(0);
+          expect(() => editNote("Note.md", "foo", "qux", opts), label).toThrow(p.refusal);
+          expect(get("Note.md"), label).toBe(note);
+          refused++;
+        } else {
+          expect(editNote("Note.md", "foo", "qux", opts).replaced, label).toBe(p.wouldReplace);
+          applied++;
+        }
+      }
+    }
+    expect([refused, applied]).toEqual([4, 6]);
+  });
+
+  it("abbreviates a long list of lines in the refusal", () => {
+    put("Note.md", "foo\n".repeat(30));
+    expect(() => editNote("Note.md", "foo", "bar")).toThrow(/at lines 1, 2, 3, .*, 20, and 10 more\. Pass line/);
   });
 });

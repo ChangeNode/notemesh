@@ -37,7 +37,7 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 
 | Group | Tools |
 | --- | --- |
-| Files | `read_note`, `list_notes`, `list_folders`, `create_note`, `edit_note`, `update_note`, `append_to_note`, `prepend_to_note`, `move_note`, `delete_note`* |
+| Files | `read_note`, `list_notes`, `list_folders`, `create_note`, `edit_note`, `preview_edit`, `update_note`, `append_to_note`, `prepend_to_note`, `move_note`, `delete_note`* |
 | Attachments | `list_attachments`, `read_attachment` (images, PDFs and other non-markdown files) |
 | Daily notes | `daily_note` (read / append / prepend / path) — the folder and filename format come from your vault's own Daily Notes settings* |
 | Search | `search_vault` (full-text over titles, headings, and bodies) |

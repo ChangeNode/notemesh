@@ -28,13 +28,16 @@ export interface NoteInfo {
 // limit happening to sit below a 10 MB read cap — true, but a coincidence,
 // and a coincidence is not an invariant. hostile-content.test.ts asserts the
 // ordering of the caps and that an oversized write is refused before it lands.
+// The message a write over the cap gets, or nothing. Split from the assertion
+// so an edit can be predicted without building its result.
+function writeSizeProblem(bytes: number): string | undefined {
+  if (bytes <= MAX_WRITE_BYTES) return undefined;
+  return `That would make the note ${formatBytes(bytes)}; the limit is ${formatBytes(MAX_WRITE_BYTES)}.`;
+}
+
 function assertWriteSize(content: string) {
-  const n = Buffer.byteLength(content, "utf8");
-  if (n > MAX_WRITE_BYTES) {
-    throw new VaultPathError(
-      `That would make the note ${formatBytes(n)}; the limit is ${formatBytes(MAX_WRITE_BYTES)}.`,
-    );
-  }
+  const problem = writeSizeProblem(Buffer.byteLength(content, "utf8"));
+  if (problem) throw new VaultPathError(problem);
 }
 
 // Full read. Internal callers (word_count, outline, link resolution) need the
@@ -298,13 +301,176 @@ export interface EditResult {
   lines: number[];
 }
 
+export interface EditOptions {
+  /** 1-based line where oldString is expected to start. */
+  line?: number;
+  /** Replace every occurrence rather than requiring exactly one. */
+  replaceAll?: boolean;
+}
+
+export interface EditMatch {
+  /** 1-based line where the occurrence begins. */
+  line: number;
+  /** That line, clipped to about EXCERPT_CHARS characters around the occurrence. */
+  text: string;
+}
+
+export interface EditPreview {
+  path: string;
+  /** How many times oldString occurs. */
+  count: number;
+  /** The first MAX_PREVIEW_MATCHES of them, in order. */
+  matches: EditMatch[];
+  /** How many editNote would replace with the same arguments; 0 when it would refuse. */
+  wouldReplace: number;
+  /** The refusal editNote would give with these arguments, when it would give one. */
+  refusal?: string;
+}
+
+/** About how much of a line an EditMatch shows around the occurrence. */
+export const EXCERPT_CHARS = 160;
+/** A preview lists this many matches at most; `count` is still the total. */
+export const MAX_PREVIEW_MATCHES = 100;
+/** A refusal names this many lines at most, then says how many more there are. */
+const LISTED_LINES = 20;
+
+// Wrong calls are thrown by both the edit and its preview: they are not
+// outcomes to report, and a preview that swallowed them would predict an
+// edit that can never be made.
+function checkEditArgs(oldString: string, newString: string, opts: EditOptions) {
+  if (oldString === "") throw new VaultPathError("oldString must not be empty");
+  if (oldString === newString) {
+    throw new VaultPathError("oldString and newString are identical; there is nothing to change");
+  }
+  if (opts.replaceAll && opts.line !== undefined) {
+    throw new VaultPathError(
+      "line and replaceAll cannot be combined: line chooses one occurrence, replaceAll takes all of them",
+    );
+  }
+}
+
+interface EditSite {
+  abs: string;
+  rel: string;
+  content: string;
+  /** oldString and newString as they apply to this file; see the CRLF note in locateEdit. */
+  needle: string;
+  replacement: string;
+  /** Start offset of every occurrence, non-overlapping, in order. */
+  positions: number[];
+  /** 1-based line each begins on. */
+  lines: number[];
+}
+
+function locateEdit(notePath: string, oldString: string, newString: string): EditSite {
+  const abs = resolveNotePath(notePath);
+  if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
+  const rel = toVaultRelative(abs);
+  const content = readVaultFile(abs);
+
+  // A note synced from Windows carries \r\n. A caller passing \n-only strings
+  // would never match it, and one that did would write mixed endings. So when
+  // the file uses CRLF and the caller's strings carry no CR, their breaks are
+  // treated as CRLF: the file keeps its convention, as toggleTask keeps it.
+  const crlf = content.includes("\r\n");
+  const asFile = (s: string) => (crlf && !s.includes("\r") ? s.replace(/\n/g, "\r\n") : s);
+  const needle = asFile(oldString);
+  const replacement = asFile(newString);
+
+  const positions: number[] = [];
+  for (let i = content.indexOf(needle); i !== -1; i = content.indexOf(needle, i + needle.length)) {
+    positions.push(i);
+  }
+  // One pass for the line numbers: a short needle in a large note can match
+  // thousands of times, and counting from the top for each would be quadratic.
+  const lines: number[] = [];
+  let line = 1;
+  let scanned = 0;
+  for (const p of positions) {
+    for (;;) {
+      const nl = content.indexOf("\n", scanned);
+      if (nl === -1 || nl >= p) break;
+      line++;
+      scanned = nl + 1;
+    }
+    lines.push(line);
+  }
+  return { abs, rel, content, needle, replacement, positions, lines };
+}
+
+function listLines(lines: number[]): string {
+  if (lines.length <= LISTED_LINES) return lines.join(", ");
+  return `${lines.slice(0, LISTED_LINES).join(", ")}, and ${lines.length - LISTED_LINES} more`;
+}
+
+// The exact-once rule, as one decision shared by the edit and its preview so
+// the preview cannot drift from what the edit does. Returns the indices into
+// `positions` to replace, or the message the edit is refused with.
+function chooseEdit(site: EditSite, opts: EditOptions): { chosen: number[] } | { refusal: string } {
+  const { rel, positions, lines } = site;
+  const again = "Read the note again; it may have changed since it was last read.";
+  if (positions.length === 0) return { refusal: `oldString was not found in ${rel}. ${again}` };
+
+  let chosen: number[];
+  if (opts.replaceAll) {
+    chosen = positions.map((_, k) => k);
+  } else if (positions.length === 1) {
+    if (opts.line !== undefined && opts.line !== lines[0]) {
+      return { refusal: `oldString occurs once in ${rel}, at line ${lines[0]}, not line ${opts.line}. ${again}` };
+    }
+    chosen = [0];
+  } else if (opts.line === undefined) {
+    return {
+      refusal:
+        `oldString occurs ${positions.length} times in ${rel}, at lines ${listLines(lines)}. ` +
+        `Pass line to choose one, expand oldString to include surrounding text so it is unique, or set replaceAll.`,
+    };
+  } else {
+    const at = positions.map((_, k) => k).filter((k) => lines[k] === opts.line);
+    if (at.length === 0) {
+      return {
+        refusal: `oldString occurs ${positions.length} times in ${rel} (lines ${listLines(lines)}), but not at line ${opts.line}.`,
+      };
+    }
+    if (at.length > 1) {
+      return {
+        refusal:
+          `oldString occurs ${at.length} times on line ${opts.line} of ${rel}. ` +
+          `Expand oldString to include surrounding text so it names one of them.`,
+      };
+    }
+    chosen = at;
+  }
+
+  // UTF-8 length is additive, so the result's size is known without building it.
+  const bytes =
+    Buffer.byteLength(site.content, "utf8") +
+    chosen.length * (Buffer.byteLength(site.replacement, "utf8") - Buffer.byteLength(site.needle, "utf8"));
+  const problem = writeSizeProblem(bytes);
+  if (problem) return { refusal: problem };
+  return { chosen };
+}
+
+// The line an occurrence begins on, without its terminator, clipped around
+// the occurrence when the line is long.
+function excerpt(content: string, pos: number): string {
+  const lineStart = pos === 0 ? 0 : content.lastIndexOf("\n", pos - 1) + 1;
+  const nl = content.indexOf("\n", pos);
+  let lineEnd = nl === -1 ? content.length : nl;
+  if (lineEnd > lineStart && content[lineEnd - 1] === "\r") lineEnd--;
+  if (lineEnd - lineStart <= EXCERPT_CHARS) return content.slice(lineStart, lineEnd);
+  const start = Math.max(lineStart, Math.min(pos - Math.floor(EXCERPT_CHARS / 4), lineEnd - EXCERPT_CHARS));
+  const end = Math.min(lineEnd, start + EXCERPT_CHARS);
+  return (start > lineStart ? "…" : "") + content.slice(start, end) + (end < lineEnd ? "…" : "");
+}
+
 /**
  * Replace text in a note by naming it.
  *
  * `oldString` must occur exactly once, or the edit is refused with the line
- * numbers of every occurrence — so the next call can pass `line` to choose one,
- * or expand `oldString` until it is unique. This is not a diff algorithm; it is
- * indexOf and a count, and that is the point. Two properties follow from it.
+ * numbers of every occurrence, so the next call can pass `line` to choose one
+ * or expand `oldString` until it is unique. This is not a diff algorithm; it
+ * is indexOf and a count, and that is the point. Two properties follow.
  *
  * Precision: nothing is replaced that the caller did not spell out. The
  * alternative, rewriting the whole note with update_note, cannot be done
@@ -324,86 +490,51 @@ export function editNote(
   notePath: string,
   oldString: string,
   newString: string,
-  opts: { line?: number; replaceAll?: boolean } = {},
+  opts: EditOptions = {},
 ): EditResult {
-  if (oldString === "") throw new VaultPathError("oldString must not be empty");
-  if (oldString === newString) {
-    throw new VaultPathError("oldString and newString are identical; there is nothing to change");
-  }
-  if (opts.replaceAll && opts.line !== undefined) {
-    throw new VaultPathError(
-      "line and replaceAll cannot be combined: line chooses one occurrence, replaceAll takes all of them",
-    );
-  }
-  const abs = resolveNotePath(notePath);
-  if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
-  const rel = toVaultRelative(abs);
-  const content = readVaultFile(abs);
+  checkEditArgs(oldString, newString, opts);
+  const site = locateEdit(notePath, oldString, newString);
+  const choice = chooseEdit(site, opts);
+  if ("refusal" in choice) throw new VaultPathError(choice.refusal);
 
-  // A note synced from Windows carries \r\n. A caller passing \n-only strings
-  // would never match it, and one that did would write mixed endings. So when
-  // the file uses CRLF and the caller's strings carry no CR, their breaks are
-  // treated as CRLF: the file keeps its convention, as toggleTask keeps it.
-  const crlf = content.includes("\r\n");
-  const asFile = (s: string) => (crlf && !s.includes("\r") ? s.replace(/\n/g, "\r\n") : s);
-  const needle = asFile(oldString);
-  const replacement = asFile(newString);
-
-  const positions: number[] = [];
-  for (let i = content.indexOf(needle); i !== -1; i = content.indexOf(needle, i + needle.length)) {
-    positions.push(i);
-  }
-  const lineAt = (pos: number) => content.slice(0, pos).split("\n").length;
-  const lines = positions.map(lineAt);
-
-  if (positions.length === 0) {
-    throw new VaultPathError(
-      `oldString was not found in ${rel}. Read the note again; it may have changed since it was last read.`,
-    );
-  }
-
-  let chosen: number[];
-  if (opts.replaceAll) {
-    chosen = positions;
-  } else if (positions.length === 1) {
-    if (opts.line !== undefined && opts.line !== lines[0]) {
-      throw new VaultPathError(
-        `oldString occurs once in ${rel}, at line ${lines[0]}, not line ${opts.line}. ` +
-          `Read the note again; it may have changed since it was last read.`,
-      );
-    }
-    chosen = positions;
-  } else if (opts.line === undefined) {
-    throw new VaultPathError(
-      `oldString occurs ${positions.length} times in ${rel}, at lines ${lines.join(", ")}. ` +
-        `Pass line to choose one, expand oldString to include surrounding text so it is unique, or set replaceAll.`,
-    );
-  } else {
-    const at = positions.filter((_, k) => lines[k] === opts.line);
-    if (at.length === 0) {
-      throw new VaultPathError(
-        `oldString occurs ${positions.length} times in ${rel} (lines ${lines.join(", ")}), but not at line ${opts.line}.`,
-      );
-    }
-    if (at.length > 1) {
-      throw new VaultPathError(
-        `oldString occurs ${at.length} times on line ${opts.line} of ${rel}. ` +
-          `Expand oldString to include surrounding text so it names one of them.`,
-      );
-    }
-    chosen = at;
-  }
-
+  const { content, needle, replacement } = site;
   let out = "";
   let last = 0;
-  for (const p of chosen) {
+  for (const k of choice.chosen) {
+    const p = site.positions[k];
     out += content.slice(last, p) + replacement;
     last = p + needle.length;
   }
   out += content.slice(last);
-  assertWriteSize(out);
-  fs.writeFileSync(abs, out, "utf8");
-  return { path: rel, replaced: chosen.length, lines: chosen.map(lineAt) };
+  fs.writeFileSync(site.abs, out, "utf8");
+  return { path: site.rel, replaced: choice.chosen.length, lines: choice.chosen.map((k) => site.lines[k]) };
+}
+
+/**
+ * What editNote would do with the same arguments, without doing it.
+ *
+ * A caller cannot otherwise ask "how many matches, and where?" without reading
+ * the note and counting for itself, which is the step most likely to go wrong.
+ * The preview shares locateEdit and chooseEdit with the edit, so its
+ * prediction is the edit's own decision with the write left out. Nothing here
+ * touches the file, the index, or the sync backend.
+ */
+export function previewEdit(
+  notePath: string,
+  oldString: string,
+  newString: string,
+  opts: EditOptions = {},
+): EditPreview {
+  checkEditArgs(oldString, newString, opts);
+  const site = locateEdit(notePath, oldString, newString);
+  const choice = chooseEdit(site, opts);
+  const matches = site.positions
+    .slice(0, MAX_PREVIEW_MATCHES)
+    .map((p, k) => ({ line: site.lines[k], text: excerpt(site.content, p) }));
+  const preview: EditPreview = { path: site.rel, count: site.positions.length, matches, wouldReplace: 0 };
+  if ("refusal" in choice) preview.refusal = choice.refusal;
+  else preview.wouldReplace = choice.chosen.length;
+  return preview;
 }
 
 export function moveNote(notePath: string, newPath: string): { from: string; to: string } {

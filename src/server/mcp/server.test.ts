@@ -53,6 +53,7 @@ const READ_TOOLS = [
   "list_tags",
   "list_tasks",
   "notes_by_tag",
+  "preview_edit",
   "random_note",
   "read_attachment",
   "read_note",
@@ -120,5 +121,71 @@ describe("delete_note", () => {
     expect(await toolNames(true, false)).not.toContain("delete_note");
     await setDelete(true);
     expect(await toolNames(true, false)).not.toContain("delete_note");
+  });
+});
+
+// The preview is the read half of an edit: offered without write scope, and
+// touching nothing — no write, no reindex, no word to the sync backend. The
+// write path is one shared helper, so this pins that the preview is not
+// wired to it. The real edit runs through the same spies first, as proof
+// that they see what they are meant to see.
+describe("preview_edit", () => {
+  type Handler = (args: unknown, extra: unknown) => { content: { text: string }[]; isError?: boolean };
+
+  async function serverWith(write: boolean) {
+    const reindex = vi.fn();
+    const notify = vi.fn();
+    vi.doMock("../vault/indexer", async (original) => ({
+      ...(await original<typeof import("../vault/indexer")>()),
+      reindexPath: reindex,
+    }));
+    vi.doMock("../sync", async (original) => ({
+      ...(await original<typeof import("../sync")>()),
+      syncBackend: () => ({ notifyLocalChange: notify }),
+    }));
+    const { createMcpServer } = await import("./server");
+    const server = createMcpServer({ read: true, write, label: "test" }) as unknown as {
+      _registeredTools: Record<string, { handler: Handler } | undefined>;
+    };
+    const call = (tool: string, args: Record<string, unknown>) => server._registeredTools[tool]!.handler(args, {});
+    const has = (tool: string) => server._registeredTools[tool] !== undefined;
+    return { call, has, reindex, notify };
+  }
+
+  afterEach(() => {
+    vi.doUnmock("../vault/indexer");
+    vi.doUnmock("../sync");
+  });
+
+  function plant(content: string) {
+    const abs = path.join(root, "vault", "Note.md");
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+    return abs;
+  }
+
+  it("edit_note reindexes and tells the backend, so the spies are live", async () => {
+    const { call, reindex, notify } = await serverWith(true);
+    const abs = plant("a\nfoo\nb\n");
+    const res = call("edit_note", { path: "Note.md", oldString: "foo", newString: "bar" });
+    expect(res.isError).toBeUndefined();
+    expect(fs.readFileSync(abs, "utf8")).toBe("a\nbar\nb\n");
+    expect(reindex).toHaveBeenCalledWith("Note.md");
+    expect(notify).toHaveBeenCalledWith({ tool: "edit_note", path: "Note.md" });
+  });
+
+  it("is offered to a read-only credential and touches nothing", async () => {
+    const { call, has, reindex, notify } = await serverWith(false);
+    expect(has("edit_note")).toBe(false);
+    expect(has("preview_edit")).toBe(true);
+    const abs = plant("a\nfoo\nb\n");
+    const res = call("preview_edit", { path: "Note.md", oldString: "foo", newString: "bar" });
+    expect(res.isError).toBeUndefined();
+    const body = JSON.parse(res.content[0].text);
+    expect(body).toMatchObject({ path: "Note.md", count: 1, wouldReplace: 1 });
+    expect(body.matches[0].line).toBe(2);
+    expect(fs.readFileSync(abs, "utf8")).toBe("a\nfoo\nb\n");
+    expect(reindex).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
   });
 });

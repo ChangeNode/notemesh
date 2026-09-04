@@ -16,6 +16,7 @@ import {
   moveNote,
   deleteNote,
   editNote,
+  previewEdit,
   listNotes,
   listFolders,
   listAttachments,
@@ -123,6 +124,34 @@ const REMOVE = { readOnlyHint: false, destructiveHint: true, idempotentHint: fal
 // did not spell out, and sync keeps every version. A second identical call
 // finds nothing to replace and is refused.
 const REWRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
+
+// edit_note and preview_edit take the same arguments, by design: the preview
+// is the edit with the write left out, and a caller moves from one to the
+// other by changing only the tool name.
+const EDIT_ARGS = {
+  path: z.string().describe("Vault-relative path of the note"),
+  oldString: z.string().describe("The exact text to replace, as it appears in the note"),
+  newString: z.string().describe("What to put in its place"),
+  line: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      "1-based line where oldString is expected to start. Refused if it is elsewhere; chooses between occurrences when there are several",
+    ),
+  replaceAll: z
+    .boolean()
+    .optional()
+    .describe("Replace every occurrence rather than requiring exactly one; cannot be combined with line"),
+};
+interface EditArgs {
+  path: string;
+  oldString: string;
+  newString: string;
+  line?: number;
+  replaceAll?: boolean;
+}
 
 // Index a just-written note immediately so index-backed tools (search,
 // list_tasks, tags, links) reflect the change on the very next call rather
@@ -297,6 +326,28 @@ export function createMcpServer(access: McpAccess): McpServer {
     ),
   );
 
+  // Registered outside the write block on purpose: a dry run writes nothing,
+  // and refusing it to a read-only credential would push a caller toward doing
+  // the edit to find out. It never touches w().
+  server.registerTool(
+    "preview_edit",
+    {
+      title: "Preview edit",
+      annotations: READ,
+      description:
+        "What edit_note would do with the same arguments, without doing it: every place oldString " +
+        "occurs in the note, with its line number and the text around it, how many of them the call " +
+        "would replace, and the refusal it would get if any. Use it before edit_note when the text " +
+        "may occur more than once, then pass line or replaceAll to edit_note and check its count " +
+        "against the prediction. Nothing is written; available without write access.",
+      inputSchema: EDIT_ARGS,
+    },
+    safe(({ path, oldString, newString, line, replaceAll }: EditArgs) => {
+      const res = previewEdit(path, oldString, newString, { line, replaceAll });
+      return json({ ...res, matches: fenceEach(res.matches, "text") });
+    }),
+  );
+
   if (writable) {
     server.registerTool(
       "create_note",
@@ -374,44 +425,15 @@ export function createMcpServer(access: McpAccess): McpServer {
           "edit is refused if it is elsewhere. replaceAll changes every occurrence instead. This is the " +
           "tool for changing part of a note; update_note replaces the whole thing, and a note read in " +
           "pages must never be rewritten from one page. If the note changed since it was read, " +
-          "oldString will not match and nothing is written.",
-        inputSchema: {
-          path: z.string().describe("Vault-relative path of the note"),
-          oldString: z.string().describe("The exact text to replace, as it appears in the note"),
-          newString: z.string().describe("What to put in its place"),
-          line: z
-            .number()
-            .int()
-            .min(1)
-            .optional()
-            .describe(
-              "1-based line where oldString is expected to start. Refused if it is elsewhere; chooses between occurrences when there are several",
-            ),
-          replaceAll: z
-            .boolean()
-            .optional()
-            .describe("Replace every occurrence rather than requiring exactly one; cannot be combined with line"),
-        },
+          "oldString will not match and nothing is written. preview_edit shows what a call would do " +
+          "before it is made.",
+        inputSchema: EDIT_ARGS,
       },
-      safe(
-        ({
-          path,
-          oldString,
-          newString,
-          line,
-          replaceAll,
-        }: {
-          path: string;
-          oldString: string;
-          newString: string;
-          line?: number;
-          replaceAll?: boolean;
-        }) => {
-          const res = editNote(path, oldString, newString, { line, replaceAll });
-          w(res.path, "edit_note");
-          return json(res);
-        },
-      ),
+      safe(({ path, oldString, newString, line, replaceAll }: EditArgs) => {
+        const res = editNote(path, oldString, newString, { line, replaceAll });
+        w(res.path, "edit_note");
+        return json(res);
+      }),
     );
 
     server.registerTool(

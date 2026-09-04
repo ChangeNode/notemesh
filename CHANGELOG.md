@@ -134,8 +134,17 @@ entry needing your attention cannot get lost among routine ones.
   of every occurrence; `line` then picks one, or `replaceAll` takes them all.
   Because the match is exact, a note that changed on another device since it
   was read simply fails to match, and nothing is written to the wrong place.
-  With it the server offers 28 tools covering notes, attachments, daily notes,
-  search, properties, tasks, links and tags.
+
+- **`preview_edit`** — what `edit_note` would do with the same arguments,
+  without doing it: every occurrence with its line number and the text around
+  it, how many the call would replace, and the refusal it would get if any.
+  A caller that could not ask this had to read the note and count for itself,
+  the step most likely to go wrong. It is offered to read-only credentials,
+  since a dry run writes nothing and refusing it would push a caller toward
+  doing the edit to find out. The two share one matching routine, so the
+  preview cannot drift from the edit. With these two the server offers
+  29 tools covering notes, attachments, daily notes, search, properties,
+  tasks, links and tags.
 
 - Every tool now declares MCP **annotations** — whether it only reads, whether
   it can discard content a person wrote, whether repeating it changes anything

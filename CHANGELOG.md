@@ -194,6 +194,11 @@ rather than infer from a diff.
   and moved a static list to `<For>`; no behaviour changed.
 - A transitive dependency advisory (`nanoid`) cleared. It was build tooling and
   never present in the deployed image.
+- The search index's readiness flag now goes false for the duration of every
+  rebuild, not only the first, and the wipe at the start of a rebuild is a
+  single transaction. Neither is visible yet — the flag is not consumed until a
+  later change — but the boot-time rebuild that repairs every partial state is
+  now pinned by a test, so it cannot be removed by accident.
 
 ## 1.0.0 — 2026-08-06
 

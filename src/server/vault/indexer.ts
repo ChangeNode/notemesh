@@ -260,8 +260,10 @@ class VaultIndexer {
   private resolveTimer: ReturnType<typeof setTimeout> | null = null;
   private building: Promise<void> | null = null;
   lastFullIndexAt: number | null = null;
-  // False until the first full rebuild finishes. Index-backed tools still
-  // answer while warming; they just may see a partial vault.
+  // False until a full rebuild finishes, and false again while one is in
+  // flight — the tables are wiped at the start of every rebuild, not only the
+  // first. Index-backed tools still answer while warming; they just may see a
+  // partial vault, and this is how they can tell.
   ready = false;
 
   private scheduleLinkResolve() {
@@ -276,10 +278,22 @@ class VaultIndexer {
   async rebuild(): Promise<void> {
     if (this.building) return this.building;
     this.building = (async () => {
+      // Cleared before the wipe, not after the first build only. It used to be
+      // set once and never unset, so a rebuild from the Status tab — which
+      // empties every table and refills them over the better part of a minute
+      // on a large vault — ran with `ready` reporting true throughout.
+      this.ready = false;
       const d = db();
-      d.exec(
-        "DELETE FROM notes; DELETE FROM notes_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM tasks; DELETE FROM attachments;",
-      );
+      // One transaction. A multi-statement exec is not atomic: each statement
+      // commits on its own, so a failure mid-way left some tables empty and
+      // others full. Wrapped, a failed wipe leaves the previous index intact.
+      // The rebuild as a whole still is not atomic — it yields between batches
+      // — and does not need to be; see the note on start().
+      d.transaction(() =>
+        d.exec(
+          "DELETE FROM notes; DELETE FROM notes_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM tasks; DELETE FROM attachments;",
+        ),
+      )();
       const notes: string[] = [];
       const attachments: string[] = [];
       const walk = (dir: string, depth = 0) => {
@@ -320,6 +334,14 @@ class VaultIndexer {
     return this.building;
   }
 
+  // Always rebuilds. This is the recovery model for the whole indexer, and it
+  // is load-bearing: a note written by a tool and not yet indexed when the
+  // process died, a rebuild interrupted part-way, a watcher event that never
+  // fired — none of those paths is atomic, and none needs to be, because the
+  // next boot recomputes everything from the vault. Nothing else reconciles;
+  // mtime and size are stored but never compared. Removing this rebuild "for
+  // performance" would remove the only repair there is. indexer-recovery.test.ts
+  // pins it.
   async start(): Promise<void> {
     if (this.watcher) return;
     if (!fs.existsSync(env.vaultDir)) fs.mkdirSync(env.vaultDir, { recursive: true });

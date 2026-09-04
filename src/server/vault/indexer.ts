@@ -5,7 +5,12 @@ import { countWords } from "./text";
 import { extractStructure, splitFrontmatter } from "./markdown";
 import { db } from "../db";
 import { env } from "../env";
-import { toVaultRelative, isSafeVaultPath, openNoFollow, MAX_NOTE_BYTES } from "./paths";
+import { toVaultRelative, isSafeVaultPath, openNoFollow, MAX_INDEX_BYTES } from "./paths";
+
+// Notes skipped for size. They are listed and readable but absent from the
+// index, and get_vault_info reports how many so the absence from search is
+// explainable. Cleared by a rebuild, maintained by every index and remove.
+const oversized = new Set<string>();
 
 // Parses one markdown note into everything the index stores. The structure —
 // headings, links, tags, tasks — comes from markdown.ts, the same function
@@ -83,7 +88,13 @@ function indexFile(relPath: string, absPath: string) {
     try {
       st = fs.fstatSync(fd);
       if (!st.isFile()) return;
-      if (st.size > MAX_NOTE_BYTES) return;
+      if (st.size > MAX_INDEX_BYTES) {
+        // Listed and readable, not indexed. Any rows from a smaller earlier
+        // version go too, so nothing stale is ever served for it.
+        removeFile(relPath);
+        oversized.add(relPath);
+        return;
+      }
       content = fs.readFileSync(fd, "utf8");
     } finally {
       fs.closeSync(fd);
@@ -137,6 +148,7 @@ function indexFile(relPath: string, absPath: string) {
     for (const t of parsed.tasks) insTask.run(relPath, t.line, t.text, t.done ? 1 : 0);
   });
   tx();
+  oversized.delete(relPath);
 }
 
 // Index a single path synchronously. Called right after a tool writes a note
@@ -206,6 +218,7 @@ function removeFile(relPath: string) {
     d.prepare("DELETE FROM attachments WHERE path = ?").run(relPath);
   });
   tx();
+  oversized.delete(relPath);
 }
 
 // Re-resolve every wikilink against the current set of notes. Cheap enough to
@@ -282,6 +295,7 @@ class VaultIndexer {
           "DELETE FROM notes; DELETE FROM notes_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM tasks; DELETE FROM attachments;",
         ),
       )();
+      oversized.clear();
       const notes: string[] = [];
       const attachments: string[] = [];
       const walk = (dir: string, depth = 0) => {
@@ -392,5 +406,5 @@ export function ensureIndexerStarted() {
 
 export function indexerStatus() {
   const i = indexer();
-  return { ready: i.ready, lastFullIndexAt: i.lastFullIndexAt };
+  return { ready: i.ready, lastFullIndexAt: i.lastFullIndexAt, unindexedNotes: oversized.size };
 }

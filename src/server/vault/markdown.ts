@@ -32,6 +32,12 @@ export interface Task {
   done: boolean;
 }
 
+// Rows one note may contribute per kind. A note made of nothing but tags
+// produced 5,000 tag rows in 43 ms — speed is not the concern, index size is:
+// the read cap alone would allow on the order of a million rows from a single
+// synced file. The excess is dropped and the note is still indexed. (#26)
+export const MAX_PER_KIND = 2000;
+
 export interface NoteStructure {
   headings: Heading[];
   links: string[];
@@ -234,16 +240,16 @@ export function extractStructure(body: string): NoteStructure {
     const masked = maskCodeSpans(line);
     for (const m of masked.matchAll(WIKILINK)) {
       const target = m[1].trim();
-      if (target) links.push(target);
+      if (target && links.length < MAX_PER_KIND) links.push(target);
     }
     for (const m of masked.matchAll(TAG)) {
       // Obsidian requires at least one non-numeric character in a tag; a bare
       // "#1" in prose is not a tag.
-      if (!/^\d+$/.test(m[2])) tags.add(m[2]);
+      if (!/^\d+$/.test(m[2]) && tags.size < MAX_PER_KIND) tags.add(m[2]);
     }
 
     const task = line.match(TASK);
-    if (task) tasks.push({ line: i + 1, text: task[2].trim(), done: task[1] !== " " });
+    if (task && tasks.length < MAX_PER_KIND) tasks.push({ line: i + 1, text: task[2].trim(), done: task[1] !== " " });
 
     // A list item, or an indented line under one, keeps us in the list. A
     // plain paragraph line is a setext candidate; a list item is not.

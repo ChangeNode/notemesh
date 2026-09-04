@@ -178,7 +178,10 @@ export function createMcpServer(access: McpAccess): McpServer {
     "list_notes",
     {
       title: "List notes",
-      description: "List markdown notes in the vault (optionally within a folder), with modified time and size.",
+      description:
+        "List markdown notes in the vault (optionally within a folder), with modified time and size. " +
+        "An entry too large to index carries indexed: false — it is readable with read_note but absent " +
+        "from search, tags, tasks and links.",
       inputSchema: {
         folder: z.string().optional().describe("Folder to list; omit for the whole vault"),
         ...PAGE_ARGS,
@@ -571,7 +574,9 @@ export function createMcpServer(access: McpAccess): McpServer {
     "get_vault_info",
     {
       title: "Vault info",
-      description: "Vault name, note count, word totals, and sync daemon status.",
+      description:
+        "Vault name, note count, word totals, how many notes are too large to be searchable " +
+        "(unindexedNotes), and sync daemon status.",
       inputSchema: {},
     },
     safe(() => json({ ...vaultInfo(), sync: syncBackend().status() })),

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { countWords, stripCr } from "./text";
 import { extractStructure, splitFrontmatter } from "./markdown";
+import { indexerStatus } from "./indexer";
 import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
@@ -205,6 +206,10 @@ export function vaultInfo() {
     syncNote: syncNote(),
     noteCount,
     totalWords,
+    // Notes over the index size cap: listed and readable, but not in the
+    // count above and not searchable. Reported so "no results" for a note
+    // that plainly exists has an explanation.
+    unindexedNotes: indexerStatus().unindexedNotes,
   };
 }
 

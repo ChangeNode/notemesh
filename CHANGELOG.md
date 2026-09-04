@@ -89,6 +89,17 @@ entry needing your attention cannot get lost among routine ones.
   renamed `bytes` to say so, since it was already bytes on one of the two
   paths and characters on the other.
 
+- **Breaking** — a note over **1 MB** is no longer indexed. It stays listed
+  by `list_notes` (with `indexed: false`) and readable through `read_note`'s
+  paging, and `get_vault_info` now reports how many such notes there are — but
+  it is absent from search, tags, tasks and links. A megabyte of markdown is
+  far past the point where tokenising it earns its keep, and a note that size
+  was dominating every search it matched. The 10 MB ceiling on *reading* a
+  note is unchanged, and is now also the ceiling on writing one: `create_note`,
+  `update_note`, `append_to_note` and `prepend_to_note` refuse a result over it
+  with a message naming the limit, so a note this server writes is always one
+  it can read back.
+
 - Note text that reaches an assistant is now marked as content rather than
   instruction in more places. Headings (`get_outline`), task text
   (`list_tasks`), frontmatter values (`read_properties`) and search snippets are
@@ -126,6 +137,12 @@ entry needing your attention cannot get lost among routine ones.
   dashboard is a live view worth keeping.
 
 ### Fixed
+
+- **Security** — one note can no longer add an unbounded number of rows to
+  the index. A file made of nothing but tags, links or tasks used to add one
+  row per item — on the order of a million from a single synced file at the
+  old read cap. Each kind is now capped at 2,000 per note; the excess is
+  dropped and the note is still indexed.
 
 - **Security** — reading a note now binds the symlink check, the size cap,
   the binary and LFS sniffs and the read itself to a single open file

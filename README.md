@@ -207,7 +207,8 @@ against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 | Search results | 20 default, 100 max | `search_vault` |
 | Note read window | 2,000 lines or 100 KB, whichever first | `read_note`, `daily_note` read, `random_note` |
 | Attachment inlined | 1 MB | `read_attachment` — larger files come back as a 15-minute signed download URL |
-| File read (internal) | 10 MB | any text read; larger files are skipped by the indexer too |
+| Note indexed | 1 MB | larger notes are listed (with `indexed: false`) and readable, but absent from search, tags, tasks and links |
+| Note read or written | 10 MB | `read_note` pages through it; `create_note`, `update_note`, `append_to_note` and `prepend_to_note` refuse a result over the limit |
 | Request body | 4 MB | `/api/mcp` — the ceiling on a single `create_note`/`update_note` |
 
 `read_note` returns `{totalLines, offset, count, hasMore}` alongside `content`,

@@ -87,7 +87,7 @@ function unauthorized(): Response {
 
 // Cap the JSON-RPC request body so a client can't exhaust memory with a huge
 // payload. MCP tool calls are small; 4 MB is generous (note content is
-// written via args, but the 10 MB note cap is the real ceiling).
+// written via args, but the write cap in vault/notes.ts is the real ceiling).
 const MAX_BODY_BYTES = 4 * 1000 * 1000;
 
 export async function POST(event: APIEvent) {

@@ -10,6 +10,19 @@ export class VaultPathError extends Error {}
 // Sizes are decimal (1 MB = 1,000,000 bytes) so they match the labels shown.
 export const MAX_NOTE_BYTES = 10 * 1000 * 1000;
 
+// Largest note the indexer will parse. Well under the read cap: a megabyte of
+// markdown is past the point where tokenising it into the search index earns
+// its keep, and a note that size is better listed and readable than dominating
+// every search. Above this a note is still listed by list_notes (marked
+// indexed: false) and still readable through read_note's paging; it is absent
+// from search, tags, tasks and links. Same figure as the inline attachment cap.
+export const MAX_INDEX_BYTES = 1 * 1000 * 1000;
+
+// Largest note a write tool will produce. Equal to the read cap on purpose:
+// anything this server writes, it can read back. See assertWriteSize in
+// notes.ts, and the test that pins the ordering of these three.
+export const MAX_WRITE_BYTES = MAX_NOTE_BYTES;
+
 // Open a vault file for reading without following a symlink at the final
 // path component. ELOOP is what the kernel answers for a symlink under
 // O_NOFOLLOW, and it becomes the same VaultPathError every other symlink guard

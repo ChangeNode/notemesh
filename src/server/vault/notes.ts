@@ -11,12 +11,30 @@ import {
   isLfsPointer,
   lfsPointerError,
   VaultPathError,
+  MAX_INDEX_BYTES,
+  MAX_WRITE_BYTES,
 } from "./paths";
 
 export interface NoteInfo {
   path: string;
   mtime: number;
   size: number;
+  /** Present, and false, only for a note over the index size cap: listed and readable, not searchable. */
+  indexed?: false;
+}
+
+// The write cap. Equal to the read cap on purpose: a note this server writes
+// must be one it can read back. That used to rest on the 4 MB request-body
+// limit happening to sit below a 10 MB read cap — true, but a coincidence,
+// and a coincidence is not an invariant. hostile-content.test.ts asserts the
+// ordering of the caps and that an oversized write is refused before it lands.
+function assertWriteSize(content: string) {
+  const n = Buffer.byteLength(content, "utf8");
+  if (n > MAX_WRITE_BYTES) {
+    throw new VaultPathError(
+      `That would make the note ${formatBytes(n)}; the limit is ${formatBytes(MAX_WRITE_BYTES)}.`,
+    );
+  }
 }
 
 // Full read. Internal callers (word_count, outline, link resolution) need the
@@ -220,6 +238,7 @@ export function createNote(notePath: string, content: string): string {
   if (fs.existsSync(abs)) {
     throw new VaultPathError(`Note already exists: ${toVaultRelative(abs)} (use update_note to replace it)`);
   }
+  assertWriteSize(content);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, content, "utf8");
   return toVaultRelative(abs);
@@ -228,6 +247,7 @@ export function createNote(notePath: string, content: string): string {
 export function updateNote(notePath: string, content: string): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
+  assertWriteSize(content);
   fs.writeFileSync(abs, content, "utf8");
   return toVaultRelative(abs);
 }
@@ -246,7 +266,9 @@ export function appendToNote(notePath: string, content: string): string {
     else if (existing.endsWith("\n")) sep = "\n";
     else sep = "\n\n";
   }
-  fs.writeFileSync(abs, existing + sep + content + (content.endsWith("\n") ? "" : "\n"), "utf8");
+  const next = existing + sep + content + (content.endsWith("\n") ? "" : "\n");
+  assertWriteSize(next);
+  fs.writeFileSync(abs, next, "utf8");
   return toVaultRelative(abs);
 }
 
@@ -263,6 +285,7 @@ export function prependToNote(notePath: string, content: string): string {
   const next = fmMatch
     ? existing.slice(0, fmMatch[0].length) + block + existing.slice(fmMatch[0].length)
     : block + existing;
+  assertWriteSize(next);
   fs.writeFileSync(abs, next, "utf8");
   return toVaultRelative(abs);
 }
@@ -334,7 +357,11 @@ function walk(
       // and comparing them for equality — and a fractional tail makes both
       // unreliable. The indexer already rounds at its own two ingestion points,
       // so this keeps the value a caller sees consistent with the stored one.
-      out.push({ path: toVaultRelative(abs), mtime: Math.round(st.mtimeMs), size: st.size });
+      const info: NoteInfo = { path: toVaultRelative(abs), mtime: Math.round(st.mtimeMs), size: st.size };
+      // The same rule the indexer applies, decided from the same number, so the
+      // listing can say why a note that plainly exists is missing from search.
+      if (isMarkdown(entry.name) && st.size > MAX_INDEX_BYTES) info.indexed = false;
+      out.push(info);
     }
   }
 }

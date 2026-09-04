@@ -593,7 +593,7 @@ export function createMcpServer(access: McpAccess): McpServer {
     "word_count",
     {
       title: "Word count",
-      description: "Word and character counts for a note, or for the whole vault when no path is given.",
+      description: "Word and byte counts for one note, or totals for the vault. Words are counted in the body only (frontmatter is metadata); bytes are size on disk. With a path, both numbers equal that note's contribution to the vault totals.",
       inputSchema: { path: z.string().optional() },
     },
     safe(({ path }: { path?: string }) => json(wordCount(path))),

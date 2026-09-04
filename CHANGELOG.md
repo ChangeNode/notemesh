@@ -81,6 +81,14 @@ entry needing your attention cannot get lost among routine ones.
   If you had picked one of the removed options, the stored setting is ignored;
   there is nothing to do.
 
+- **Breaking** — `word_count` now means the same thing with and without a
+  path. It used to count the whole file, frontmatter included, when given a
+  note, and sum body-only words from the index when asked for the vault — so
+  a note's own count never added up to the total. Both now count words in the
+  body, and both report size in bytes on disk; the `characters` field is
+  renamed `bytes` to say so, since it was already bytes on one of the two
+  paths and characters on the other.
+
 - Note text that reaches an assistant is now marked as content rather than
   instruction in more places. Headings (`get_outline`), task text
   (`list_tasks`), frontmatter values (`read_properties`) and search snippets are

@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import { splitLines, stripCr } from "./text";
+import matter from "gray-matter";
+import { countWords, splitLines, stripCr  } from "./text";
 import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
@@ -219,18 +220,27 @@ function syncNote(): string {
     : `${immediate}; propagation to other devices is via Obsidian Sync and is not instant.`;
 }
 
-export function wordCount(notePath?: string): { path: string | null; words: number; characters: number } {
+// Both paths answer with the index's two definitions — body-only words, and
+// bytes on disk — so a note's own answer equals its contribution to the vault
+// total. It used to count the whole file in UTF-16 code units with a path and
+// sum body words and bytes without one: the same note gave two numbers, and
+// the per-note ones never added up to the total.
+export function wordCount(notePath?: string): { path: string | null; words: number; bytes: number } {
   if (notePath) {
     const { content, path } = readNote(notePath);
-    return {
-      path,
-      words: content.split(/\s+/).filter(Boolean).length,
-      characters: content.length,
-    };
+    // Frontmatter is metadata, not writing. Unparseable frontmatter is counted
+    // as body, exactly as parseNote indexes it.
+    let body = content;
+    try {
+      body = matter(content).content;
+    } catch {
+      // fall through with the raw content
+    }
+    return { path, words: countWords(body), bytes: fs.statSync(resolveNotePath(notePath)).size };
   }
   const words = (db().prepare("SELECT COALESCE(SUM(word_count),0) AS n FROM notes").get() as { n: number }).n;
-  const chars = (db().prepare("SELECT COALESCE(SUM(size),0) AS n FROM notes").get() as { n: number }).n;
-  return { path: null, words, characters: chars };
+  const bytes = (db().prepare("SELECT COALESCE(SUM(size),0) AS n FROM notes").get() as { n: number }).n;
+  return { path: null, words, bytes };
 }
 
 export function outline(notePath: string): { level: number; heading: string; line: number }[] {

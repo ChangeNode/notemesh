@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import matter from "gray-matter";
-import { splitLines } from "./text";
+import { countWords, splitLines } from "./text";
 import { db } from "../db";
 import { env } from "../env";
 import { toVaultRelative, isSafeVaultPath, MAX_NOTE_BYTES } from "./paths";
@@ -72,7 +72,7 @@ export function parseNote(relPath: string, content: string) {
     }
   });
 
-  const wordCount = body.split(/\s+/).filter(Boolean).length;
+  const wordCount = countWords(body);
 
   return { title, headings, body, frontmatter: data, tags: [...tags], links, tasks, wordCount };
 }

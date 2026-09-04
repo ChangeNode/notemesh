@@ -31,3 +31,16 @@ export function stripCr(line: string): string {
 export function splitLines(text: string): string[] {
   return text.split("\n").map(stripCr);
 }
+
+/**
+ * The one definition of "a word" — runs of non-whitespace.
+ *
+ * Shared by the indexer, which stores it per note, and by the word_count tool,
+ * which used to count for itself with a subtly different input: the whole file
+ * rather than the body. Same note, two numbers. Anything that counts words
+ * should call this, on the body, so that a note's own count equals its
+ * contribution to the vault total.
+ */
+export function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}

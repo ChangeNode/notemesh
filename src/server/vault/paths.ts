@@ -10,27 +10,52 @@ export class VaultPathError extends Error {}
 // Sizes are decimal (1 MB = 1,000,000 bytes) so they match the labels shown.
 export const MAX_NOTE_BYTES = 10 * 1000 * 1000;
 
+// Open a vault file for reading without following a symlink at the final
+// path component. ELOOP is what the kernel answers for a symlink under
+// O_NOFOLLOW, and it becomes the same VaultPathError every other symlink guard
+// raises. Everything a caller then asks — fstat, a sniff of the head, the read
+// itself — is asked of this one descriptor, so it all describes one inode.
+export function openNoFollow(abs: string): number {
+  try {
+    return fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  } catch (e: unknown) {
+    if ((e as { code?: string })?.code === "ELOOP") {
+      throw new VaultPathError("Symlinks are not accessible");
+    }
+    throw e;
+  }
+}
+
 // Read a vault file with a hard size cap. The path must already be resolved
-// via resolveNotePath (which rejects symlinks and traversal). We re-lstat here
-// so a file that grew, or a symlink swapped in after resolution, is still
-// rejected rather than followed (TOCTOU hardening).
+// via resolveNotePath, which rejects symlinks and traversal at resolve time.
+//
+// This used to lstat by path and then read by path — with the LFS and binary
+// sniffs each opening the path again in between. Four separate resolutions,
+// and a symlink swapped in by sync between any two of them was followed by the
+// next. Now there is one open, without following, and the stat, the sniffs and
+// the read all use it: a swap after the open has nothing left to redirect.
 export function readVaultFile(abs: string): string {
-  const st = fs.lstatSync(abs);
-  if (st.isSymbolicLink()) throw new VaultPathError("Symlinks are not accessible");
-  if (!st.isFile()) throw new VaultPathError("Not a file");
-  if (st.size > MAX_NOTE_BYTES) {
-    throw new VaultPathError(
-      `Note is too large to read (${Math.round(st.size / 1000 / 1000)} MB; limit ${MAX_NOTE_BYTES / 1000 / 1000} MB)`,
-    );
+  const fd = openNoFollow(abs);
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) throw new VaultPathError("Not a file");
+    if (st.size > MAX_NOTE_BYTES) {
+      throw new VaultPathError(
+        `Note is too large to read (${Math.round(st.size / 1000 / 1000)} MB; limit ${MAX_NOTE_BYTES / 1000 / 1000} MB)`,
+      );
+    }
+    const head = readHead(fd);
+    if (isLfsPointerHead(head)) throw lfsPointerError();
+    if (hasNul(head)) {
+      throw new VaultPathError(
+        `This is a binary attachment (${formatBytes(st.size)}), not readable as text. ` +
+          `Use read_attachment for images and other binary files.`,
+      );
+    }
+    return fs.readFileSync(fd, "utf8");
+  } finally {
+    fs.closeSync(fd);
   }
-  if (isLfsPointer(abs)) throw lfsPointerError();
-  if (isBinaryFile(abs)) {
-    throw new VaultPathError(
-      `This is a binary attachment (${formatBytes(st.size)}), not readable as text. ` +
-        `Use read_attachment for images and other binary files.`,
-    );
-  }
-  return fs.readFileSync(abs, "utf8");
 }
 
 export function formatBytes(n: number): string {
@@ -43,23 +68,22 @@ export function formatBytes(n: number): string {
   return `${(n / 1e9).toFixed(1)} GB`;
 }
 
+const HEAD_BYTES = 8192;
+
+// The first bytes of an open file, read positionally so the descriptor's own
+// offset is untouched and a following readFileSync(fd) starts at zero.
+function readHead(fd: number): Buffer {
+  const buf = Buffer.alloc(HEAD_BYTES);
+  const n = fs.readSync(fd, buf, 0, buf.length, 0);
+  return buf.subarray(0, n);
+}
+
 // Sniff the head of the file for NUL bytes rather than trusting the extension:
 // reading a 4.6 MB JPEG as UTF-8 produced a 12 MB response of replacement
 // characters (JSON escaping inflates it ~2.6x), which is useless to a client
 // and can blow its entire context in one call.
-export function isBinaryFile(abs: string): boolean {
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(abs, "r");
-    const buf = Buffer.alloc(8192);
-    const read = fs.readSync(fd, buf, 0, buf.length, 0);
-    for (let i = 0; i < read; i++) if (buf[i] === 0) return true;
-    return false;
-  } catch {
-    return false;
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
-  }
+function hasNul(head: Buffer): boolean {
+  return head.includes(0);
 }
 
 // A Git LFS pointer stands in for a file whose content lives outside the repo.
@@ -68,18 +92,33 @@ export function isBinaryFile(abs: string): boolean {
 // though it were the note or the image. Detect it explicitly.
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/";
 
-export function isLfsPointer(abs: string): boolean {
+function isLfsPointerHead(head: Buffer): boolean {
+  return head.subarray(0, 64).toString("utf8").startsWith(LFS_POINTER_PREFIX);
+}
+
+// Path-based forms of the two sniffs, for callers that have already done their
+// own stat by path (attachmentMeta) and for the unit tests. False on any
+// error, as before — a missing file is not binary and not a pointer.
+function sniffHead(abs: string): Buffer | null {
   let fd: number | undefined;
   try {
-    fd = fs.openSync(abs, "r");
-    const buf = Buffer.alloc(64);
-    const read = fs.readSync(fd, buf, 0, buf.length, 0);
-    return buf.subarray(0, read).toString("utf8").startsWith(LFS_POINTER_PREFIX);
+    fd = openNoFollow(abs);
+    return readHead(fd);
   } catch {
-    return false;
+    return null;
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
   }
+}
+
+export function isBinaryFile(abs: string): boolean {
+  const head = sniffHead(abs);
+  return head !== null && hasNul(head);
+}
+
+export function isLfsPointer(abs: string): boolean {
+  const head = sniffHead(abs);
+  return head !== null && isLfsPointerHead(head);
 }
 
 export function lfsPointerError(): VaultPathError {

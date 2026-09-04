@@ -1,8 +1,8 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveNotePath, isSafeVaultPath, toVaultRelative, VaultPathError } from "./paths";
+import { resolveNotePath, readVaultFile, isSafeVaultPath, toVaultRelative, VaultPathError } from "./paths";
 
 // Path resolution is the security boundary between an LLM-supplied string and
 // the filesystem. Everything an MCP client can name goes through here, so these
@@ -192,5 +192,51 @@ describe("isSafeVaultPath", () => {
 describe("toVaultRelative", () => {
   it("round-trips a resolved path back to its vault-relative form", () => {
     expect(toVaultRelative(resolveNotePath("Projects/Alpha.md"))).toBe("Projects/Alpha.md");
+  });
+});
+
+describe("readVaultFile binds the stat and the read to one descriptor", () => {
+  // resolveNotePath refuses a symlink at resolve time. This is about what
+  // happens after: the read used to lstat by path and then read by path, four
+  // separate resolutions in all, and a symlink swapped in between any two of
+  // them was followed. One descriptor, opened without following symlinks,
+  // leaves nothing to swap under.
+  it("refuses a symlink at the final path even when called directly", () => {
+    const link = path.join(vault, "link.md");
+    fs.symlinkSync(path.join(outside, "secret.txt"), link);
+    expect(() => readVaultFile(link)).toThrow(VaultPathError);
+    expect(() => readVaultFile(link)).toThrow(/Symlinks are not accessible/);
+  });
+
+  it("cannot be redirected by a symlink swapped in after the stat", () => {
+    const abs = path.join(vault, "Note.md");
+    const realFstat = fs.fstatSync;
+    const spy = vi.spyOn(fs, "fstatSync").mockImplementation(((fd: number, ...rest: unknown[]) => {
+      const st = (realFstat as any)(fd, ...rest);
+      if (!fs.lstatSync(abs).isSymbolicLink()) {
+        fs.rmSync(abs);
+        fs.symlinkSync(path.join(outside, "secret.txt"), abs);
+      }
+      return st;
+    }) as typeof fs.fstatSync);
+    try {
+      // The descriptor still holds the original inode: the original content.
+      expect(readVaultFile(abs)).toBe("# Note\n");
+    } finally {
+      spy.mockRestore();
+    }
+    // And the swap really happened, so the assertion above was about the
+    // descriptor and not about a swap that never occurred.
+    expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
+  });
+
+  it("still refuses binary content and an LFS pointer, now sniffed from the same descriptor", () => {
+    fs.writeFileSync(path.join(vault, "bin.md"), Buffer.from([0x89, 0x50, 0x00, 0x1a]));
+    expect(() => readVaultFile(path.join(vault, "bin.md"))).toThrow(/binary attachment/);
+    fs.writeFileSync(
+      path.join(vault, "lfs.md"),
+      "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 12\n",
+    );
+    expect(() => readVaultFile(path.join(vault, "lfs.md"))).toThrow(/Git LFS/);
   });
 });

@@ -5,7 +5,7 @@ import { countWords } from "./text";
 import { extractStructure, splitFrontmatter } from "./markdown";
 import { db } from "../db";
 import { env } from "../env";
-import { toVaultRelative, isSafeVaultPath, MAX_NOTE_BYTES } from "./paths";
+import { toVaultRelative, isSafeVaultPath, openNoFollow, MAX_NOTE_BYTES } from "./paths";
 
 // Parses one markdown note into everything the index stores. The structure —
 // headings, links, tags, tasks — comes from markdown.ts, the same function
@@ -71,35 +71,54 @@ function indexFile(relPath: string, absPath: string) {
   let content: string;
   let st: fs.Stats;
   try {
-    // Never follow a symlink into the target's contents (would let a synced
-    // symlink like `x.md -> /etc/passwd` be read and served via search), and
-    // cap the size so a huge synced file can't OOM the process.
-    const ls = fs.lstatSync(absPath);
-    if (ls.isSymbolicLink() || !ls.isFile()) return;
-    if (ls.size > MAX_NOTE_BYTES) return;
     if (!isSafeVaultPath(absPath)) return;
-    content = fs.readFileSync(absPath, "utf8");
-    st = ls;
+    // One descriptor, opened without following symlinks, and everything else
+    // asked of it: the stat, the size cap and the read all describe the same
+    // inode. An lstat followed by a read *by path* left a gap in which sync
+    // could swap the file for a symlink — `x.md -> /etc/passwd` — that the
+    // read would then follow straight into the search index. It also means the
+    // mtime and size stored below belong to the bytes that were indexed, not to
+    // whatever the path pointed at a moment earlier.
+    const fd = openNoFollow(absPath);
+    try {
+      st = fs.fstatSync(fd);
+      if (!st.isFile()) return;
+      if (st.size > MAX_NOTE_BYTES) return;
+      content = fs.readFileSync(fd, "utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
-    return; // Deleted between event and read.
+    return; // Deleted between event and read, or a symlink: either way, not indexed.
   }
   const parsed = parseNote(relPath, content);
   const d = db();
   const tx = d.transaction(() => {
-    d.prepare(
-      `INSERT INTO notes (path, title, mtime, size, frontmatter, word_count) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(path) DO UPDATE SET title=excluded.title, mtime=excluded.mtime, size=excluded.size,
-         frontmatter=excluded.frontmatter, word_count=excluded.word_count`,
-    ).run(
-      relPath,
-      parsed.title,
-      Math.round(st.mtimeMs),
-      st.size,
-      Object.keys(parsed.frontmatter).length ? JSON.stringify(parsed.frontmatter) : null,
-      parsed.wordCount,
-    );
-    d.prepare("DELETE FROM notes_fts WHERE path = ?").run(relPath);
-    d.prepare("INSERT INTO notes_fts (path, title, headings, body) VALUES (?, ?, ?, ?)").run(
+    // The notes row's rowid keys the FTS row. `path` is UNINDEXED in FTS5, and
+    // FTS5 accelerates only MATCH — an equality on any column is a scan of the
+    // whole virtual table, measured at ~9x the cost of a rowid lookup at 2,600
+    // notes and growing with the vault, on every write. The rowid is a real
+    // key. This depends on the upsert being ON CONFLICT DO UPDATE, which keeps
+    // the rowid; INSERT OR REPLACE would delete and reinsert, and the FTS row
+    // would be orphaned. indexer-storage.test.ts pins both.
+    const { rowid } = d
+      .prepare(
+        `INSERT INTO notes (path, title, mtime, size, frontmatter, word_count) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET title=excluded.title, mtime=excluded.mtime, size=excluded.size,
+           frontmatter=excluded.frontmatter, word_count=excluded.word_count
+         RETURNING rowid`,
+      )
+      .get(
+        relPath,
+        parsed.title,
+        Math.round(st.mtimeMs),
+        st.size,
+        Object.keys(parsed.frontmatter).length ? JSON.stringify(parsed.frontmatter) : null,
+        parsed.wordCount,
+      ) as { rowid: number };
+    d.prepare("DELETE FROM notes_fts WHERE rowid = ?").run(rowid);
+    d.prepare("INSERT INTO notes_fts (rowid, path, title, headings, body) VALUES (?, ?, ?, ?, ?)").run(
+      rowid,
       relPath,
       parsed.title,
       parsed.headings.join("\n"),
@@ -176,8 +195,11 @@ function buildPathMaps(d: ReturnType<typeof db>) {
 function removeFile(relPath: string) {
   const d = db();
   const tx = d.transaction(() => {
+    // The FTS row is keyed by the note's rowid, so look it up before the note
+    // row goes. An attachment has no FTS row and no notes row; nothing to do.
+    const note = d.prepare("SELECT rowid FROM notes WHERE path = ?").get(relPath) as { rowid: number } | undefined;
+    if (note) d.prepare("DELETE FROM notes_fts WHERE rowid = ?").run(note.rowid);
     d.prepare("DELETE FROM notes WHERE path = ?").run(relPath);
-    d.prepare("DELETE FROM notes_fts WHERE path = ?").run(relPath);
     d.prepare("DELETE FROM links WHERE source_path = ?").run(relPath);
     d.prepare("DELETE FROM tags WHERE path = ?").run(relPath);
     d.prepare("DELETE FROM tasks WHERE path = ?").run(relPath);

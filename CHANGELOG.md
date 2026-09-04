@@ -127,6 +127,17 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — reading a note now binds the symlink check, the size cap,
+  the binary and LFS sniffs and the read itself to a single open file
+  descriptor. They used to be four separate opens by path, and a symlink that
+  sync swapped into place between any two of them was followed by the next —
+  into a search result or a tool response. The window was microseconds wide
+  and needed a hostile file arriving through sync at exactly that moment, but
+  it was the class of hole the code already claimed to close. The indexer's
+  own read had the same shape and is fixed the same way, which also means the
+  size and modified time it records now describe the bytes it indexed rather
+  than whatever the path pointed at a moment earlier.
+
 - `get_outline` and search now agree about what a heading is. They ran two
   copies of the same scan, and the copies had drifted: the outline read the
   whole file, frontmatter included, so a `#` comment in a note's YAML came
@@ -248,6 +259,12 @@ rather than infer from a diff.
   and moved a static list to `<For>`; no behaviour changed.
 - A transitive dependency advisory (`nanoid`) cleared. It was build tooling and
   never present in the deployed image.
+- Every write to the search index used to scan the whole full-text table to
+  remove the note's previous entry, because the lookup was by path and FTS5
+  cannot index a path — measured at nine times the cost of a keyed lookup on
+  a 2,600-note vault, growing with the vault. The entry is now keyed by the
+  note's own row id. Nothing to do: the index is rebuilt on the first boot
+  after this update, which is what re-keys every existing row.
 - The search index's readiness flag now goes false for the duration of every
   rebuild, not only the first, and the wipe at the start of a rebuild is a
   single transaction. Neither is visible yet — the flag is not consumed until a

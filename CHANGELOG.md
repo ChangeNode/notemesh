@@ -58,6 +58,29 @@ entry needing your attention cannot get lost among routine ones.
   is now `items`. Limits are unchanged; clients cache the tool list, not
   result shapes, so nothing needs reconnecting.
 
+- **Breaking** — the git backend's **Conflict resolution** setting is gone, and
+  with it two of its three options. What remains is the one that was already
+  the default: when your devices and the assistant change the same part of the
+  same note at once, your version keeps the filename and the assistant's is
+  saved beside it as a `(Conflicted copy notemesh …)` file, committed and pushed
+  to every device, for you to resolve in Obsidian.
+
+  The two removed options did not work the way they read. *Place conflicts on a
+  branch* said the assistant's version would be "visible in a git client" — but
+  the branch was never pushed, so it existed only inside the container, and
+  recovering it meant a shell into the server. *Inline markers* wrote `<<<<<<<`
+  into the note, which the assistant then read as content. Neither could be
+  acted on from Obsidian, which is where you are.
+
+  Also gone: the **Conflicting edits parked** state. The server used to stay in
+  it until you restarted sync, even though a written copy leaves it with
+  nothing to wait for — and it had no way to notice you had merged the copy in
+  Obsidian, so it would have nagged forever. Handled conflicts are now listed
+  on the Status tab as information, and the state is simply *running*.
+
+  If you had picked one of the removed options, the stored setting is ignored;
+  there is nothing to do.
+
 - Note text that reaches an assistant is now marked as content rather than
   instruction in more places. Headings (`get_outline`), task text
   (`list_tasks`), frontmatter values (`read_properties`) and search snippets are

@@ -9,8 +9,7 @@ export type SyncState =
   | "running"
   | "backoff" // failed, waiting to retry
   | "needs-reauth" // credentials rejected; won't retry until re-authenticated
-  | "needs-setup" // the vault was never linked, or its link is gone
-  | "conflict"; // git only: local work parked on a branch, needs a human
+  | "needs-setup"; // the vault was never linked, or its link is gone
 
 export interface LogLine {
   ts: number;
@@ -46,18 +45,16 @@ export interface SyncStatus {
   lastActivityAt: number | null;
   restartCount: number;
   activity: SyncActivity & { active: boolean };
-  /** git only: conflicts that were resolved by the configured strategy. */
+  /** git only: the most recent conflicts, each handled by writing a conflicted copy. */
   conflicts?: ConflictRecord[];
 }
 
-// A conflict that the configured strategy handled. Which fields are populated
-// depends on the strategy: a branch name for "branch", the conflict copies
-// written for "file", neither for "inline".
+// A conflict handled by writing a conflicted copy beside each note involved.
+// Information, not state: the copy is in the vault and on its way to every
+// device, and there is nothing further the server is waiting on.
 export interface ConflictRecord {
   at: number;
-  strategy: "file" | "branch" | "inline";
   paths: string[];
-  branch?: string;
   copies?: string[];
 }
 

@@ -76,7 +76,6 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   deleteApiKey: async () => (await import("~/server/admin")).deleteApiKey,
   revokeOAuthClient: async () => (await import("~/server/admin")).revokeOAuthClient,
   setGitTiming: async () => (await import("~/server/admin")).setGitTiming,
-  setGitConflictStrategy: async () => (await import("~/server/admin")).setGitConflictStrategy,
   setTimezone: async () => (await import("~/server/admin")).setTimezone,
   setDeleteEnabled: async () => (await import("~/server/admin")).setDeleteEnabled,
   syncNow: async () => (await import("~/server/admin")).syncNow,

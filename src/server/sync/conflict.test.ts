@@ -6,7 +6,6 @@ import path from "node:path";
 import {
   conflictCopyPath,
   conflictStamp,
-  parseConflictStrategy,
   probeMerge,
   resolveConflict,
 } from "./conflict";
@@ -169,7 +168,7 @@ describe("a clean merge keeps both sides", () => {
   });
 });
 
-describe("conflict strategies", () => {
+describe("a conflict", () => {
   /** Drive both sides into a genuine same-region conflict. */
   async function makeConflict() {
     write(server, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n- [ ] ASSISTANT\n");
@@ -180,12 +179,11 @@ describe("conflict strategies", () => {
     return probe.paths;
   }
 
-  it("file: keeps the device's version at the real filename", async () => {
+  it("keeps the device's version at the real filename", async () => {
     const paths = await makeConflict();
     const out = await resolveConflict({
       dir: server,
       remoteRef: "origin/main",
-      strategy: "file",
       paths,
       now: new Date(2026, 7, 3, 19, 58),
     });
@@ -195,12 +193,11 @@ describe("conflict strategies", () => {
     expect(read(server, "Daily/2026-08-03.md")).not.toContain("ASSISTANT");
   });
 
-  it("file: saves the assistant's version alongside, and never leaves markers", async () => {
+  it("saves the assistant's version alongside, and never leaves markers", async () => {
     const paths = await makeConflict();
     const out = await resolveConflict({
       dir: server,
       remoteRef: "origin/main",
-      strategy: "file",
       paths,
       now: new Date(2026, 7, 3, 19, 58),
     });
@@ -211,12 +208,11 @@ describe("conflict strategies", () => {
     expect(filesWithMarkers(server)).toEqual([]);
   });
 
-  it("file: commits the copy so it reaches the user's other devices", async () => {
+  it("commits the copy so it reaches the user's other devices", async () => {
     const paths = await makeConflict();
     await resolveConflict({
       dir: server,
       remoteRef: "origin/main",
-      strategy: "file",
       paths,
       now: new Date(2026, 7, 3, 19, 58),
     });
@@ -226,76 +222,18 @@ describe("conflict strategies", () => {
     expect(git(server, "ls-tree", "-r", "--name-only", "HEAD")).toContain("Conflicted copy notemesh");
   });
 
-  it("branch: leaves the vault matching the remote with the copy only in git", async () => {
+it("leaves a clean tree on a single commit", async () => {
     const paths = await makeConflict();
-    const out = await resolveConflict({
-      dir: server,
-      remoteRef: "origin/main",
-      strategy: "branch",
-      paths,
-    });
-
+    const out = await resolveConflict({ dir: server, remoteRef: "origin/main", paths });
     expect(out.ok).toBe(true);
-    expect(out.branch).toMatch(/^notemesh\/conflict-/);
-    expect(read(server, "Daily/2026-08-03.md")).toContain("DEVICE");
-    // Nothing added to the notes folder at all.
-    expect(fs.readdirSync(path.join(server, "Daily"))).toEqual(["2026-08-03.md"]);
-    expect(filesWithMarkers(server)).toEqual([]);
-    // ...but the assistant's version is still reachable.
-    expect(git(server, "show", `${out.branch}:Daily/2026-08-03.md`)).toContain("ASSISTANT");
-  });
-
-  it("inline: writes markers into the note, as explicitly opted into", async () => {
-    const paths = await makeConflict();
-    const out = await resolveConflict({
-      dir: server,
-      remoteRef: "origin/main",
-      strategy: "inline",
-      paths,
-    });
-
-    expect(out.ok).toBe(true);
-    const note = read(server, "Daily/2026-08-03.md");
-    expect(note).toContain("<<<<<<<");
-    expect(note).toContain("ASSISTANT");
-    expect(note).toContain("DEVICE");
-    // The merge is completed rather than left half-done, so syncing continues.
     expect(git(server, "status", "--porcelain").trim()).toBe("");
-  });
-
-  it("every strategy leaves a clean tree on a single commit", async () => {
-    for (const strategy of ["file", "branch", "inline"] as const) {
-      // Fresh repos per strategy — beforeEach only runs once per test.
-      fs.rmSync(root, { recursive: true, force: true });
-      root = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-conflict-"));
-      remote = path.join(root, "remote.git");
-      server = path.join(root, "server");
-      device = path.join(root, "device");
-      git(root, "init", "-q", "--bare", "-b", "main", "remote.git");
-      git(root, "clone", "-q", remote, "server");
-      write(server, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n");
-      commitAll(server, "seed");
-      git(server, "branch", "-M", "main");
-      git(server, "push", "-q", "-u", "origin", "main");
-      git(root, "clone", "-q", remote, "device");
-
-      const paths = await makeConflict();
-      const out = await resolveConflict({
-        dir: server,
-        remoteRef: "origin/main",
-        strategy,
-        paths,
-      });
-      expect(out.ok, `${strategy} should succeed`).toBe(true);
-      expect(git(server, "status", "--porcelain").trim(), `${strategy} tree should be clean`).toBe(
-        "",
-      );
-    }
+    // Exactly one commit ahead of the remote - the copy - and nothing half-done.
+    expect(git(server, "rev-list", "--count", "origin/main..HEAD").trim()).toBe("1");
   });
 });
 
 describe("binary attachments", () => {
-  it("file: writes the conflict copy byte-for-byte, not as mangled text", async () => {
+  it("writes the conflict copy byte-for-byte, not as mangled text", async () => {
     // A PNG header plus a NUL — round-tripping this through UTF-8 would corrupt it.
     const assistantBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff]);
     const deviceBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
@@ -314,7 +252,6 @@ describe("binary attachments", () => {
     const out = await resolveConflict({
       dir: server,
       remoteRef: "origin/main",
-      strategy: "file",
       paths: probe.paths,
       now: new Date(2026, 7, 3, 19, 58),
     });
@@ -346,17 +283,5 @@ describe("naming", () => {
 
   it("zero-pads the timestamp", () => {
     expect(conflictStamp(new Date(2026, 0, 2, 3, 4))).toBe("202601020304");
-  });
-});
-
-describe("strategy parsing", () => {
-  it("defaults to the conflict-file strategy", () => {
-    expect(parseConflictStrategy(undefined)).toBe("file");
-    expect(parseConflictStrategy("nonsense")).toBe("file");
-  });
-
-  it("accepts the other two by name", () => {
-    expect(parseConflictStrategy("branch")).toBe("branch");
-    expect(parseConflictStrategy("inline")).toBe("inline");
   });
 });

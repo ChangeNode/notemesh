@@ -44,7 +44,6 @@ const STATE_LABEL: Record<string, { cls: string; label: string }> = {
   backoff: { cls: "warn", label: "Retrying after an error" },
   "needs-reauth": { cls: "err", label: "Needs re-authentication" },
   "needs-setup": { cls: "err", label: "Vault not linked" },
-  conflict: { cls: "err", label: "Conflicting edits parked" },
 };
 
 export default function Status() {
@@ -331,11 +330,7 @@ export default function Status() {
                         <code>{c.paths.join(", ")}</code>
                         <span>
                           {new Date(c.at).toLocaleString()} —{" "}
-                          {c.strategy === "file"
-                            ? `the assistant's version was saved as ${c.copies?.join(", ")}`
-                            : c.strategy === "branch"
-                              ? `kept on branch ${c.branch} — recover with git merge ${c.branch}`
-                              : "both versions are in the note, separated by <<<<<<< markers"}
+                          the assistant's version was saved as {c.copies?.join(", ")}
                         </span>
                       </p>
                     )}

@@ -102,18 +102,14 @@ How it behaves:
   different notes — or to different parts of the same note — merge cleanly and
   keep both sides, with no conflict handling involved at all.
 
-  The only case that needs a decision is the same region of the same note
-  changing on both sides at once, and the **Settings** tab chooses what happens
-  then:
-
-  | Strategy | What you get |
-  | --- | --- |
-  | **Generate conflict file** (default) | Your devices' version keeps the real filename; the assistant's is saved beside it as `Note (Conflicted copy notemesh 202608031958).md` and synced to every device — the same convention Obsidian Sync uses |
-  | **Place conflicts on a branch** | Vault left untouched and matching the remote; the assistant's version kept on `notemesh/conflict-<timestamp>`, recoverable with `git merge` |
-  | **Inline git-style markers** | Both versions in the note separated by `<<<<<<<` — faithful to git, but the assistant reads your notes and will treat the markers as content |
-
-  Under the first two, conflict markers never enter the vault at all. Nothing is
-  ever discarded under any of the three.
+  The only case git cannot settle is the same region of the same note changing
+  on both sides at once. Then your devices' version keeps the real filename and
+  the assistant's is saved beside it as `Note (Conflicted copy notemesh
+  202608031958).md` — the same convention Obsidian Sync uses — committed and
+  pushed so it reaches every device. You resolve it in Obsidian, and can ask
+  your assistant to help. Conflict markers never enter the vault, nothing is
+  discarded, and the server is never left waiting on you: a handled conflict is
+  listed on the Status tab, not a state you have to clear.
 - **Attachments.** git handles large binaries poorly, so this suits
   markdown-heavy vaults. `git-lfs` is installed in the image, so LFS-backed
   repos work; if an LFS object is ever missing, reads fail loudly rather than
@@ -139,7 +135,7 @@ binary in throwaway repositories rather than mocks — the behaviour under test
 | Credential encryption | Round-trip, per-value IVs, tampered ciphertext/tag/IV rejection, key binding |
 | Abuse throttle | Blocks probing at the threshold; never counts authorised traffic; ignores forwarding headers unless a proxy is known to be in front |
 | Git sync | Version floor, remote probing, clone into empty/existing/foreign directories, auth-failure classification, binary-safe reads |
-| Conflicts | Clean merges keeping both sides, all three strategies, byte-exact binary conflict copies, Obsidian naming |
+| Conflicts | Clean merges keeping both sides, the conflicted copy committed and pushed to the remote, the backend never entering a stuck state, byte-exact binary conflict copies, Obsidian naming |
 | Obsidian sync | CLI argument-injection guards, secret redaction from captured output, MFA/auth detection, and ob's unreliable exit codes — driven through a stand-in binary on `OB_BIN` |
 
 The security tests are mutation-checked: deleting a guard has to make specific

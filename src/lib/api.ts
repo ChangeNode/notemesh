@@ -94,8 +94,6 @@ export const api = {
 
   setGitTiming: ((d: number, p: number) =>
     call("setGitTiming", [d, p])) as P<typeof Admin.setGitTiming>,
-  setGitConflictStrategy: ((s: string) =>
-    call("setGitConflictStrategy", [s])) as P<typeof Admin.setGitConflictStrategy>,
   setTimezone: ((tz: string) => call("setTimezone", [tz])) as P<typeof Admin.setTimezone>,
   setDeleteEnabled: ((on: boolean) =>
     call("setDeleteEnabled", [on])) as P<typeof Admin.setDeleteEnabled>,

@@ -56,7 +56,6 @@ const PROTECTED_RPC = [
   "deleteApiKey",
   "revokeOAuthClient",
   "setGitTiming",
-  "setGitConflictStrategy",
   "setTimezone",
   "setDeleteEnabled",
   "relinkVault",

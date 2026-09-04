@@ -4,12 +4,7 @@ import { env } from "../env";
 import { getSetting } from "../db";
 import { runGit } from "./git-exec";
 import type { ConflictRecord } from "./types";
-import {
-  probeMerge,
-  resolveConflict,
-  parseConflictStrategy,
-  type ConflictStrategy,
-} from "./conflict";
+import { probeMerge, resolveConflict } from "./conflict";
 import { LogRing, type LogLine, type SyncBackend, type SyncState, type SyncStatus } from "./types";
 
 // Git-backed vault sync.
@@ -24,8 +19,11 @@ import { LogRing, type LogLine, type SyncBackend, type SyncState, type SyncStatu
 // When that does happen we never let git write conflict markers into the vault:
 // `git merge-tree` performs the merge in the object database and reports the
 // result without touching the working tree, so the indexer and the model never
-// see `<<<<<<<`. The local commit is parked on a branch instead of discarded,
-// which loses nothing and leaves an ordinary `git merge` as the recovery.
+// see `<<<<<<<`. The remote's version keeps the filename and ours is written
+// beside it as a conflicted copy, committed and pushed so it reaches every
+// device — where the user resolves it in Obsidian. Nothing is discarded, and
+// nothing is left for the server to wait on: a handled conflict is information
+// on the Status tab, not a state.
 
 const DEFAULT_DEBOUNCE_SECONDS = 5;
 const DEFAULT_PULL_SECONDS = 30;
@@ -33,6 +31,8 @@ const DEFAULT_PULL_SECONDS = 30;
 const MIN_MAX_WAIT_MS = 30_000;
 // `git merge-tree --write-tree` needs this; Debian trixie ships 2.47.
 const MIN_GIT_VERSION = [2, 38];
+// The Status tab lists recent conflicts as information; this bounds the list.
+const MAX_RECENT_CONFLICTS = 20;
 
 export interface GitConfig {
   remote: string;
@@ -48,10 +48,6 @@ export function gitConfig(): GitConfig | null {
 function debounceMs(): number {
   const n = Number(getSetting("git_debounce_seconds"));
   return (Number.isFinite(n) && n > 0 ? n : DEFAULT_DEBOUNCE_SECONDS) * 1000;
-}
-
-function conflictStrategy(): ConflictStrategy {
-  return parseConflictStrategy(getSetting("git_conflict_strategy"));
 }
 
 function pullMs(): number {
@@ -311,11 +307,9 @@ class GitBackend implements SyncBackend {
       return true;
     }
 
-    const strategy = conflictStrategy();
     const outcome = await resolveConflict({
       dir: env.vaultDir,
       remoteRef: remote,
-      strategy,
       paths: probe.paths,
     });
     if (!outcome.ok) {
@@ -323,24 +317,21 @@ class GitBackend implements SyncBackend {
       this.state = "backoff";
       return false;
     }
-    this.conflicts.push({
-      at: Date.now(),
-      strategy: outcome.strategy,
-      paths: outcome.paths,
-      branch: outcome.branch,
-      copies: outcome.copies,
-    });
-    // Inline is the operator's explicit choice, so it isn't an error state —
-    // the merge completed and the note holds both versions.
-    if (strategy !== "inline") this.state = "conflict";
-    this.log(`[git] ${strategy === "inline" ? "" : "Error: "}${outcome.message}`, "error");
+    // Recorded, bounded, and not a state. The copy is written and about to be
+    // pushed; the user picks it up in Obsidian. The state stays whatever the
+    // cycle makes it — running, once the push lands.
+    this.conflicts.push({ at: Date.now(), paths: outcome.paths, copies: outcome.copies });
+    if (this.conflicts.length > MAX_RECENT_CONFLICTS) {
+      this.conflicts.splice(0, this.conflicts.length - MAX_RECENT_CONFLICTS);
+    }
+    this.log(`[git] ${outcome.message}`, "warn");
     return true;
   }
 
   private async push(cfg: GitConfig): Promise<boolean> {
     const res = await runGit(["push", "origin", `HEAD:${cfg.branch}`], { authenticated: true });
     if (res.ok) {
-      if (this.state !== "conflict") this.state = "running";
+      this.state = "running";
       this.log(`[git] pushed to ${cfg.branch}`);
       return true;
     }

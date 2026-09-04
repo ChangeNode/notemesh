@@ -18,6 +18,7 @@ import {
   readNote,
   readNoteRange,
   updateNote,
+  DEFAULT_READ_LINES,
   EXCERPT_CHARS,
   MAX_ATTACHMENT_BYTES,
   MAX_PREVIEW_MATCHES,
@@ -602,5 +603,49 @@ describe("previewEdit", () => {
   it("abbreviates a long list of lines in the refusal", () => {
     put("Note.md", "foo\n".repeat(30));
     expect(() => editNote("Note.md", "foo", "bar")).toThrow(/at lines 1, 2, 3, .*, 20, and 10 more\. Pass line/);
+  });
+});
+
+// read_note windows a long note. These hold the write to what the read said.
+describe("updateNote, against a half-read note", () => {
+  it("refuses a line count that does not match, and leaves the note alone", () => {
+    put("Note.md", "a\nb\nc\n");
+    expect(() => updateNote("Note.md", "x", { expectedLines: 2 })).toThrow(/has 4 lines, not 2/);
+    expect(get("Note.md")).toBe("a\nb\nc\n");
+  });
+
+  it("counts lines exactly as read_note reports totalLines", () => {
+    // A trailing newline, CRLF, none, an empty note, only newlines: whichever
+    // way each is counted, both sides count it that way.
+    for (const note of ["a\nb\nc\n", "a\r\nb\r\n", "a\nb", "", "\n\n"]) {
+      put("Note.md", note);
+      const seen = readNoteRange("Note.md").totalLines;
+      expect(() => updateNote("Note.md", "x", { expectedLines: seen }), JSON.stringify(note)).not.toThrow();
+      expect(get("Note.md")).toBe("x");
+    }
+  });
+
+  it("refuses to replace a note longer than one read window without the count", () => {
+    const long = "line\n".repeat(DEFAULT_READ_LINES + 1);
+    put("Note.md", long);
+    expect(() => updateNote("Note.md", "x")).toThrow(/longer than one read_note call.*expectedLines/);
+    expect(get("Note.md")).toBe(long);
+    // The window's own length — what a caller that read one page would say — is refused too.
+    expect(() => updateNote("Note.md", "x", { expectedLines: DEFAULT_READ_LINES })).toThrow(/not 2000/);
+    updateNote("Note.md", "x", { expectedLines: readNoteRange("Note.md").totalLines });
+    expect(get("Note.md")).toBe("x");
+  });
+
+  it("measures the window in bytes as well as lines", () => {
+    put("Note.md", "x".repeat(MAX_READ_BYTES + 1));
+    expect(() => updateNote("Note.md", "y")).toThrow(/longer than one read_note call/);
+    updateNote("Note.md", "y", { expectedLines: 1 });
+    expect(get("Note.md")).toBe("y");
+  });
+
+  it("leaves a short note's replace as it was", () => {
+    put("Note.md", "line\n".repeat(DEFAULT_READ_LINES - 1));
+    updateNote("Note.md", "x");
+    expect(get("Note.md")).toBe("x");
   });
 });

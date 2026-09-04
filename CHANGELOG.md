@@ -58,6 +58,17 @@ entry needing your attention cannot get lost among routine ones.
   is now `items`. Limits are unchanged; clients cache the tool list, not
   result shapes, so nothing needs reconnecting.
 
+- **Breaking** — `update_note` refuses to replace a note longer than one
+  `read_note` window (2,000 lines or 100 KB) unless the call carries
+  `expectedLines`, the `totalLines` that `read_note` reported; and when it is
+  given, on any note, the write is refused if the count no longer matches.
+  Nothing connected the read window to the write before: an assistant that
+  read the first page of a long note, edited what it saw and replaced the note
+  silently discarded the rest — and on the git backend pushed the loss to every
+  device before anyone could notice. A short note cannot have been half-read,
+  so its replace is unchanged. For changing part of a note, `edit_note` is now
+  the right tool, and `update_note` says so.
+
 - **Breaking** — the git backend's **Conflict resolution** setting is gone, and
   with it two of its three options. What remains is the one that was already
   the default: when your devices and the assistant change the same part of the

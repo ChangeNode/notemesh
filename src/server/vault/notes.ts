@@ -247,12 +247,56 @@ export function createNote(notePath: string, content: string): string {
   return toVaultRelative(abs);
 }
 
-export function updateNote(notePath: string, content: string): string {
+export interface UpdateOptions {
+  /** The note's current line count, as read_note reported it in totalLines. */
+  expectedLines?: number;
+}
+
+// What one read_note call returns whole; see readNoteRange. A note past
+// either bound is the one a full replace can get wrong.
+function fitsOneReadWindow(content: string): boolean {
+  if (content.split("\n").length > DEFAULT_READ_LINES) return false;
+  return Buffer.byteLength(content, "utf8") <= MAX_READ_BYTES;
+}
+
+/**
+ * Replace a note whole.
+ *
+ * read_note windows a long note, and nothing connected the window to this
+ * write: a caller that read the first page, edited what it saw and replaced
+ * the note discarded the rest — silently, and on the git backend, pushed to
+ * every device. Two guards, each taking the caller at its word.
+ *
+ * `expectedLines` is the line count the caller believes the note has, as
+ * read_note reported it. A caller that saw only the first window states the
+ * window's length, not the file's, and is refused; so is one whose note has
+ * changed since. It is counted the way readNoteRange counts totalLines, and
+ * a test holds the two together.
+ *
+ * A note longer than one read window is refused without it. A short note
+ * cannot have been half-read, so its replace is as it was.
+ */
+export function updateNote(notePath: string, content: string, opts: UpdateOptions = {}): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
+  const rel = toVaultRelative(abs);
   assertWriteSize(content);
+  const current = readVaultFile(abs);
+  const have = current.split("\n").length;
+  if (opts.expectedLines !== undefined && opts.expectedLines !== have) {
+    throw new VaultPathError(
+      `${rel} has ${have} lines, not ${opts.expectedLines}. Read the note again; it may have changed since it was last read.`,
+    );
+  }
+  if (opts.expectedLines === undefined && !fitsOneReadWindow(current)) {
+    throw new VaultPathError(
+      `${rel} is longer than one read_note call returns (${DEFAULT_READ_LINES} lines or ${formatBytes(MAX_READ_BYTES)}), ` +
+        `so replacing it could discard what was not read. Pass expectedLines, the totalLines read_note reported, ` +
+        `to confirm the whole note was read; or use edit_note to change part of it.`,
+    );
+  }
   fs.writeFileSync(abs, content, "utf8");
-  return toVaultRelative(abs);
+  return rel;
 }
 
 export function appendToNote(notePath: string, content: string): string {

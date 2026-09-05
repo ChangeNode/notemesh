@@ -292,6 +292,7 @@ describe("alerts", () => {
     expect(alert).not.toContain(json.boundary);
     expect(blocks[0]).not.toContain(alert!);
     expect(json.boundaryNote).toContain("NoteMesh:");
+    expect(json.boundaryNote).toMatch(/quotes inside such a block/);
   });
 
   it("rides an error result too", async () => {

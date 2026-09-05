@@ -7,6 +7,7 @@ import { env, detectInsecureBaseUrl, detectOriginMismatch } from "../env";
 import { indexerStatus } from "../vault/indexer";
 import { lastDiskLevel, type DiskLevel } from "../vault/disk";
 import { takeNotices } from "../notices";
+import { fenceInline } from "./boundary";
 
 /**
  * What the server tells the assistant about itself.
@@ -191,7 +192,9 @@ export function alertsFrom(s: AlertSnapshot): Alert[] {
   if (s.originMismatch) {
     out.push({
       level: "warn",
-      text: `${P} this server is configured as ${s.originMismatch.configured} but reached at ${s.originMismatch.reachedAt}; the OAuth issuer and endpoint URL are wrong until it restarts.`,
+      // The configured value is ours; the reached-at value is the request's
+      // Host header, which anyone can send, so it travels fenced.
+      text: `${P} this server is configured as ${s.originMismatch.configured} but reached at ${fenceInline(s.originMismatch.reachedAt)}; the OAuth issuer and endpoint URL are wrong until it restarts.`,
     });
   }
   if (s.insecureBaseUrl) {

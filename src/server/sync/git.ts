@@ -1,3 +1,4 @@
+import { fenceInline } from "../mcp/boundary";
 import { postNotice } from "../notices";
 import fs from "node:fs";
 import path from "node:path";
@@ -64,6 +65,19 @@ export async function gitVersionOk(): Promise<{ ok: boolean; version: string }> 
   const ok =
     major > MIN_GIT_VERSION[0] || (major === MIN_GIT_VERSION[0] && minor >= MIN_GIT_VERSION[1]);
   return { ok, version: `${major}.${minor}` };
+}
+
+/**
+ * The one-shot notice for a handled conflict. The prose is the server's; the
+ * paths came from the vault, so they travel fenced — a filename can be a
+ * sentence, and a block described to the model as trusted must not carry
+ * one unmarked (#58).
+ */
+export function conflictNotice(notePath: string, copy: string | null): string {
+  const at = fenceInline(notePath);
+  return copy
+    ? `a sync conflict on ${at} was resolved by saving your assistant's version as ${fenceInline(copy)}. Ask the user how they would like the two merged.`
+    : `a sync conflict on ${at} was resolved in favour of the other device's version.`;
 }
 
 export function looksLikeAuthFailure(text: string): boolean {
@@ -334,14 +348,7 @@ class GitBackend implements SyncBackend {
     this.conflicts.push({ at: Date.now(), paths: outcome.paths, copies: outcome.copies });
     // The one-shot notice to connectors. A conflict is found here, on a timer,
     // never inside a tool call, so it rides the next call from each connector.
-    outcome.paths.forEach((p, i) => {
-      const copy = outcome.copies?.[i];
-      postNotice(
-        copy
-          ? `a sync conflict on ${p} was resolved by saving your assistant's version as ${copy}. Ask the user how they would like the two merged.`
-          : `a sync conflict on ${p} was resolved in favour of the other device's version.`,
-      );
-    });
+    outcome.paths.forEach((p, i) => postNotice(conflictNotice(p, outcome.copies?.[i] ?? null)));
     if (this.conflicts.length > MAX_RECENT_CONFLICTS) {
       this.conflicts.splice(0, this.conflicts.length - MAX_RECENT_CONFLICTS);
     }

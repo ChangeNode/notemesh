@@ -116,8 +116,10 @@ describe("alertsFrom", () => {
       originMismatch: { configured: "https://a.example", reachedAt: "b.example" },
       insecureBaseUrl: true,
     });
+    // The reached-at value is the request's own Host header: fenced. The
+    // configured value is ours: not.
     expect(texts(s)).toEqual([
-      expect.stringMatching(/configured as https:\/\/a\.example but reached at b\.example/),
+      expect.stringMatching(/configured as https:\/\/a\.example but reached at %[0-9a-f]{8}%b\.example%[0-9a-f]{8}%;/),
       expect.stringMatching(/BASE_URL is http:\/\//),
     ]);
   });

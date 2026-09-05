@@ -50,6 +50,16 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — a name the server quotes inside a `NoteMesh:` alert or
+  notice now travels between the boundary markers. The 1.1.0 design says an
+  unfenced `NoteMesh:` block is the server speaking, and a model may trust
+  it; the conflict notice then quoted a note's path — a filename, which can be
+  a sentence aimed at the model — and the origin alert quoted the request's
+  own `Host` header, unmarked, inside that trusted prose. The server's words
+  stay outside the fence; every name lifted from the vault or the request
+  sits inside it, and the boundary explanation says so. Reported in an
+  external review (#58).
+
 - **Security** — the Origin check on the MCP endpoint and the dashboard's
   own API is an allowlist now: the configured base URL's origin, scheme and
   port included, and nothing else. It used to accept any Origin whose host

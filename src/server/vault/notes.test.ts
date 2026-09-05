@@ -719,3 +719,25 @@ describe("readAttachment, against a swap after the stat", () => {
     expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
   });
 });
+
+// The write side of the symlink race (#57). statfsSync is the first thing the
+// guarded write does after the path was checked, so a swap staged inside it
+// lands in exactly the window a by-path write would have followed.
+describe("a write, against a symlink swapped in after the path check", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("refuses rather than writing through the link", () => {
+    const secret = path.join(root, "secret.txt");
+    fs.writeFileSync(secret, "SECRET");
+    const abs = path.join(vault, "New.md");
+    const realStatfs = fs.statfsSync;
+    vi.spyOn(fs, "statfsSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (!fs.existsSync(abs)) fs.symlinkSync(secret, abs);
+      return (realStatfs as any)(p, ...rest);
+    }) as typeof fs.statfsSync);
+    expect(() => createNote("New.md", "payload")).toThrow(/Symlinks are not accessible/);
+    // The file outside the vault is untouched, and the link is still a link.
+    expect(fs.readFileSync(secret, "utf8")).toBe("SECRET");
+    expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
+  });
+});

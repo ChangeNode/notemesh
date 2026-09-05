@@ -129,6 +129,14 @@ entry needing your attention cannot get lost among routine ones.
   second block stacked above the broken one. Reported in an external review
   (#49, #52, #53, #54).
 
+- **Security** — a note is written through a handle opened without following
+  symlinks, the way it is read. The path was checked when it was resolved,
+  but sync can put a symlink in its place between that check and the write,
+  and a write by path would have followed it to wherever it pointed. The
+  open refuses instead. Moves and deletes act on a link itself, never its
+  target, so they had no equivalent gap. Completes #57 with the attachment
+  change below.
+
 - `read_attachment` and the signed download link now read an attachment from
   one open file handle, the way `read_note` has since 1.1.0. They used to look
   the name up four times — a symlink check, two content sniffs, and the read —

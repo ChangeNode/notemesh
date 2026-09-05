@@ -140,7 +140,8 @@ describe("headroom", () => {
 
   it("translates a full disk into a message naming the volume", async () => {
     fakeFree(1000);
-    vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+    // The guarded write goes through a descriptor, so the disk says no at writeSync.
+    vi.spyOn(fs, "writeSync").mockImplementation(() => {
       throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
     });
     const { writeVaultFile, isDiskFull } = await import("./disk");

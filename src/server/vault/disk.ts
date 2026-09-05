@@ -186,12 +186,35 @@ export function diskFullMessage(): string {
  * scans the vault sources for a raw writeFileSync.
  */
 export function writeVaultFile(abs: string, content: string): void {
-  assertHeadroom(Buffer.byteLength(content, "utf8"));
+  const bytes = Buffer.from(content, "utf8");
+  assertHeadroom(bytes.length);
+  // Opened without following a symlink at the final component, the way every
+  // read is (#57). The path was checked at resolve time, but sync can swap a
+  // symlink into place between that check and this write, and a by-path
+  // write would then follow it out of the vault — to whatever the link
+  // named. With O_NOFOLLOW the open refuses instead. (rename and unlink, used
+  // by move and delete, act on a link itself rather than its target, so they
+  // have no equivalent gap.)
+  let fd: number;
   try {
-    fs.writeFileSync(abs, content, "utf8");
+    fd = fs.openSync(
+      abs,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW,
+      0o644,
+    );
+  } catch (e) {
+    if ((e as { code?: string })?.code === "ELOOP") throw new VaultPathError("Symlinks are not accessible");
+    if (isDiskFull(e)) throw new VaultPathError(diskFullMessage());
+    throw e;
+  }
+  try {
+    let offset = 0;
+    while (offset < bytes.length) offset += fs.writeSync(fd, bytes, offset, bytes.length - offset);
   } catch (e) {
     if (isDiskFull(e)) throw new VaultPathError(diskFullMessage());
     throw e;
+  } finally {
+    fs.closeSync(fd);
   }
 }
 

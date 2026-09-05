@@ -357,3 +357,21 @@ describe("get_links", () => {
     expect(Object.keys(back.json)).toEqual(["boundary", "boundaryNote", "total", "offset", "count", "hasMore", "items"]);
   });
 });
+
+// NM-SEC-001 at the surface a client reaches: a note that would have run
+// code in the previous parser is text to every tool, and nothing evaluates it
+// on the way through the index or the property tools.
+describe("a note with executable-looking frontmatter", () => {
+  const POC = "---js\n(globalThis.__notemesh_poc_mcp = 1, {})\n---\n# Heading\n\n- [ ] task\n";
+
+  it("is text to read_properties, set_property and the index", async () => {
+    await seed("Poc.md", POC);
+    const props = await call("read_properties", { path: "Poc.md" });
+    expect(props.json.properties).toEqual({});
+    const outline = await call("get_outline", { path: "Poc.md" });
+    expect(outline.json.headings.map((h: { heading: string }) => h.heading).join("\n")).toContain("Heading");
+    const set = await call("set_property", { path: "Poc.md", name: "status", value: "seen" });
+    expect(set.isError).toBe(false);
+    expect((globalThis as Record<string, unknown>).__notemesh_poc_mcp).toBeUndefined();
+  });
+});

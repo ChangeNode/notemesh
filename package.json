@@ -1,7 +1,7 @@
 {
   "name": "notemesh",
   "version": "1.1.0",
-  "description": "Personal Obsidian vault MCP server \u2014 Railway template",
+  "description": "Personal Obsidian vault MCP server — Railway template",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.16.0",
@@ -31,11 +31,11 @@
     "chokidar": "^5.0.0",
     "execa": "^10.0.0",
     "fetch-to-node": "^2.1.0",
-    "gray-matter": "^4.0.3",
     "jose": "^6.2.4",
     "obsidian-headless": "0.0.14",
     "solid-js": "^1.9.7",
     "vinxi": "^0.5.11",
+    "yaml": "2.9.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {

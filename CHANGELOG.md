@@ -50,6 +50,25 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — frontmatter is parsed by a YAML-only parser, behind one
+  helper every caller shares. The previous library autodetected a language
+  from the text after the opening `---` and, for `---js`, ran the block
+  through `eval` inside the server — so a note that arrived through sync, a
+  shared vault or a write-scoped connector could execute code with the vault,
+  the database and the environment in reach. That is closed: a note is
+  frontmatter only when its first line is exactly `---`, and everything else
+  is note text. Three things came with it. Frontmatter is YAML 1.2 core only,
+  so `created: 2026-08-06` is now the string Obsidian means rather than a date
+  shifted to midnight UTC, and the quadratic-time `!!omap` path and the old
+  parser's unbounded result cache are gone with the library. A block that
+  refers to itself, nests too deeply or holds too many values is refused
+  rather than aborting the whole index rebuild, and one note that cannot be
+  indexed no longer stops the rest. And a note whose frontmatter will not
+  parse now gets a clear refusal from `read_properties`, `set_property` and
+  `remove_property`, naming the note, instead of the generic failure or a
+  second block stacked above the broken one. Reported in an external review
+  (#49, #52, #53, #54).
+
 - `read_attachment` and the signed download link now read an attachment from
   one open file handle, the way `read_note` has since 1.1.0. They used to look
   the name up four times — a symlink check, two content sniffs, and the read —

@@ -154,3 +154,36 @@ describe("setProperty", () => {
     expect(() => setProperty("a.md", "__proto__", "x")).toThrow(VaultPathError);
   });
 });
+
+describe("frontmatter the tools must not touch", () => {
+  it("refuses to read or edit properties on a note whose frontmatter will not parse", () => {
+    const before = "---\ntitle: \"unclosed\n---\n\nBody.\n";
+    put("bad.md", before);
+    expect(() => readProperties("bad.md")).toThrow(/not valid YAML/);
+    expect(() => setProperty("bad.md", "status", "draft")).toThrow(/not valid YAML/);
+    expect(() => removeProperty("bad.md", "title")).toThrow(/not valid YAML/);
+    expect(read("bad.md")).toBe(before);
+  });
+
+  it("never evaluates a ---js block, through read or write", () => {
+    put("poc.md", "---js\n(globalThis.__notemesh_poc_props = 1, {})\n---\nBody.\n");
+    expect(readProperties("poc.md")).toEqual({});
+    setProperty("poc.md", "status", "draft");
+    expect((globalThis as Record<string, unknown>).__notemesh_poc_props).toBeUndefined();
+    // The block is text; the new frontmatter sits above it, and reads back alone.
+    expect(readProperties("poc.md")).toEqual({ status: "draft" });
+    expect(read("poc.md")).toContain("\n---js\n");
+  });
+
+  it("restores the exact bytes when a set is removed again", () => {
+    put("a.md", WITH_PROPS);
+    setProperty("a.md", "summary", "word ".repeat(40).trim());
+    removeProperty("a.md", "summary");
+    expect(read("a.md")).toBe(WITH_PROPS);
+  });
+
+  it("keeps a date property as the string it was written as", () => {
+    put("d.md", "---\ncreated: 2026-08-06\n---\n");
+    expect(readProperties("d.md")).toEqual({ created: "2026-08-06" });
+  });
+});

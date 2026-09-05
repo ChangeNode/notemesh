@@ -155,3 +155,39 @@ describe("a rebuild that fails", () => {
     expect(indexerStatus().ready).toBe(true);
   });
 });
+
+describe("a note that cannot be indexed", () => {
+  it("is skipped, and the rest of the vault still indexes", async () => {
+    seed(3);
+    fs.writeFileSync(path.join(vault, "bad.md"), "# Bad\n");
+    const { indexer, notes } = await load();
+    // A failure indexFile does not swallow itself: its own guard covers the
+    // open and the read, so the read of this one note hands back a non-string
+    // and the parse that follows throws. The descriptor is matched at open
+    // time and forgotten once used, since descriptor numbers are reused.
+    let badFd = -1;
+    const realOpen = fs.openSync;
+    const realRead = fs.readFileSync;
+    const openSpy = vi.spyOn(fs, "openSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      const fd = (realOpen as any)(p, ...rest);
+      if (String(p).endsWith("bad.md")) badFd = fd;
+      return fd;
+    }) as typeof fs.openSync);
+    const readSpy = vi.spyOn(fs, "readFileSync").mockImplementation(((p: unknown, ...rest: unknown[]) => {
+      if (p === badFd) {
+        badFd = -1;
+        return null as unknown as string;
+      }
+      return (realRead as any)(p, ...rest);
+    }) as typeof fs.readFileSync);
+    try {
+      await indexer().rebuild();
+    } finally {
+      openSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+    expect(indexer().ready).toBe(true);
+    expect(indexer().lastRebuildError).toBeNull();
+    expect(notes()).toBe(3);
+  });
+});

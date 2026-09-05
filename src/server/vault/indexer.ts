@@ -323,7 +323,14 @@ class VaultIndexer {
 
       const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
       for (let i = 0; i < notes.length; i++) {
-        indexFile(toVaultRelative(notes[i]), notes[i]);
+        // One note that cannot be indexed — vanished between the walk and the
+        // read, or unreadable — must not stop the other two thousand. It is
+        // logged and skipped; the rebuild still finishes and reports ready.
+        try {
+          indexFile(toVaultRelative(notes[i]), notes[i]);
+        } catch (e) {
+          console.error(`[indexer] skipped ${toVaultRelative(notes[i])}:`, e);
+        }
         if (i % 50 === 49) await yieldToLoop();
       }
       for (let i = 0; i < attachments.length; i++) {

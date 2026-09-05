@@ -1,4 +1,4 @@
-import matter from "gray-matter";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { splitLines } from "./text";
 
 /**
@@ -46,29 +46,135 @@ export interface NoteStructure {
 }
 
 /**
- * Frontmatter off the top, plus how many lines it occupied, so a line number
- * counted in the body can be made file-absolute. Bad frontmatter is not an
- * error: the raw content is the body, and gets indexed as such.
+ * Frontmatter, parsed the one way this server parses it.
+ *
+ * Every parse — the indexer, get_outline, the property tools — comes through
+ * here, so its security behaviour cannot drift between callers. Three rules,
+ * each the answer to a way the previous parser went wrong (NM-SEC-001, 004,
+ * 005, 006):
+ *
+ * YAML, and only YAML. The previous library autodetected a language from the
+ * text after the opening `---`, and for `---js` it ran the block through
+ * eval — inside this process, with the vault, the database and the
+ * environment in reach. A note is Obsidian frontmatter only when its first
+ * line is exactly `---`; anything else is note text and is indexed as such.
+ *
+ * YAML 1.2 core schema. No timestamps (so `created: 2026-08-06` stays the
+ * string Obsidian means, rather than a Date shifted to midnight UTC), no
+ * `!!omap` (the quadratic-time path in the old parser), and an alias
+ * expansion cap, so a billion-laughs document is refused rather than parsed.
+ *
+ * Normalised before anyone sees it. Valid YAML can refer to itself, and the
+ * old parser handed the cycle on to JSON.stringify, which threw and aborted
+ * the whole index rebuild at that note. The result is walked with a depth
+ * limit, a node limit, cycle detection and prototype-key removal, and comes
+ * out as a bounded, acyclic, JSON-safe plain object or is refused.
  */
-export function splitFrontmatter(content: string): {
+
+export const MAX_FRONTMATTER_DEPTH = 32;
+export const MAX_FRONTMATTER_NODES = 10_000;
+const MAX_ALIAS_COUNT = 100;
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+export interface SplitFrontmatter {
   data: Record<string, unknown>;
   body: string;
+  /** Lines the frontmatter occupied, so a body line number can be made file-absolute. */
   fmOffset: number;
-} {
-  let data: Record<string, unknown> = {};
-  let body = content;
+  /**
+   * True when the note opens with a frontmatter block that could not be
+   * parsed or normalised. The whole content is then the body — the indexer
+   * wants that — but a property edit must refuse rather than stack a second
+   * block on top of a broken one.
+   */
+  invalid: boolean;
+}
+
+/**
+ * Frontmatter off the top, plus how many lines it occupied. Bad frontmatter is
+ * not an error here: the raw content is the body, and gets indexed as such.
+ */
+export function splitFrontmatter(content: string): SplitFrontmatter {
+  const none: SplitFrontmatter = { data: {}, body: content, fmOffset: 0, invalid: false };
+  // Exactly `---` on the first line. `---js`, `---yaml`, `--- ` are not
+  // frontmatter to Obsidian and are not to us.
+  if (!/^---\r?\n/.test(content)) return none;
+  const openLen = content.indexOf("\n") + 1;
+  const rest = content.slice(openLen);
+  const close = /^---[ \t]*(?:\r?\n|$)/m.exec(rest);
+  if (!close) return none;
+  const yamlText = rest.slice(0, close.index);
+  const bodyStart = openLen + close.index + close[0].length;
+  const body = content.slice(bodyStart);
+  let data: Record<string, unknown>;
   try {
-    const parsed = matter(content);
-    data = parsed.data ?? {};
-    body = parsed.content;
+    // "error": warnings are not printed, errors are thrown. ("silent" would
+    // swallow the errors too and hand back a best-effort value for broken YAML.)
+    data = normalizeFrontmatter(parseYaml(yamlText, { maxAliasCount: MAX_ALIAS_COUNT, logLevel: "error" }));
   } catch {
-    // Unparseable frontmatter — the whole file is the body.
+    return { ...none, invalid: true };
   }
-  const fmOffset =
-    content.length === body.length
-      ? 0
-      : content.slice(0, content.length - body.length).split("\n").length - 1;
-  return { data, body, fmOffset };
+  const fmOffset = content.slice(0, bodyStart).split("\n").length - 1;
+  return { data, body, fmOffset, invalid: false };
+}
+
+/**
+ * A parsed YAML value as a bounded, acyclic, JSON-safe plain object, or a
+ * throw. The mapping's own keys are kept in order; prototype-affecting keys
+ * are dropped; an object reached twice on one path is a cycle and is refused,
+ * while the same object reached on two different paths (a shared anchor) is
+ * simply copied twice.
+ */
+export function normalizeFrontmatter(value: unknown): Record<string, unknown> {
+  if (value === null || value === undefined) return {};
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("frontmatter is not a mapping");
+  const onPath = new Set<object>();
+  let nodes = 0;
+  const walk = (v: unknown, depth: number): unknown => {
+    if (++nodes > MAX_FRONTMATTER_NODES) throw new Error("frontmatter has too many values");
+    if (depth > MAX_FRONTMATTER_DEPTH) throw new Error("frontmatter is nested too deeply");
+    if (v === null || v === undefined) return null;
+    switch (typeof v) {
+      case "string":
+      case "boolean":
+        return v;
+      case "number":
+        return Number.isFinite(v) ? v : null;
+      case "bigint":
+        return String(v);
+      case "object":
+        break;
+      default:
+        throw new Error("frontmatter holds an unsupported value");
+    }
+    const o = v as object;
+    if (onPath.has(o)) throw new Error("frontmatter refers to itself");
+    onPath.add(o);
+    try {
+      if (o instanceof Date) return o.toISOString();
+      if (Array.isArray(o) || o instanceof Set) return [...(o as Iterable<unknown>)].map((x) => walk(x, depth + 1));
+      const entries = o instanceof Map ? [...o.entries()].map(([k, x]) => [String(k), x] as const) : Object.entries(o);
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of entries) {
+        if (FORBIDDEN_KEYS.has(k)) continue;
+        out[k] = walk(x, depth + 1);
+      }
+      return out;
+    } finally {
+      onPath.delete(o);
+    }
+  };
+  return walk(value, 0) as Record<string, unknown>;
+}
+
+/**
+ * A note with this frontmatter above this body, laid out the way Obsidian
+ * writes it: `---`, the mapping, `---`, then the body as given. Long strings
+ * are never folded; Obsidian does not fold them either.
+ */
+export function joinFrontmatter(body: string, data: Record<string, unknown>): string {
+  const normalized = normalizeFrontmatter(data);
+  return `---\n${stringifyYaml(normalized, { lineWidth: 0 })}---\n${body}`;
 }
 
 // The extraction patterns. Unchanged on purpose — see the header comment.

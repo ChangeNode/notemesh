@@ -777,3 +777,50 @@ describe("the setup wizard's notification step", () => {
     expect(res.status).toBe(401);
   });
 });
+
+// DNS rebinding, as a request: the attacker's page makes the browser send its
+// own name as both Host and Origin. The old check compared the two to each
+// other and let it through to authentication; it is refused outright now.
+// Raw http.request, because fetch will not let a test forge Host.
+describe("DNS rebinding is refused before authentication", () => {
+  async function rebound(pathname: string, body: string): Promise<{ status: number; body: string }> {
+    const http = await import("node:http");
+    const url = new URL(server.url);
+    return new Promise((resolve, reject) => {
+      const r = http.request(
+        {
+          host: url.hostname,
+          port: Number(url.port),
+          path: pathname,
+          method: "POST",
+          headers: {
+            Host: "rebind.attacker.test",
+            Origin: "http://rebind.attacker.test",
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+            "Content-Length": Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let data = "";
+          res.on("data", (c) => (data += c));
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, body: data }));
+        },
+      );
+      r.on("error", reject);
+      r.end(body);
+    });
+  }
+
+  it("on the MCP endpoint", async () => {
+    const res = await rebound("/api/mcp", JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }));
+    expect(res.status).toBe(403);
+    expect(res.body).toContain("Origin not allowed");
+  });
+
+  it("on the RPC route", async () => {
+    const res = await rebound("/api/rpc/getClaimState", "{}");
+    expect(res.status).toBe(403);
+    expect(res.body).toContain("Cross-origin");
+  });
+});

@@ -1,3 +1,5 @@
+import { env } from "./env";
+
 /**
  * Is this request allowed to come from the origin it claims?
  *
@@ -24,27 +26,62 @@
  * this product exists to serve, while stopping nothing: the attack being
  * prevented is a web page making requests, and a web page cannot omit it.
  *
- * Compared against the request's own Host as well as the configured base URL,
- * so an instance reached at a domain it was not configured with still works
- * rather than locking the operator out of their own dashboard.
+ * The comparison is against an explicit allowlist built from the configured
+ * base URL — the whole origin, scheme and port included — and nothing else.
+ * It used to accept any Origin whose host matched the request's own Host
+ * header, meant as leniency for a dashboard reached at a domain the server
+ * was not configured with. Under DNS rebinding both headers carry the
+ * attacker's name, so that comparison established nothing (NM-SEC-003, #51).
+ * The leniency was also hollow: Better Auth refuses sign-in from an origin it
+ * was not configured with, so a dashboard at the wrong domain never got past
+ * the login page. The origin-mismatch notice on the dashboard and in the
+ * alert channel is how an operator learns to fix BASE_URL.
+ *
+ * Host is not validated on its own. The rebinding attack needs a browser,
+ * which always sends Origin on the POSTs these endpoints accept, so Origin is
+ * the header that decides; a Host allowlist would refuse platform health
+ * checks and internal routing, which arrive under other names and no Origin.
  */
-export function originAllowed(request: Request): boolean {
+
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+
+/**
+ * The origins a browser may send. The configured base URL's origin, and —
+ * only when that is itself a loopback address, which is local development —
+ * the same port under each loopback name, since a developer reaches the same
+ * server as localhost and 127.0.0.1 interchangeably. A deployment configured
+ * with a real hostname gets exactly that hostname.
+ */
+export function allowedOrigins(baseUrl: string = env.baseUrl): Set<string> {
+  const out = new Set<string>();
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    return out;
+  }
+  out.add(base.origin);
+  const host = base.hostname === "::1" ? "[::1]" : base.hostname;
+  if (LOOPBACK_HOSTS.includes(host)) {
+    const port = base.port ? `:${base.port}` : "";
+    for (const h of LOOPBACK_HOSTS) out.add(`${base.protocol}//${h}${port}`);
+  }
+  return out;
+}
+
+export function originAllowed(request: Request, allowed: Set<string> = allowedOrigins()): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return true;
-
-  let host: string;
+  // "null" is what a browser sends from a sandboxed frame or a file: URL —
+  // an opaque origin, which is not this server's.
+  if (origin === "null") return false;
+  let o: URL;
   try {
-    host = new URL(origin).host;
+    o = new URL(origin);
   } catch {
     return false; // Unparseable Origin: not something to give the benefit of.
   }
-
-  const requestHost = request.headers.get("host");
-  if (requestHost && host === requestHost) return true;
-
-  try {
-    return host === new URL(process.env.BASE_URL ?? "").host;
-  } catch {
-    return false;
-  }
+  if (o.protocol !== "http:" && o.protocol !== "https:") return false;
+  // URL.origin normalises: lowercase host, default ports dropped.
+  return allowed.has(o.origin);
 }

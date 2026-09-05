@@ -50,6 +50,20 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — the Origin check on the MCP endpoint and the dashboard's
+  own API is an allowlist now: the configured base URL's origin, scheme and
+  port included, and nothing else. It used to accept any Origin whose host
+  matched the request's own Host header — meant as leniency for a dashboard
+  reached at a domain the server was not configured with — and under DNS
+  rebinding both headers carry the attacker's name, so the comparison proved
+  nothing. Authentication still stood behind it, but the check the MCP
+  specification requires was not doing its job. The leniency was hollow in
+  any case: sign-in from an unconfigured origin was already refused, so
+  such a dashboard never got past the login page. Connectors are unaffected;
+  they send no Origin. On Railway the allowed origin now comes from the
+  service's public domain, as the rest of the server already did; the old
+  check read `BASE_URL` alone. Reported in an external review (#51).
+
 - **Security** — only one admin account can be created, and the database
   itself enforces it. The claim check counted users and then Better Auth
   inserted one, with nothing atomic between, so several claims arriving in

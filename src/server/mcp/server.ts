@@ -716,11 +716,17 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
         direction: z
           .enum(["backlinks", "outgoing"])
           .describe("backlinks: notes that link to this one; outgoing: notes this one links to"),
+        ...PAGE_ARGS,
       },
     },
-    safe(({ path, direction }: { path: string; direction: string }) =>
-      json(direction === "backlinks" ? backlinks(path) : outgoingLinks(path)),
-    ),
+    // The list envelope like every other list, so a hub note with hundreds of
+    // backlinks pages rather than arriving whole. Targets and paths are
+    // identifiers, so nothing here is fenced; the envelope still labels them.
+    safe(({ path, direction, limit, offset }: { path: string; direction: string; limit?: number; offset?: number }) => {
+      const items: ({ path: string; target: string } | { target: string; resolved: string | null })[] =
+        direction === "backlinks" ? backlinks(path) : outgoingLinks(path);
+      return page(items, limit, offset);
+    }),
   );
 
   server.registerTool(

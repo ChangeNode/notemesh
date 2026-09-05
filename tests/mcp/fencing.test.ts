@@ -336,3 +336,24 @@ describe("random_note", () => {
     expect(read.json.content).toContain(read.json.boundary);
   });
 });
+
+describe("get_links", () => {
+  it("returns the list envelope in both directions, and pages", async () => {
+    await seed("Hostile.md", HOSTILE);
+    await seed("Hub.md", "Links: [[Hostile]] and [[Missing]] and [[Another]].\n");
+    const out = await call("get_links", { path: "Hub.md", direction: "outgoing" });
+    expect(Object.keys(out.json)).toEqual(["boundary", "boundaryNote", "total", "offset", "count", "hasMore", "items"]);
+    expect(out.json.total).toBe(3);
+    expect(out.json.items.map((i: { target: string }) => i.target)).toEqual(["Another", "Hostile", "Missing"]);
+
+    const firstPage = await call("get_links", { path: "Hub.md", direction: "outgoing", limit: 2 });
+    expect(firstPage.json.count).toBe(2);
+    expect(firstPage.json.hasMore).toBe(true);
+    const lastPage = await call("get_links", { path: "Hub.md", direction: "outgoing", limit: 2, offset: 2 });
+    expect(lastPage.json.items.map((i: { target: string }) => i.target)).toEqual(["Missing"]);
+    expect(lastPage.json.hasMore).toBe(false);
+
+    const back = await call("get_links", { path: "Hostile.md", direction: "backlinks" });
+    expect(Object.keys(back.json)).toEqual(["boundary", "boundaryNote", "total", "offset", "count", "hasMore", "items"]);
+  });
+});

@@ -95,6 +95,12 @@ nothing was renamed or removed.
   If you had picked one of the removed options, the stored setting is ignored;
   there is nothing to do.
 
+- **Breaking** — `get_links` returns the same envelope as every list tool,
+  `{ total, offset, count, hasMore, items }`, with `limit` and `offset`
+  arguments, where it returned a bare array. It was the one list without the
+  envelope, so a hub note with hundreds of backlinks arrived whole; it pages
+  now, and carries the boundary explanation like the rest.
+
 - **Breaking** — `random_note` returns only the note's path, `{ path }`, for
   you to read with `read_note`. It used to return a read window of its own —
   the one note reader that skipped the boundary marker, so a random pick

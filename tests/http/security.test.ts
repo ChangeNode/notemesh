@@ -839,3 +839,41 @@ describe("git setup refuses credentials in the remote URL", () => {
     expect(result.message).toMatch(/Leave credentials out of the URL/);
   });
 });
+
+// Last in this file on purpose: it drives the shared local bucket past its
+// limit, and everything after it would be throttled.
+describe("a blocked source does not cost authentication work", () => {
+  const post = (headers: Record<string, string>) =>
+    fetch(`${server.url}/api/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...headers },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+  const snapshot = async () =>
+    ((await rpc(server, "getSecurityPage", [], cookie)).body.result as {
+      throttle: { authAttempts: number; shortCircuited: number };
+    }).throttle;
+
+  it("refuses a repeated bad key before judging it, judges an unseen one, and serves a valid one", async () => {
+    const bad = { Authorization: "Bearer nm_definitely_not_a_key" };
+    let status = 0;
+    for (let i = 0; i < 25; i++) status = (await post(bad)).status;
+    expect(status).toBe(429);
+
+    // The same bad key again: refused without reaching authentication.
+    const s1 = await snapshot();
+    expect((await post(bad)).status).toBe(429);
+    const s2 = await snapshot();
+    expect(s2.shortCircuited).toBe(s1.shortCircuited + 1);
+    expect(s2.authAttempts).toBe(s1.authAttempts);
+
+    // A credential never seen before is judged — and, being bad, refused.
+    expect((await post({ Authorization: "Bearer nm_another_bad_key" })).status).toBe(429);
+    const s3 = await snapshot();
+    expect(s3.authAttempts).toBe(s2.authAttempts + 1);
+    expect(s3.shortCircuited).toBe(s2.shortCircuited);
+
+    // A valid key from the same blocked source is served, not turned away.
+    expect((await post({ Authorization: `Bearer ${apiKey}` })).status).toBe(200);
+  }, 30_000);
+});

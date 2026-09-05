@@ -5,8 +5,38 @@
 // hundreds of legitimate tool calls a minute is unaffected. What this stops is
 // an unauthenticated stranger probing the endpoint.
 
-const WINDOW_MS = 10 * 60 * 1000;
+import crypto from "node:crypto";
+
+export const AUTH_WINDOW_MS = 10 * 60 * 1000;
+const WINDOW_MS = AUTH_WINDOW_MS;
 const MAX_FAILURES = 20;
+
+// Hard ceiling on what any of the maps below track. Expired entries go first;
+// if a map is still full — a burst of live, distinct sources — the oldest
+// goes, since a Map iterates in insertion order. A source evicted while still
+// failing gets a fresh bucket and the same limit, so the ceiling costs
+// accuracy only under a flood, where accuracy was never the point; what it
+// buys is that memory cannot grow with the number of addresses an attacker
+// can appear from (#56).
+export const MAX_TRACKED = 10_000;
+
+function insertBounded<T>(
+  map: Map<string, T>,
+  key: string,
+  value: T,
+  expiresAt: (v: T) => number,
+  now: number,
+): void {
+  if (map.size >= MAX_TRACKED && !map.has(key)) {
+    for (const [k, v] of map) if (now >= expiresAt(v)) map.delete(k);
+    while (map.size >= MAX_TRACKED) {
+      const oldest = map.keys().next().value;
+      if (oldest === undefined) break;
+      map.delete(oldest);
+    }
+  }
+  map.set(key, value);
+}
 
 interface Bucket {
   failures: number;
@@ -65,14 +95,85 @@ export function noteAuthFailure(ip: string): void {
   const map = buckets();
   const b = map.get(ip);
   if (!b || now >= b.resetAt) {
-    map.set(ip, { failures: 1, resetAt: now + WINDOW_MS });
+    insertBounded(map, ip, { failures: 1, resetAt: now + WINDOW_MS }, (v) => v.resetAt, now);
     return;
   }
   b.failures += 1;
-  // Opportunistic cleanup so the map can't grow without bound.
-  if (map.size > 5000) {
-    for (const [k, v] of map) if (now >= v.resetAt) map.delete(k);
+}
+
+// ---------------------------------------------------------------------------
+// Credentials seen failing, by digest.
+//
+// Blocking a source used to change only the status code: every request from
+// it was still authenticated in full, so the guessing went on at the same
+// cost and only the answer differed. Now a blocked source is refused before
+// any authentication work — but only for a credential this server has
+// already judged and found wanting, or for a request carrying none. A
+// credential it has never seen is always judged, so a valid client behind a
+// blocked address (a shared NAT, or every request in the local test suite)
+// is never turned away unverified. That is the tradeoff, chosen and named: a
+// guesser who never repeats a credential still costs one verification per
+// guess, and is answered 429 all the same. The raw credential is never stored.
+
+const failedKey = "__mcpFailedCredentials";
+function failedCredentials(): Map<string, number> {
+  const g = globalThis as any;
+  if (!g[failedKey]) g[failedKey] = new Map<string, number>();
+  return g[failedKey];
+}
+
+function digest(credential: string): string {
+  return crypto.createHash("sha256").update(credential).digest("hex");
+}
+
+export function noteFailedCredential(credential: string, now = Date.now()): void {
+  insertBounded(failedCredentials(), digest(credential), now + WINDOW_MS, (v) => v, now);
+}
+
+export function credentialRecentlyFailed(credential: string, now = Date.now()): boolean {
+  const map = failedCredentials();
+  const key = digest(credential);
+  const until = map.get(key);
+  if (until === undefined) return false;
+  if (now >= until) {
+    map.delete(key);
+    return false;
   }
+  return true;
+}
+
+/**
+ * Should this request be refused before authentication? Only when the source
+ * is past its limit and the credential is one already seen failing, or there
+ * is no credential to judge.
+ */
+export function shortCircuit(
+  ip: string,
+  credential: string | null,
+  now = Date.now(),
+): { blocked: boolean; retryAfterSeconds: number } {
+  const b = authFailureBlock(ip);
+  if (!b.blocked) return b;
+  if (credential !== null && !credentialRecentlyFailed(credential, now)) {
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+  return b;
+}
+
+// Requests that reached authentication, and requests refused before it. The
+// ratio is what says whether the throttle bounds work rather than only
+// changing the status code; the Security tab shows both.
+const statsKey = "__mcpAuthStats";
+function stats(): { attempts: number; shortCircuited: number } {
+  const g = globalThis as any;
+  if (!g[statsKey]) g[statsKey] = { attempts: 0, shortCircuited: 0 };
+  return g[statsKey];
+}
+export function recordAuthAttempt(): void {
+  stats().attempts += 1;
+}
+export function recordShortCircuit(): void {
+  stats().shortCircuited += 1;
 }
 
 // Clearing on success keeps an operator who fat-fingered a key from staying
@@ -90,6 +191,12 @@ export function authFailureSnapshot(): {
   recentFailures: number;
   windowMinutes: number;
   maxFailures: number;
+  /** Requests that reached authentication since boot. */
+  authAttempts: number;
+  /** Requests refused before authentication since boot. */
+  shortCircuited: number;
+  trackedCredentials: number;
+  maxTracked: number;
 } {
   const now = Date.now();
   let trackedSources = 0;
@@ -101,12 +208,18 @@ export function authFailureSnapshot(): {
     recentFailures += b.failures;
     if (b.failures >= MAX_FAILURES) blockedSources += 1;
   }
+  let trackedCredentials = 0;
+  for (const until of failedCredentials().values()) if (now < until) trackedCredentials += 1;
   return {
     trackedSources,
     blockedSources,
     recentFailures,
     windowMinutes: WINDOW_MS / 60_000,
     maxFailures: MAX_FAILURES,
+    authAttempts: stats().attempts,
+    shortCircuited: stats().shortCircuited,
+    trackedCredentials,
+    maxTracked: MAX_TRACKED,
   };
 }
 
@@ -155,7 +268,7 @@ export function noteAnonRequest(ip: string): void {
   const map = anonBuckets();
   const b = map.get(ip);
   if (!b || now >= b.resetAt) {
-    map.set(ip, { failures: 1, resetAt: now + ANON_WINDOW_MS });
+    insertBounded(map, ip, { failures: 1, resetAt: now + ANON_WINDOW_MS }, (v) => v.resetAt, now);
     return;
   }
   b.failures += 1;

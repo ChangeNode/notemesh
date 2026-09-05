@@ -50,6 +50,20 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — the throttle on failed MCP authentication now bounds work
+  and memory, not only the status code. A source past its limit used to have
+  every further request authenticated in full — the guessing went on at the
+  same cost and only the answer changed to 429. It is now refused before any
+  authentication work when it presents a credential already seen failing
+  (remembered by digest, never raw) or none at all; a credential the server
+  has never judged is still judged, so a valid client behind a blocked
+  address — a shared NAT — is never turned away unverified. The maps behind
+  the throttle have a hard ceiling, evicting expired entries first and then
+  the oldest, so memory cannot grow with the number of addresses an attacker
+  can appear from. The Security tab shows requests that reached
+  authentication beside those refused before it. Reported in an external
+  review (#56).
+
 - **Security** — the git setup step refuses a remote URL with credentials in
   it (`https://user:token@host/…`) and says where they go instead: the
   username and token fields, where they are stored encrypted and handed to

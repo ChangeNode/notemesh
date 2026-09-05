@@ -6,7 +6,16 @@ import { runAuthMigrations } from "~/server/auth";
 import { env } from "~/server/env";
 import { originAllowed } from "~/server/origin";
 import { handleMcpWithOAuth } from "~/server/mcp/oauth";
-import { clientIp, authFailureBlock, noteAuthFailure, clearAuthFailures } from "~/server/mcp/ratelimit";
+import {
+  clientIp,
+  authFailureBlock,
+  noteAuthFailure,
+  clearAuthFailures,
+  shortCircuit,
+  noteFailedCredential,
+  recordAuthAttempt,
+  recordShortCircuit,
+} from "~/server/mcp/ratelimit";
 
 function tooManyRequests(retryAfterSeconds: number): Response {
   return new Response(
@@ -106,14 +115,23 @@ export async function POST(event: APIEvent) {
     );
   }
 
-  // Throttling applies ONLY to requests that fail to authenticate. We
-  // deliberately authenticate first and never gate on the bucket beforehand: a
-  // valid credential must always be served, even while an anonymous prober is
-  // being throttled from the same apparent address (they share a bucket
-  // whenever no per-client IP is resolvable).
+  // Throttling applies ONLY to requests that fail to authenticate. A valid
+  // credential must always be served, even while an anonymous prober is being
+  // throttled from the same apparent address (they share a bucket whenever no
+  // per-client IP is resolvable). So a blocked source is refused before any
+  // authentication work only for a credential already seen failing, or none
+  // at all; one this server has not judged yet is judged. See shortCircuit.
   const ip = clientIp(event.request);
+  const credential = bearerToken(event.request) ?? event.request.headers.get("x-api-key");
+  const cut = shortCircuit(ip, credential);
+  if (cut.blocked) {
+    recordShortCircuit();
+    return tooManyRequests(cut.retryAfterSeconds);
+  }
+  recordAuthAttempt();
   const authFailed = (): Response => {
     noteAuthFailure(ip);
+    if (credential) noteFailedCredential(credential);
     const b = authFailureBlock(ip);
     return b.blocked ? tooManyRequests(b.retryAfterSeconds) : unauthorized();
   };

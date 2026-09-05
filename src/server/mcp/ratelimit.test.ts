@@ -5,6 +5,14 @@ import {
   clearAuthFailures,
   clientIp,
   noteAuthFailure,
+  noteAnonRequest,
+  noteFailedCredential,
+  credentialRecentlyFailed,
+  shortCircuit,
+  recordAuthAttempt,
+  recordShortCircuit,
+  AUTH_WINDOW_MS,
+  MAX_TRACKED,
 } from "./ratelimit";
 
 // The throttle exists to damp anonymous probing of /api/mcp without ever
@@ -15,7 +23,9 @@ import {
 const MAX = authFailureSnapshot().maxFailures;
 
 function reset() {
-  delete (globalThis as any).__mcpAuthFailures;
+  for (const k of ["__mcpAuthFailures", "__rpcAnonRequests", "__mcpFailedCredentials", "__mcpAuthStats"]) {
+    delete (globalThis as any)[k];
+  }
 }
 
 beforeEach(reset);
@@ -142,5 +152,82 @@ describe("authFailureSnapshot", () => {
     authFailureSnapshot();
     authFailureSnapshot();
     expect(authFailureSnapshot().recentFailures).toBe(1);
+  });
+});
+
+// The maps have a ceiling, and a blocked source is refused before any
+// authentication work — but only for a credential already seen failing, or
+// none. Both halves of that, since the second is what keeps a valid client
+// behind a blocked address from being turned away unverified.
+describe("the maps are bounded", () => {
+  const sources = () => (globalThis as any).__mcpAuthFailures as Map<string, unknown>;
+
+  it("evicts the oldest live source at the ceiling, never growing past it", () => {
+    for (let i = 0; i < MAX_TRACKED; i++) noteAuthFailure(`ip-${i}`);
+    expect(sources().size).toBe(MAX_TRACKED);
+    noteAuthFailure("ip-new");
+    expect(sources().size).toBe(MAX_TRACKED);
+    expect(sources().has("ip-0")).toBe(false);
+    expect(sources().has("ip-new")).toBe(true);
+    expect(authFailureSnapshot().maxTracked).toBe(MAX_TRACKED);
+  });
+
+  it("purges expired sources before evicting live ones", () => {
+    noteAuthFailure("stale");
+    (sources().get("stale") as { resetAt: number }).resetAt = Date.now() - 1;
+    for (let i = 0; i < MAX_TRACKED - 1; i++) noteAuthFailure(`ip-${i}`);
+    noteAuthFailure("ip-new");
+    expect(sources().has("stale")).toBe(false);
+    expect(sources().has("ip-0")).toBe(true);
+    expect(sources().size).toBe(MAX_TRACKED);
+  });
+
+  it("bounds anonymous request tracking the same way", () => {
+    for (let i = 0; i <= MAX_TRACKED; i++) noteAnonRequest(`ip-${i}`);
+    const anon = (globalThis as any).__rpcAnonRequests as Map<string, unknown>;
+    expect(anon.size).toBe(MAX_TRACKED);
+    expect(anon.has("ip-0")).toBe(false);
+  });
+});
+
+describe("refusing before authentication", () => {
+  it("short-circuits a blocked source only for a known-bad credential, or none", () => {
+    const ip = "1.2.3.4";
+    expect(shortCircuit(ip, "bad").blocked).toBe(false);
+    for (let i = 0; i < MAX; i++) noteAuthFailure(ip);
+    expect(authFailureBlock(ip).blocked).toBe(true);
+    // Blocked, but this credential has never been judged: it gets judged.
+    expect(shortCircuit(ip, "bad").blocked).toBe(false);
+    noteFailedCredential("bad");
+    expect(shortCircuit(ip, "bad").blocked).toBe(true);
+    expect(shortCircuit(ip, "bad").retryAfterSeconds).toBeGreaterThan(0);
+    expect(shortCircuit(ip, "never-seen").blocked).toBe(false);
+    expect(shortCircuit(ip, null).blocked).toBe(true);
+    // Another source is not blocked, whatever it presents.
+    expect(shortCircuit("5.6.7.8", "bad").blocked).toBe(false);
+  });
+
+  it("forgets a failed credential after the window, and never stores it raw", () => {
+    const t0 = 1_800_000_000_000;
+    noteFailedCredential("sk-live-secret-value", t0);
+    expect(credentialRecentlyFailed("sk-live-secret-value", t0 + 1000)).toBe(true);
+    expect(credentialRecentlyFailed("sk-live-other", t0 + 1000)).toBe(false);
+    const keys = [...((globalThis as any).__mcpFailedCredentials as Map<string, number>).keys()];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(credentialRecentlyFailed("sk-live-secret-value", t0 + AUTH_WINDOW_MS + 1)).toBe(false);
+  });
+
+  it("bounds the credential map too", () => {
+    for (let i = 0; i <= MAX_TRACKED; i++) noteFailedCredential(`cred-${i}`);
+    expect(authFailureSnapshot().trackedCredentials).toBe(MAX_TRACKED);
+    expect(credentialRecentlyFailed("cred-0")).toBe(false);
+  });
+
+  it("counts attempts and short-circuits for the Security tab", () => {
+    recordAuthAttempt();
+    recordAuthAttempt();
+    recordShortCircuit();
+    expect(authFailureSnapshot()).toMatchObject({ authAttempts: 2, shortCircuited: 1 });
   });
 });

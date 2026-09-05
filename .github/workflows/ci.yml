@@ -107,7 +107,9 @@ jobs:
       - name: Prepare a root-owned volume, as an older image would have left it
         run: |
           docker volume create nmdata >/dev/null
-          docker run --rm -v nmdata:/data notemesh:ci sh -c 'mkdir -p /data/vault && echo "# From before" > /data/vault/Before.md && chown -R 0:0 /data && ls -ln /data'
+          # --entrypoint sh: the image's own entrypoint would take ownership
+          # for node before this shell ran, and the fixture would not be root's.
+          docker run --rm --entrypoint sh -v nmdata:/data notemesh:ci -c 'mkdir -p /data/vault && echo "# From before" > /data/vault/Before.md && chown -R 0:0 /data && ls -ln /data /data/vault'
 
       - name: Start a container
         run: |

@@ -99,13 +99,21 @@ jobs:
       - name: Build the image
         run: docker build -t notemesh:ci .
 
-      # DATA_DIR=/tmp rather than the default /data: there is no volume here and
-      # /tmp is guaranteed writable. ENCRYPTION_KEY is the only required variable.
+      # A named volume, root-owned and already holding a vault written by root:
+      # what a deployment upgraded from an image that ran as root looks like.
+      # The entrypoint has to make it the node user's before the server can
+      # boot, and the file has to survive readable. ENCRYPTION_KEY is the only
+      # required variable.
+      - name: Prepare a root-owned volume, as an older image would have left it
+        run: |
+          docker volume create nmdata >/dev/null
+          docker run --rm -v nmdata:/data notemesh:ci sh -c 'mkdir -p /data/vault && echo "# From before" > /data/vault/Before.md && chown -R 0:0 /data && ls -ln /data'
+
       - name: Start a container
         run: |
           docker run -d --name nm \
             -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
-            -e DATA_DIR=/tmp \
+            -v nmdata:/data \
             notemesh:ci
 
       - name: It boots and answers /api/health
@@ -129,6 +137,15 @@ jobs:
           echo "children of PID 1: $children"
           echo "$children" | grep -qx node
 
+      # The server process is node's, not root's; the volume became node's and
+      # its earlier file is still readable; /app is not writable by node.
+      - name: node runs unprivileged, owns its data, and cannot write /app
+        run: |
+          uid=$(docker exec nm sh -c 'for s in /proc/[0-9]*/status; do grep -q "^Name:[[:space:]]*node$" "$s" && sed -n "s/^Uid:[[:space:]]*\([0-9]*\).*/\1/p" "$s" && break; done')
+          echo "node uid: $uid"
+          test "$uid" = "$(docker exec nm id -u node)"
+          docker exec nm sh -c 'setpriv --reuid=node --regid=node --init-groups sh -c "cat /data/vault/Before.md && touch /data/vault/After.md && test ! -w /app/.output"'
+
       # Spawn a shell that backgrounds a sleep and exits, orphaning the sleep
       # onto PID 1. Once the sleep ends, an init reaps it; a bare node would
       # leave it as a zombie. This is the failure the ENTRYPOINT exists to stop.
@@ -145,4 +162,4 @@ jobs:
 
       - name: Stop the container
         if: always()
-        run: docker rm -f nm >/dev/null 2>&1 || true
+        run: docker rm -f nm >/dev/null 2>&1 || true; docker volume rm nmdata >/dev/null 2>&1 || true

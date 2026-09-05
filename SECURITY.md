@@ -94,8 +94,21 @@ Stated so you don't spend time on them:
   unbound resource indicators). No stable release fixes it yet. Impact here is
   limited by the deployment shape — one user, one resource — and it will be
   picked up when 1.7.0 ships stable.
-- **The container runs as root.** Hardening this is tracked; it is a
-  defence-in-depth gap rather than a live vulnerability.
+
+## Running as non-root
+
+Since 1.2.0 the server, the Obsidian sync daemon and every git command run as
+the image's unprivileged `node` user. The container starts as root under
+`tini` only long enough for `docker-entrypoint.sh` to make the data directory
+writable by that user — a Railway volume mounted for the first time, or one
+written by an earlier image that ran as root, is owned by root — and then
+drops privileges for good. Ownership is changed only when the check fails, so
+a healthy volume costs one stat per boot rather than a walk of the vault.
+
+`/app` stays owned by root and is not writable by the server. Only the data
+directory is. CI boots the image against a root-owned volume already holding
+a vault and asserts all three: the process is `node`'s, the earlier file is
+readable and the directory writable, and `/app` is not.
 
 ## More than one admin account
 

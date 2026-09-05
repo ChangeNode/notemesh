@@ -50,6 +50,27 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — the container no longer runs as root. The server, the
+  Obsidian sync daemon and every git command run as the image's unprivileged
+  `node` user; root is kept only for the moment at start that makes the data
+  volume writable by that user, which a volume mounted for the first time, or
+  one written by an earlier image, is not. Nothing to do on redeploy: the
+  entrypoint takes ownership of an existing volume once, and CI boots the
+  image against exactly that case. `/app` is read-only to the server from now
+  on. Reported in an external review (#61).
+
+- **Security** — every page and API response now carries browser security
+  headers: a content security policy that forbids framing (so the dashboard
+  and the OAuth consent page cannot be clickjacked), plugins, `<base>`
+  redirection and cross-origin form submission; `nosniff`; a no-referrer
+  policy; and a permissions policy denying the hardware the admin UI never
+  uses. The signed attachment link keeps its own stricter policy. Strict
+  transport security is sent only by an HTTPS deployment, and only on a
+  request that actually arrived over HTTPS, so a plain-HTTP instance never
+  locks a browser out of itself. Inline scripts stay allowed: the framework
+  hydrates with them, and a policy that pretended otherwise would block
+  nothing. Reported in an external review (#60).
+
 - **Security** — the throttle on failed MCP authentication now bounds work
   and memory, not only the status code. A source past its limit used to have
   every further request authenticated in full — the guessing went on at the

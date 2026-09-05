@@ -24,9 +24,17 @@ RUN apt-get update \
     && git lfs install --system
 RUN npm install -g obsidian-headless@0.0.14
 COPY --from=build /app/.output ./.output
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+# The server runs as the image's unprivileged `node` user (see the
+# entrypoint), so a compromise of the process — the class of thing the
+# frontmatter parser fix in 1.2.0 closed — does not hand out root in the
+# container. /app stays owned by root and read-only to node; only DATA_DIR
+# is writable. HOME is node's own, not root's: git reads ~/.gitconfig and
+# would refuse to run against a home it cannot open.
 ENV NODE_ENV=production \
     PORT=3000 \
-    DATA_DIR=/data
+    DATA_DIR=/data \
+    HOME=/home/node
 EXPOSE 3000
 # tini as PID 1, node as its child. PID 1 is expected to reap orphaned
 # processes; node only ever waits on its own direct children. This server
@@ -37,5 +45,7 @@ EXPOSE 3000
 # timeout, accumulating for the life of the container until PID exhaustion
 # stopped spawn() and sync with it. Docker's --init does the same thing but is
 # a runtime flag Railway does not expose, so it is baked in.
-ENTRYPOINT ["tini", "--"]
+# The entrypoint runs as root under tini only long enough to make DATA_DIR
+# writable by node, then drops privileges for the command.
+ENTRYPOINT ["tini", "--", "/app/docker-entrypoint.sh"]
 CMD ["node", ".output/server/index.mjs"]

@@ -2,6 +2,7 @@ import { getRequestEvent } from "solid-js/web";
 import { deleteSetting, getSetting, setSetting } from "./db";
 import { env, detectOriginMismatch, type OriginMismatch } from "./env";
 import { runAuthMigrations } from "./auth";
+import { validateRemoteUrl } from "./sync/remote";
 import { isSetupComplete, claimWindowRemainingMs, CLAIM_WINDOW_MINUTES } from "./claim";
 import {
   obLogin,
@@ -135,22 +136,14 @@ export async function setupGitRepo(
 ): Promise<GitSetupResult> {
   "use server";
   await requireAdmin();
-  const url = remote.trim();
   const ref = branch.trim() || "main";
-  // HTTPS only: the token travels with every fetch and push, so a plaintext
-  // remote would put it on the wire. OB_ALLOW_LOCAL_GIT exists so the project's
-  // own tests can point at a bare repo on disk; it is not documented for
-  // deployments and does nothing unless explicitly set.
-  const allowLocal = process.env.OB_ALLOW_LOCAL_GIT === "1";
-  const acceptable = allowLocal
-    ? /^(https:\/\/|file:\/\/|\/)[^\s]+$/i.test(url)
-    : /^https:\/\/[^\s]+$/i.test(url);
-  if (!acceptable) {
-    return {
-      ok: false,
-      message: "Use an HTTPS clone URL (https://…). SSH remotes aren't supported yet.",
-    };
-  }
+  // HTTPS only, and never with credentials in it — see sync/remote.ts.
+  // OB_ALLOW_LOCAL_GIT exists so the project's own tests can point at a bare
+  // repo on disk; it is not documented for deployments and does nothing unless
+  // explicitly set.
+  const checked = validateRemoteUrl(remote, process.env.OB_ALLOW_LOCAL_GIT === "1");
+  if (!checked.ok) return { ok: false, message: checked.message };
+  const url = checked.url;
   if (!/^[\w.\-/]+$/.test(ref)) {
     return { ok: false, message: "Branch names are limited to letters, numbers, . - _ and /." };
   }

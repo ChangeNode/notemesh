@@ -1,3 +1,4 @@
+import { redactRemote, remoteHasCredentials } from "./remote";
 import { fenceInline } from "../mcp/boundary";
 import { postNotice } from "../notices";
 import fs from "node:fs";
@@ -138,7 +139,17 @@ class GitBackend implements SyncBackend {
     }
     this.state = "running";
     this.startedAt = Date.now();
-    this.log(`[git] watching ${cfg.remote} (${cfg.branch})`);
+    this.log(`[git] watching ${redactRemote(cfg.remote)} (${cfg.branch})`);
+    if (remoteHasCredentials(cfg.remote)) {
+      // Stored under a version that accepted it. Git still uses it, so sync
+      // works; but it sits in plaintext settings, so say so where the operator
+      // is looking, and every time, until it is moved.
+      this.log(
+        "[git] the remote URL carries credentials. Re-run the git step in Setup with the URL alone " +
+          "and the token in its own field, where it is stored encrypted.",
+        "warn",
+      );
+    }
     // Pull promptly on boot so the model isn't reading a stale vault, then on
     // the configured interval.
     void this.cycle("startup");

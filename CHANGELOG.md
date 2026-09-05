@@ -50,6 +50,16 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — the git setup step refuses a remote URL with credentials in
+  it (`https://user:token@host/…`) and says where they go instead: the
+  username and token fields, where they are stored encrypted and handed to
+  git for the one command that needs them. A URL of that form would have put
+  the token in plaintext settings, in the repository's config, in the log
+  line naming the remote and on the Status tab. A remote stored that way
+  under an earlier version still works; it is shown with the credentials
+  blanked, and the log says on every start to move them. Reported in an
+  external review (#59).
+
 - **Security** — a name the server quotes inside a `NoteMesh:` alert or
   notice now travels between the boundary markers. The 1.1.0 design says an
   unfenced `NoteMesh:` block is the server speaking, and a model may trust

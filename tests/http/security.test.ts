@@ -824,3 +824,18 @@ describe("DNS rebinding is refused before authentication", () => {
     expect(res.body).toContain("Cross-origin");
   });
 });
+
+describe("git setup refuses credentials in the remote URL", () => {
+  it("before probing or storing anything", async () => {
+    const res = await rpc(
+      server,
+      "setupGitRepo",
+      ["https://me:ghp_supersecret@github.com/me/vault.git", "main", "me", "ghp_supersecret"],
+      cookie,
+    );
+    expect(res.status).toBe(200);
+    const result = res.body.result as { ok: boolean; message?: string };
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/Leave credentials out of the URL/);
+  });
+});

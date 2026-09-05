@@ -11,6 +11,7 @@ import { MAX_LOG_LINES } from "~/server/sync";
 import { syncBackend, syncKind } from "./sync";
 import { vaultInfo } from "./vault/queries";
 import { diskStatus } from "./vault/disk";
+import { redactRemote } from "./sync/remote";
 import { configuredTimeZone, isValidTimeZone, resolveDailyConfig } from "./vault/daily";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
@@ -164,7 +165,7 @@ export async function getSettingsPage() {
     syncLogs: syncLogFiles(),
     logTailLines: MAX_LOG_LINES,
     backend: syncKind(),
-    gitRemote: getSetting("git_remote") ?? "",
+    gitRemote: redactRemote(getSetting("git_remote") ?? ""),
     gitBranch: getSetting("git_branch") ?? "main",
     gitDebounceSeconds: Number(getSetting("git_debounce_seconds")) || 5,
     gitPullSeconds: Number(getSetting("git_pull_seconds")) || 30,

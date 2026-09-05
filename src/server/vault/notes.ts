@@ -6,9 +6,10 @@ import {
   resolveFolderPath,
   toVaultRelative,
   readVaultFile,
-  isBinaryFile,
+  withVaultFile,
+  hasNul,
+  isLfsPointerHead,
   formatBytes,
-  isLfsPointer,
   lfsPointerError,
   VaultPathError,
   MAX_INDEX_BYTES,
@@ -151,8 +152,6 @@ function resolveByFilename(requested: string): string {
 }
 
 export interface AttachmentMeta {
-  /** Absolute path, already through every vault guard. */
-  abs: string;
   path: string;
   mimeType: string;
   bytes: number;
@@ -162,40 +161,53 @@ export interface AttachmentMeta {
 }
 
 /**
- * Locate an attachment and describe it, without reading it.
+ * Resolve an attachment and describe it from one open descriptor.
  *
- * Split out from readAttachment so an oversized file can be *offered* — as a
- * signed URL — rather than refused. Every guard that mattered still runs here:
- * this is the only place the path is resolved, and the signed-URL route calls
- * it too rather than trusting a path that arrived with a valid signature.
+ * This used to lstat by path, sniff by path twice, and then let the caller
+ * read the bytes by path: four resolutions of one name, and a symlink swapped
+ * in by sync between any two was followed by the next — the shape #41 closed
+ * for notes. Now there is one open, without following, and the stat, the
+ * sniffs and (for callers that want them) the bytes all come from it. The
+ * `read` handed to `fn` is valid only inside it.
  */
-export function attachmentMeta(notePath: string): AttachmentMeta {
+function withAttachment<T>(
+  notePath: string,
+  fn: (meta: AttachmentMeta, read: () => Buffer<ArrayBuffer>) => T,
+): T {
   let abs = resolveNotePath(notePath, { allowMissingExt: true });
   if (!fs.existsSync(abs)) abs = resolveByFilename(notePath);
-  const st = fs.lstatSync(abs);
-  if (st.isSymbolicLink()) throw new VaultPathError("Symlinks are not accessible");
-  if (!st.isFile()) throw new VaultPathError("Not a file");
-  // Mirror read_note's refusal in the other direction: handing a markdown note
-  // back as base64 octet-stream is never what the caller wanted, and leaving it
-  // to "work" makes the two tools quietly inconsistent.
-  if (!isBinaryFile(abs) && path.extname(abs).toLowerCase() === ".md") {
-    throw new VaultPathError(
-      `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
-    );
-  }
-  // The pointer is small, so this fires well before the size cap.
-  if (isLfsPointer(abs)) throw lfsPointerError();
+  return withVaultFile(abs, ({ stat, head, read }) => {
+    // Mirror read_note's refusal in the other direction: handing a markdown note
+    // back as base64 octet-stream is never what the caller wanted, and leaving it
+    // to "work" makes the two tools quietly inconsistent.
+    if (!hasNul(head) && path.extname(abs).toLowerCase() === ".md") {
+      throw new VaultPathError(
+        `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
+      );
+    }
+    // The pointer is small, so this fires well before the size cap.
+    if (isLfsPointerHead(head)) throw lfsPointerError();
 
-  const ext = path.extname(abs).slice(1).toLowerCase();
-  const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
-  return {
-    abs,
-    path: toVaultRelative(abs),
-    mimeType,
-    bytes: st.size,
-    isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
-    tooLarge: st.size > MAX_ATTACHMENT_BYTES,
-  };
+    const ext = path.extname(abs).slice(1).toLowerCase();
+    const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
+    const meta: AttachmentMeta = {
+      path: toVaultRelative(abs),
+      mimeType,
+      bytes: stat.size,
+      isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
+      tooLarge: stat.size > MAX_ATTACHMENT_BYTES,
+    };
+    return fn(meta, read);
+  });
+}
+
+export function attachmentMeta(notePath: string): AttachmentMeta {
+  return withAttachment(notePath, (meta) => meta);
+}
+
+/** The whole file, whatever its size, with its metadata: what the signed download link serves. */
+export function readAttachmentFile(notePath: string): { meta: AttachmentMeta; data: Buffer<ArrayBuffer> } {
+  return withAttachment(notePath, (meta, read) => ({ meta, data: read() }));
 }
 
 export function readAttachment(notePath: string): {
@@ -205,20 +217,21 @@ export function readAttachment(notePath: string): {
   isImage: boolean;
   base64: string;
 } {
-  const meta = attachmentMeta(notePath);
-  if (meta.tooLarge) {
-    throw new VaultPathError(
-      `Attachment is ${formatBytes(meta.bytes)}; the limit for inline reads is ` +
-        `${formatBytes(MAX_ATTACHMENT_BYTES)}. It exists in the vault but is too large to return.`,
-    );
-  }
-  return {
-    path: meta.path,
-    mimeType: meta.mimeType,
-    bytes: meta.bytes,
-    isImage: meta.isImage,
-    base64: fs.readFileSync(meta.abs).toString("base64"),
-  };
+  return withAttachment(notePath, (meta, read) => {
+    if (meta.tooLarge) {
+      throw new VaultPathError(
+        `Attachment is ${formatBytes(meta.bytes)}; the limit for inline reads is ` +
+          `${formatBytes(MAX_ATTACHMENT_BYTES)}. It exists in the vault but is too large to return.`,
+      );
+    }
+    return {
+      path: meta.path,
+      mimeType: meta.mimeType,
+      bytes: meta.bytes,
+      isImage: meta.isImage,
+      base64: read().toString("base64"),
+    };
+  });
 }
 
 export function noteExists(notePath: string): boolean {

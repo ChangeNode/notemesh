@@ -39,36 +39,54 @@ export function openNoFollow(abs: string): number {
   }
 }
 
+/**
+ * One open descriptor, and everything a caller learns about the file comes
+ * from it: the stat, the first bytes, and the bytes themselves. `fn` gets all
+ * three; `read` is valid only inside it, and the descriptor is closed after.
+ *
+ * This is the whole answer to a symlink swapped in between a check and a
+ * read. A by-path check followed by a by-path read is two resolutions of one
+ * name, and whatever sits at the name second time is what gets read. A
+ * descriptor is one inode, fixed at the open, and the open refuses to follow.
+ */
+export function withVaultFile<T>(
+  abs: string,
+  fn: (file: { stat: fs.Stats; head: Buffer; read: () => Buffer<ArrayBuffer> }) => T,
+): T {
+  const fd = openNoFollow(abs);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) throw new VaultPathError("Not a file");
+    const head = readHead(fd);
+    return fn({ stat, head, read: () => fs.readFileSync(fd) });
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 // Read a vault file with a hard size cap. The path must already be resolved
 // via resolveNotePath, which rejects symlinks and traversal at resolve time.
 //
 // This used to lstat by path and then read by path — with the LFS and binary
 // sniffs each opening the path again in between. Four separate resolutions,
 // and a symlink swapped in by sync between any two of them was followed by the
-// next. Now there is one open, without following, and the stat, the sniffs and
-// the read all use it: a swap after the open has nothing left to redirect.
+// next. Now it is withVaultFile: one open, one inode, nothing to redirect.
 export function readVaultFile(abs: string): string {
-  const fd = openNoFollow(abs);
-  try {
-    const st = fs.fstatSync(fd);
-    if (!st.isFile()) throw new VaultPathError("Not a file");
-    if (st.size > MAX_NOTE_BYTES) {
+  return withVaultFile(abs, ({ stat, head, read }) => {
+    if (stat.size > MAX_NOTE_BYTES) {
       throw new VaultPathError(
-        `Note is too large to read (${Math.round(st.size / 1000 / 1000)} MB; limit ${MAX_NOTE_BYTES / 1000 / 1000} MB)`,
+        `Note is too large to read (${Math.round(stat.size / 1000 / 1000)} MB; limit ${MAX_NOTE_BYTES / 1000 / 1000} MB)`,
       );
     }
-    const head = readHead(fd);
     if (isLfsPointerHead(head)) throw lfsPointerError();
     if (hasNul(head)) {
       throw new VaultPathError(
-        `This is a binary attachment (${formatBytes(st.size)}), not readable as text. ` +
+        `This is a binary attachment (${formatBytes(stat.size)}), not readable as text. ` +
           `Use read_attachment for images and other binary files.`,
       );
     }
-    return fs.readFileSync(fd, "utf8");
-  } finally {
-    fs.closeSync(fd);
-  }
+    return read().toString("utf8");
+  });
 }
 
 export function formatBytes(n: number): string {
@@ -95,7 +113,7 @@ function readHead(fd: number): Buffer {
 // reading a 4.6 MB JPEG as UTF-8 produced a 12 MB response of replacement
 // characters (JSON escaping inflates it ~2.6x), which is useless to a client
 // and can blow its entire context in one call.
-function hasNul(head: Buffer): boolean {
+export function hasNul(head: Buffer): boolean {
   return head.includes(0);
 }
 
@@ -105,13 +123,13 @@ function hasNul(head: Buffer): boolean {
 // though it were the note or the image. Detect it explicitly.
 const LFS_POINTER_PREFIX = "version https://git-lfs.github.com/spec/";
 
-function isLfsPointerHead(head: Buffer): boolean {
+export function isLfsPointerHead(head: Buffer): boolean {
   return head.subarray(0, 64).toString("utf8").startsWith(LFS_POINTER_PREFIX);
 }
 
-// Path-based forms of the two sniffs, for callers that have already done their
-// own stat by path (attachmentMeta) and for the unit tests. False on any
-// error, as before — a missing file is not binary and not a pointer.
+// Path-based forms of the two sniffs. No production caller any more — every
+// reader sniffs the head of its own descriptor — but the unit tests use them.
+// False on any error, as before: a missing file is not binary and not a pointer.
 function sniffHead(abs: string): Buffer | null {
   let fd: number | undefined;
   try {

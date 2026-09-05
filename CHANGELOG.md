@@ -44,6 +44,21 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
+## Unreleased (1.2.0)
+
+**Taking this update:** redeploy. Nothing else.
+
+### Fixed
+
+- `read_attachment` and the signed download link now read an attachment from
+  one open file handle, the way `read_note` has since 1.1.0. They used to look
+  the name up four times — a symlink check, two content sniffs, and the read —
+  and a symlink swapped in by sync between the check and the read would have
+  been followed, serving a file from outside the vault as the attachment.
+  Narrow: it needs a symlink pushed into a git-backed vault, timed against a
+  read. Closed the same way as the note reader: open once without following,
+  and stat, sniff and read from that.
+
 ## 1.1.0 — 2026-09-04
 
 **Taking this update:** redeploy, then restart or reconnect your MCP client so it

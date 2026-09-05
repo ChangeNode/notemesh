@@ -15,6 +15,7 @@ import {
   prependToNote,
   previewEdit,
   readAttachment,
+  readAttachmentFile,
   readNote,
   readNoteRange,
   updateNote,
@@ -674,5 +675,47 @@ describe("writes on a nearly full disk", () => {
     expect(get("Note.md")).toBe("a\nfoo\n");
     expect(fs.existsSync(path.join(vault, "New.md"))).toBe(false);
     expect(() => createNote("New.md", "x".repeat(4_000_000))).not.toThrow();
+  });
+});
+
+// The deterministic race from #41, for attachments. fstatSync is the first
+// thing done with the open descriptor, so a swap staged inside it lands after
+// the open and before the read — the exact window a by-path read would lose.
+describe("readAttachment, against a swap after the stat", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const original = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]);
+
+  function swapAfterStat(abs: string) {
+    fs.writeFileSync(path.join(root, "secret.bin"), Buffer.from("SECRET"));
+    const realFstat = fs.fstatSync;
+    vi.spyOn(fs, "fstatSync").mockImplementation(((fd: number, ...rest: unknown[]) => {
+      const st = (realFstat as any)(fd, ...rest);
+      if (!fs.lstatSync(abs).isSymbolicLink()) {
+        fs.rmSync(abs);
+        fs.symlinkSync(path.join(root, "secret.bin"), abs);
+      }
+      return st;
+    }) as typeof fs.fstatSync);
+  }
+
+  it("cannot be redirected: the inline read is the original bytes", () => {
+    put("image.png", original);
+    const abs = path.join(vault, "image.png");
+    swapAfterStat(abs);
+    const out = readAttachment("image.png");
+    expect(Buffer.from(out.base64, "base64")).toEqual(original);
+    // The swap really happened, so the assertion was about the descriptor.
+    expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
+  });
+
+  it("cannot be redirected: the signed download is the original bytes", () => {
+    put("image.png", original);
+    const abs = path.join(vault, "image.png");
+    swapAfterStat(abs);
+    const { meta, data } = readAttachmentFile("image.png");
+    expect(data).toEqual(original);
+    expect(meta.bytes).toBe(original.length);
+    expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
   });
 });

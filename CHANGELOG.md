@@ -59,6 +59,16 @@ entry needing your attention cannot get lost among routine ones.
   read. Closed the same way as the note reader: open once without following,
   and stat, sniff and read from that.
 
+### Internal
+
+- A conformance suite for the sync backends: one script, run against both the
+  git backend (a real bare remote) and the Obsidian supervisor (its real
+  start path, with a stand-in daemon), asserting what the contract promises —
+  every state change stamped, backoff and re-authentication reached and left
+  the same way, a local write published on git and ignored on Obsidian, the
+  log collapsing repeats. Nothing changes for a user; it pins the seventeen
+  state transitions the 1.1.0 alerts read from.
+
 ## 1.1.0 — 2026-09-04
 
 **Taking this update:** redeploy, then restart or reconnect your MCP client so it

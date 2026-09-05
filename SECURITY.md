@@ -97,6 +97,42 @@ Stated so you don't spend time on them:
 - **The container runs as root.** Hardening this is tracked; it is a
   defence-in-depth gap rather than a live vulnerability.
 
+## More than one admin account
+
+A NoteMesh instance has exactly one admin account, created by whoever claims
+it during the 30-minute window after it starts. Since 1.2.0 the database
+itself refuses a second account: a trigger on the user table aborts any
+insert once a row exists, so two claims arriving at the same instant cannot
+both succeed. Before 1.2.0 the check ran ahead of the insert rather than
+inside it, and simultaneous claims could all get through.
+
+If your instance was claimed under an earlier version, it may already hold
+more than one account. On boot the server logs
+`[auth] this server has N admin accounts`, and every tool result carries the
+same line as a `NoteMesh:` alert until it is fixed. The password-reset flow
+refuses to run while it is true, because it cannot know which account is
+yours. The server never deletes an account on its own; that decision is
+yours.
+
+To recover:
+
+```bash
+railway ssh
+sqlite3 /data/app.sqlite 'SELECT id, email, createdAt FROM user ORDER BY createdAt;'
+```
+
+The first row is normally the account that claimed the instance; the later
+ones are the ones to remove. For each extra account, with its `id`:
+
+```bash
+sqlite3 /data/app.sqlite "DELETE FROM session WHERE userId = 'ID'; DELETE FROM account WHERE userId = 'ID'; DELETE FROM user WHERE id = 'ID';"
+```
+
+Then restart the service. The log line and the alert stop, and password reset
+works again. If you cannot tell which account is yours, reset the instance
+from Settings instead and claim it afresh; your vault is untouched by either
+route.
+
 ## Reporting a problem with someone else's instance
 
 Every deployment is independently operated. If you've found an issue with a

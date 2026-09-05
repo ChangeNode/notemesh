@@ -73,3 +73,43 @@ export async function isSetupComplete(source?: CountSource): Promise<boolean> {
   // other way offers a stranger the claim form on a live server.
   return c.known ? c.count > 0 : true;
 }
+
+/**
+ * The single-admin invariant, inside the database.
+ *
+ * The sign-up hook counts users and refuses when there are any. That check
+ * and Better Auth's insert are separated by awaits, so concurrent first
+ * claims can all count zero and all succeed — ten requests, ten admins, and
+ * nothing downstream tells them apart (NM-SEC-002, #50). The count is kept
+ * for the friendly answer; this trigger is the boundary. It runs inside the
+ * insert's own transaction, so count-and-refuse is one step, and it holds
+ * for any process that opens the file.
+ *
+ * A trigger rather than a constraint: SQLite will not index an expression
+ * that references no column, so "at most one row" has no constraint form.
+ */
+export const SINGLE_ADMIN_TRIGGER = `CREATE TRIGGER IF NOT EXISTS single_admin
+BEFORE INSERT ON "user"
+WHEN (SELECT COUNT(*) FROM "user") > 0
+BEGIN SELECT RAISE(ABORT, 'already claimed'); END;`;
+
+type ExecSource = { exec(sql: string): unknown };
+
+/** Install the guard. Idempotent; the user table must already exist. */
+export function installSingleAdminGuard(source: ExecSource = db()): void {
+  source.exec(SINGLE_ADMIN_TRIGGER);
+}
+
+/** True for the error an insert gets when the guard refuses it. */
+export function isSingleAdminRefusal(e: unknown): boolean {
+  return /already claimed/.test(String((e as { message?: string })?.message ?? e));
+}
+
+/**
+ * Accounts beyond the one this server should have. Zero when it cannot tell:
+ * an unreadable database is not a reason to alarm the operator about admins.
+ */
+export function extraAdminAccounts(source: CountSource = db()): number {
+  const c = userCount(source);
+  return c.known ? Math.max(0, c.count - 1) : 0;
+}

@@ -25,7 +25,7 @@ import crypto from "node:crypto";
 import { db } from "./db";
 import { env } from "./env";
 import { authLog } from "./auth-logger";
-import { userCount, withinClaimWindow, CLAIM_WINDOW_MINUTES } from "./claim";
+import { userCount, withinClaimWindow, CLAIM_WINDOW_MINUTES, installSingleAdminGuard, extraAdminAccounts } from "./claim";
 import { audit } from "./audit";
 
 // Both used to live here, and auth is where the rest of the app reaches for
@@ -248,5 +248,18 @@ export async function runAuthMigrations() {
   if (migrated) return;
   const { runMigrations } = await getMigrations(auth.options);
   await runMigrations();
+  // The guard on the user table can only be created once Better Auth has
+  // created the table, so it lives here rather than with our own schema. And
+  // a database that already breaks the invariant — claimed before the guard
+  // existed, by more than one racer — is reported loudly rather than guessed
+  // about; the alert channel carries it too. Recovery is in SECURITY.md.
+  installSingleAdminGuard();
+  const extra = extraAdminAccounts();
+  if (extra > 0) {
+    console.error(
+      `[auth] this server has ${extra + 1} admin accounts and should have exactly one. ` +
+        `See SECURITY.md, "More than one admin account".`,
+    );
+  }
   migrated = true;
 }

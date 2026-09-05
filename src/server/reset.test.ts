@@ -335,6 +335,10 @@ describe("more than one account", () => {
     const { runAuthMigrations } = await import("./auth");
     await runAuthMigrations();
     const { db } = await import("./db");
+    // Two accounts can only exist on a database claimed twice under a version
+    // without the single-admin guard (#50); the guard refuses the second insert
+    // now, so this builds the pre-guard state the reset flow has to cope with.
+    db().exec("DROP TRIGGER single_admin");
     const insert = db().prepare(
       'INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,?,?,?)',
     );

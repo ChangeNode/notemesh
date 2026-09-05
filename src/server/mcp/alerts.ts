@@ -1,6 +1,7 @@
 import { syncBackend } from "../sync";
 import type { SyncStatus } from "../sync/types";
 import { getSetting } from "../db";
+import { extraAdminAccounts } from "../claim";
 import { obsidianAccountState } from "../ob/credentials";
 import { env, detectInsecureBaseUrl, detectOriginMismatch } from "../env";
 import { indexerStatus } from "../vault/indexer";
@@ -69,6 +70,8 @@ export interface RequestInfo {
 export interface AlertSnapshot {
   sync: Pick<SyncStatus, "kind" | "state" | "restartCount"> & { stateSince?: number | null };
   vaultConfigured: boolean;
+  /** Admin accounts beyond the one there should be. */
+  extraAdmins: number;
   credentialsUnreadable: boolean;
   index: { ready: boolean; lastRebuildError: string | null; unindexedNotes: number };
   disk: DiskLevel | null;
@@ -80,9 +83,11 @@ export interface AlertSnapshot {
 export function snapshot(req: RequestInfo = {}): AlertSnapshot {
   const sync = syncBackend().status();
   let vaultConfigured = true;
+  let extraAdmins = 0;
   let credentialsUnreadable = false;
   try {
     vaultConfigured = getSetting("vault_configured") === "true";
+    extraAdmins = extraAdminAccounts();
     if (sync.kind === "obsidian") credentialsUnreadable = obsidianAccountState().state === "unreadable";
   } catch {
     // The database is not ready; say nothing rather than something wrong.
@@ -91,6 +96,7 @@ export function snapshot(req: RequestInfo = {}): AlertSnapshot {
   return {
     sync,
     vaultConfigured,
+    extraAdmins,
     credentialsUnreadable,
     index: { ready: idx.ready, lastRebuildError: idx.lastRebuildError, unindexedNotes: idx.unindexedNotes },
     disk: lastDiskLevel(),
@@ -144,6 +150,12 @@ export function alertsFrom(s: AlertSnapshot): Alert[] {
   }
   if (s.sync.state === "needs-setup" || !s.vaultConfigured) {
     out.push({ level: "error", text: `${P} no vault is linked. Finish setup on the dashboard before writing.` });
+  }
+  if (s.extraAdmins > 0) {
+    out.push({
+      level: "error",
+      text: `${P} this server has ${s.extraAdmins + 1} admin accounts and should have exactly one. Remove the extra accounts; see SECURITY.md.`,
+    });
   }
   if (s.disk === "critical") {
     out.push({

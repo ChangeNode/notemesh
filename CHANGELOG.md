@@ -50,6 +50,18 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — only one admin account can be created, and the database
+  itself enforces it. The claim check counted users and then Better Auth
+  inserted one, with nothing atomic between, so several claims arriving in
+  the same instant could all succeed — ten requests, ten admins, and no
+  way to tell them apart afterwards. A trigger on the user table now refuses
+  any insert once a row exists, inside the insert's own transaction; a
+  claim that loses that race gets the same "already claimed" refusal as a
+  late one. An instance that was claimed more than once under an earlier
+  version is reported on boot, in the log and as a `NoteMesh:` alert, with
+  the recovery steps in SECURITY.md; the server never deletes an account on
+  its own. Reported in an external review (#50).
+
 - **Security** — frontmatter is parsed by a YAML-only parser, behind one
   helper every caller shares. The previous library autodetected a language
   from the text after the opening `---` and, for `---js`, ran the block

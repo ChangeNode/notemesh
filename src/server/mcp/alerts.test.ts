@@ -18,6 +18,7 @@ function healthy(over: Partial<AlertSnapshot> = {}): AlertSnapshot {
   return {
     sync: { kind: "git", state: "running", restartCount: 0, stateSince: NOW - 60_000 },
     vaultConfigured: true,
+    extraAdmins: 0,
     credentialsUnreadable: false,
     index: { ready: true, lastRebuildError: null, unindexedNotes: 0 },
     disk: "ok",
@@ -80,6 +81,12 @@ describe("alertsFrom", () => {
     expect(texts(both)).toHaveLength(1);
   });
 
+  it("reports more than one admin account as an error, with the count", () => {
+    expect(alertsFrom(healthy({ extraAdmins: 2 }))).toEqual([
+      { level: "error", text: expect.stringMatching(/3 admin accounts and should have exactly one/) },
+    ]);
+  });
+
   it("reports the disk at two levels", () => {
     expect(alertsFrom(healthy({ disk: "warn" }))).toEqual([
       { level: "warn", text: expect.stringMatching(/under 100 MB free/) },
@@ -135,6 +142,7 @@ describe("alertsFrom", () => {
     const everything = healthy({
       sync: { kind: "obsidian", state: "needs-reauth", restartCount: 0, stateSince: NOW },
       vaultConfigured: false,
+      extraAdmins: 1,
       credentialsUnreadable: true,
       index: { ready: false, lastRebuildError: "x", unindexedNotes: 1 },
       disk: "critical",
@@ -142,9 +150,9 @@ describe("alertsFrom", () => {
       insecureBaseUrl: true,
     });
     const all = alertsFrom(everything);
-    // Nine conditions, eight blocks: a failed rebuild leaves the index not
+    // Ten conditions, nine blocks: a failed rebuild leaves the index not
     // ready too, and that is one alert, not two.
-    expect(all.length).toBe(8);
+    expect(all.length).toBe(9);
     for (const a of all) expect(a.text.startsWith(`${ALERT_PREFIX} `), a.text).toBe(true);
   });
 });

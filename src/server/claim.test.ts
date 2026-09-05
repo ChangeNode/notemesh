@@ -7,6 +7,9 @@ import {
   isSetupComplete,
   userCount,
   withinClaimWindow,
+  installSingleAdminGuard,
+  isSingleAdminRefusal,
+  extraAdminAccounts,
 } from "./claim";
 
 // The bug these exist for: userCount() used to swallow every exception and
@@ -151,5 +154,48 @@ describe("claim window", () => {
   it("describes itself in whole minutes for the UI copy", () => {
     expect(CLAIM_WINDOW_MINUTES).toBe(30);
     expect(Number.isInteger(CLAIM_WINDOW_MINUTES)).toBe(true);
+  });
+});
+
+describe("the single-admin guard", () => {
+  function guarded(rows: number) {
+    const d = dbWithUsers(rows);
+    installSingleAdminGuard(d);
+    return d;
+  }
+  const insert = (d: Database.Database, id: string) => d.prepare('INSERT INTO "user" (id) VALUES (?)').run(id);
+
+  it("lets the first account in and refuses every later one, in the database", () => {
+    const d = guarded(0);
+    expect(() => insert(d, "first")).not.toThrow();
+    expect(() => insert(d, "second")).toThrow(/already claimed/);
+    expect(() => insert(d, "third")).toThrow(/already claimed/);
+    expect(userCount(d)).toEqual({ known: true, count: 1 });
+  });
+
+  it("is idempotent to install, and refuses on a table that already has a row", () => {
+    const d = guarded(1);
+    installSingleAdminGuard(d);
+    expect(() => insert(d, "u1")).toThrow(/already claimed/);
+    expect(d.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger'").get()).toEqual({ n: 1 });
+  });
+
+  it("recognises its own refusal and nothing else", () => {
+    const d = guarded(1);
+    let caught: unknown;
+    try {
+      insert(d, "u1");
+    } catch (e) {
+      caught = e;
+    }
+    expect(isSingleAdminRefusal(caught)).toBe(true);
+    expect(isSingleAdminRefusal(new Error("UNIQUE constraint failed: user.id"))).toBe(false);
+  });
+
+  it("counts the accounts beyond the one there should be, and none when it cannot tell", () => {
+    expect(extraAdminAccounts(dbWithUsers(0))).toBe(0);
+    expect(extraAdminAccounts(dbWithUsers(1))).toBe(0);
+    expect(extraAdminAccounts(dbWithUsers(3))).toBe(2);
+    expect(extraAdminAccounts(failingDb("SQLITE_BUSY: database is locked"))).toBe(0);
   });
 });

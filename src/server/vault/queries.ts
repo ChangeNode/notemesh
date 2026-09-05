@@ -7,7 +7,7 @@ import { db, getSetting } from "../db";
 import { env } from "../env";
 import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
 import { headroom, writeVaultFile } from "./disk";
-import { readNote, readNoteRange, createNote } from "./notes";
+import { readNote, createNote } from "./notes";
 import { dailyNotePath , timestampInZone, configuredTimeZone} from "./daily";
 
 export interface SearchHit {
@@ -263,13 +263,19 @@ export function outline(notePath: string): { level: number; heading: string; lin
   }));
 }
 
-export function randomNote() {
+/**
+ * A path chosen at random, and only the path. The note itself comes from
+ * read_note, so a random pick is read the way every other note is — windowed,
+ * fenced, with the boundary explanation — rather than through a second reader
+ * kept in step with the first. It used to return a read window of its own,
+ * which was the one note reader that skipped the boundary marker.
+ */
+export function randomNote(): { path: string } {
   const row = db().prepare("SELECT path FROM notes ORDER BY RANDOM() LIMIT 1").get() as
     | { path: string }
     | undefined;
   if (!row) throw new VaultPathError("The vault has no notes yet");
-  // Windowed: a random pick could land on a 465 KB note.
-  return readNoteRange(row.path);
+  return { path: row.path };
 }
 
 // Zettelkasten-style unique note (Obsidian default format: YYYYMMDDHHmm).

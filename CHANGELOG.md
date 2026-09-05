@@ -95,6 +95,12 @@ nothing was renamed or removed.
   If you had picked one of the removed options, the stored setting is ignored;
   there is nothing to do.
 
+- **Breaking** — `random_note` returns only the note's path, `{ path }`, for
+  you to read with `read_note`. It used to return a read window of its own —
+  the one note reader that skipped the boundary marker, so a random pick
+  reached the assistant unfenced. One way to read a note now, and it is the
+  fenced one.
+
 - **Breaking** — `word_count` now means the same thing with and without a
   path. It used to count the whole file, frontmatter included, when given a
   note, and sum body-only words from the index when asked for the vault — so

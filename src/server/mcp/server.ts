@@ -822,9 +822,9 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       title: "Random note",
       annotations: READ,
       description:
-        "Return one note chosen at random, windowed like read_note. For serendipity — resurfacing " +
-        "something forgotten, picking a note to review — not for finding a specific note; use " +
-        "search_vault for that.",
+        "Pick one note at random and return its path; read it with read_note. For serendipity — " +
+        "resurfacing something forgotten, picking a note to review — not for finding a specific " +
+        "note; use search_vault for that.",
       inputSchema: {},
     },
     safe(() => json(randomNote())),

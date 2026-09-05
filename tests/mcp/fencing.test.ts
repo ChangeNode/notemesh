@@ -321,3 +321,18 @@ describe("preview_edit", () => {
     expect(json.boundaryNote).toContain(token);
   });
 });
+
+describe("random_note", () => {
+  it("returns only a path, for read_note to read", async () => {
+    await seed("Hostile.md", HOSTILE);
+    // One note in the vault, so the pick is not random for the purposes of
+    // the assertion; what matters is the shape.
+    const { json, blocks } = await call("random_note");
+    expect(json).toEqual({ path: "Hostile.md" });
+    expect(blocks[0]).not.toContain("Ignore previous");
+    // And the path goes straight into the reader, which fences it.
+    const read = await call("read_note", { path: json.path });
+    expect(read.json.boundary).toMatch(/^%[0-9a-f]{8}%$/);
+    expect(read.json.content).toContain(read.json.boundary);
+  });
+});

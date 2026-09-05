@@ -82,7 +82,7 @@ describe("anonymous client registration", () => {
   it("is allowed on an instance with room", async () => {
     // First, and on a nearly empty table: a cap that refused everything would
     // satisfy the test below and break every connector.
-    expect((await register("first")).status).toBe(200);
+    expect((await register("first")).status).toBe(201);
   });
 
   it("is refused once the instance is full", async () => {

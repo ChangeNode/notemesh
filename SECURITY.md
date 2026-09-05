@@ -89,11 +89,10 @@ Stated so you don't spend time on them:
 - **The claim window is deliberately unauthenticated.** During those 30 minutes
   the only protection on an unclaimed instance is being first to it. See
   `src/server/claim.ts` for the reasoning.
-- **`@better-auth/oauth-provider` carries an open advisory**
-  ([GHSA-p2fr-6hmx-4528](https://github.com/advisories/GHSA-p2fr-6hmx-4528),
-  unbound resource indicators). No stable release fixes it yet. Impact here is
-  limited by the deployment shape — one user, one resource — and it will be
-  picked up when 1.7.0 ships stable.
+- **`@better-auth/oauth-provider` GHSA-p2fr-6hmx-4528** (unbound resource
+  indicators) is fixed as of 1.2.0, which runs the 1.7 line: a token's
+  audience is bound to the resource named at authorization. It was never
+  exploitable here — one user, one resource server — but it was open.
 
 ## Running as non-root
 

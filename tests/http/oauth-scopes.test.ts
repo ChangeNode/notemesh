@@ -39,7 +39,8 @@ async function register(): Promise<{ client_id: string; scope: string }> {
       token_endpoint_auth_method: "none",
     }),
   });
-  expect(res.status).toBe(200);
+  // 201 Created, as RFC 7591 §3.2.1 says; the 1.6 line answered 200.
+  expect(res.status).toBe(201);
   return res.json();
 }
 

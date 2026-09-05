@@ -213,18 +213,27 @@ export const auth = betterAuth({
       // apart again; server/oauth-scopes.test.ts pins them together.
       scopes: [...OAUTH_SCOPES],
       clientRegistrationDefaultScopes: [...OAUTH_SCOPES],
-      // MCP clients pass the endpoint URL as the RFC 8707 resource indicator.
-      //
-      // SECURITY: every entry here must name the SAME resource server. On the
-      // 1.6.x line this plugin lets a client pick its token's audience from
-      // this list at the token endpoint, unbound to what the user actually
-      // authorised (GHSA-p2fr-6hmx-4528). That is harmless today only because
-      // both entries below are this server's own MCP endpoint, which accepts
-      // either — so choosing between them changes nothing, and privilege comes
-      // from scopes rather than `aud`. Adding a genuinely distinct resource
-      // server to this list, before the 1.7.0 upgrade lands, turns that into a
-      // real cross-audience escalation. See issue #10.
-      validAudiences: [env.baseUrl, `${env.baseUrl}/api/mcp`],
+      // The protected resources this server issues tokens for: its own MCP
+      // endpoint, under the two names a client may send as the RFC 8707
+      // resource indicator (the endpoint URL, which the MCP spec prescribes,
+      // and the bare origin, which some clients send). Both are this one
+      // resource server, and mcp/oauth.ts accepts either audience. Since the
+      // 1.7 line a token's audience is bound to the resource named at
+      // authorization and can be narrowed but not widened at the token
+      // endpoint, which is what closed GHSA-p2fr-6hmx-4528 (#55).
+      resources: [
+        { identifier: `${env.baseUrl}/api/mcp`, allowedScopes: [...OAUTH_SCOPES] },
+        { identifier: env.baseUrl, allowedScopes: [...OAUTH_SCOPES] },
+      ],
+      // 1.7 also links each client to the resources it may request, and
+      // refuses `resource` for any it is not linked to. New registrations get
+      // linked below, but a connector registered under 1.6 — every existing
+      // deployment's — has no link and would be refused its next
+      // authorization. With one resource server there is nothing per-client
+      // linking can tell apart, so it is off; what closed the advisory is the
+      // grant-bound audience above, which stays on.
+      enforcePerClientResources: false,
+      clientRegistrationDefaultResources: [`${env.baseUrl}/api/mcp`, env.baseUrl],
       silenceWarnings: {
         // The plugin warns on every boot that
         // /.well-known/oauth-authorization-server/api/auth may not exist. It
@@ -244,8 +253,28 @@ let migrated = false;
 
 // Creates/updates Better Auth's own tables (user, session, account,
 // apikey, OAuth client/token tables) inside app.sqlite. Runs once per boot.
+// Better Auth 1.7 added `issuer` to the account table: NOT NULL, no default.
+// Its migrator refuses to add such a column to a populated table rather than
+// invent a value, so a deployment upgraded from 1.6 — one admin row — would
+// throw here on every boot and never sign in again. This server knows the
+// value: every account it creates is an email-and-password one, which 1.7
+// records as "local:credential". Added with that backfill before the
+// migrator runs, so it finds the column present and only adds its index.
+// Reproduced and pinned against a 1.6-shaped populated table in
+// auth-upgrade.test.ts.
+function backfillAccountIssuer(): void {
+  const d = db();
+  const table = d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account'").get();
+  if (!table) return;
+  const columns = d.prepare("PRAGMA table_info(account)").all() as { name: string }[];
+  if (columns.some((c) => c.name === "issuer")) return;
+  d.exec("ALTER TABLE account ADD COLUMN issuer TEXT NOT NULL DEFAULT 'local:credential'");
+  console.log("[auth] account table: added issuer for the Better Auth 1.7 upgrade");
+}
+
 export async function runAuthMigrations() {
   if (migrated) return;
+  backfillAccountIssuer();
   const { runMigrations } = await getMigrations(auth.options);
   await runMigrations();
   // The guard on the user table can only be created once Better Auth has

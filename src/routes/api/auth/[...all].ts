@@ -2,6 +2,7 @@ import { toSolidStartHandler } from "better-auth/solid-start";
 import { auth, runAuthMigrations } from "~/server/auth";
 import { userCount } from "~/server/claim";
 import { audit } from "~/server/audit";
+import { normalizeClientRegistration } from "~/server/oauth-registration";
 
 const handler = toSolidStartHandler(auth);
 
@@ -10,6 +11,22 @@ async function withMigrations(
   event: { request: Request },
 ) {
   await runAuthMigrations();
+  // A registration that says nothing about its application type and
+  // redirects to plain-HTTP loopback is a native client; the provider would
+  // read it as a web client and refuse it. See oauth-registration.ts.
+  if (event.request.method === "POST" && new URL(event.request.url).pathname.endsWith("/oauth2/register")) {
+    const original = event.request;
+    const body = await original
+      .clone()
+      .json()
+      .catch(() => undefined);
+    const normalized = normalizeClientRegistration(body);
+    if (body !== undefined && normalized !== body) {
+      event = {
+        request: new Request(original, { body: JSON.stringify(normalized), headers: original.headers }),
+      };
+    }
+  }
   const res = await fn(event);
   // A sign-up that lost the race to the database guard (claim.ts) surfaces
   // from Better Auth as 422 FAILED_TO_CREATE_USER: the adapter's insert threw.

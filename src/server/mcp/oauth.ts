@@ -1,4 +1,4 @@
-import { mcpHandler } from "@better-auth/oauth-provider";
+import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
 import type { JWTPayload } from "jose";
 import { env } from "../env";
 import { serveMcp } from "./http";
@@ -11,79 +11,65 @@ function scopesFromJwt(jwt: JWTPayload): string[] {
 }
 
 /**
- * 401 for a token whose client is gone.
- *
- * The route turns any 401 from this handler into its own challenge response, so
- * the client is told to authenticate again rather than left guessing — which,
- * after a revoke, is exactly what it should do.
+ * 401 for a token this endpoint will not honour. The route turns any 401 from
+ * here into its own challenge response, so the client is told to authenticate
+ * again rather than left guessing — which, after a revoke, is exactly what it
+ * should do.
  */
-function revoked(): Response {
+function refused(message: string): Response {
   return new Response(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      error: { code: -32001, message: "This connector's access has been revoked." },
-      id: null,
-    }),
+    JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message }, id: null }),
     { status: 401, headers: { "Content-Type": "application/json" } },
   );
 }
 
-let handler: ((req: Request) => Promise<Response>) | null = null;
+// The provider's resource-server client, verifying locally against our own
+// JWKS: same-origin authorization and resource server. It replaced the 1.6
+// line's mcpHandler in 1.7 (#55). The audience list names this one endpoint
+// twice — the two identifiers declared as resources in auth.ts — and is kept
+// in step with that list.
+const { verifyBearerToken } = oauthProviderResourceClient().getActions();
 
-function getHandler() {
-  if (!handler) {
-    handler = mcpHandler(
-      {
-        // Same-origin AS and RS: verify locally against our own JWKS.
-        jwksUrl: `${env.baseUrl}/api/auth/jwks`,
-        verifyOptions: {
-          // Matches the oauth-provider's issuer: baseURL + basePath.
-          issuer: `${env.baseUrl}/api/auth`,
-          // Deliberately the same two values as validAudiences in auth.ts, and
-          // both name this endpoint: this is the only resource server, so a
-          // token issued for either is equally valid here. Keep the two lists in
-          // step — see the security note beside validAudiences and issue #10.
-          audience: [env.baseUrl, `${env.baseUrl}/api/mcp`],
-        },
+async function verify(token: string): Promise<JWTPayload | null> {
+  try {
+    return await verifyBearerToken(token, {
+      jwksUrl: `${env.baseUrl}/api/auth/jwks`,
+      verifyOptions: {
+        // Matches the oauth-provider's issuer: baseURL + basePath.
+        issuer: `${env.baseUrl}/api/auth`,
+        audience: [env.baseUrl, `${env.baseUrl}/api/mcp`],
       },
-      async (req, jwt) => {
-        // Signature, issuer and audience are all this handler checked, which is
-        // what a JWT is for — and it meant a revoked connector kept working
-        // until its token expired an hour later, because nothing asked whether
-        // the client was still there. The admin UI said access had ended; the
-        // endpoint disagreed.
-        //
-        // Which claim carries the client id depends on where you look, so both
-        // are accepted. Decoding a real access token shows `azp` and no
-        // `client_id`; the payload this callback receives has `client_id`,
-        // because the provider's handler puts it there. Today only the first
-        // branch is ever taken — verified by removing the fallback, which
-        // changes nothing — and the second is kept because the raw token says
-        // `azp` and a provider release could reasonably pass that through
-        // instead.
-        //
-        // A token carrying neither is refused rather than given the benefit of
-        // a claim it does not have. If a future provider renames both, every
-        // request fails closed and the revocation test says so immediately,
-        // which is the right way round for this to break.
-        const clientId = (jwt as any).client_id ?? (jwt as any).azp;
-        if (typeof clientId !== "string" || !oauthClientExists(clientId)) {
-          return revoked();
-        }
-
-        const scopes = scopesFromJwt(jwt);
-        const label = `oauth:${clientId}`;
-        return serveMcp(req, accessFromScopes(scopes, label));
-      },
-    );
+    });
+  } catch {
+    return null;
   }
-  return handler;
 }
 
 // Returns a Response when the request carries a bearer token (valid → MCP
-// response; invalid → 401 with WWW-Authenticate), or null when there is no
-// token at all so the caller can fall through.
+// response; invalid → 401), or null when there is no token at all so the
+// caller can fall through.
 export async function handleMcpWithOAuth(request: Request): Promise<Response | null> {
-  if (!bearerToken(request)) return null;
-  return getHandler()(request);
+  const token = bearerToken(request);
+  if (!token) return null;
+  const jwt = await verify(token);
+  if (!jwt) return refused("Unauthorized");
+
+  // Signature, issuer and audience are what the verifier checked, which is
+  // what a JWT is for — and it meant a revoked connector kept working until
+  // its token expired an hour later, because nothing asked whether the client
+  // was still there. The admin UI said access had ended; the endpoint
+  // disagreed. So the client is looked up on every call.
+  //
+  // Which claim carries the client id depends on where you look, so both are
+  // accepted: a decoded access token shows `azp`, and the 1.6 handler used to
+  // put `client_id` in the payload it handed on. A token carrying neither is
+  // refused rather than given the benefit of a claim it does not have; if a
+  // provider release renames both, every request fails closed and the
+  // revocation test says so immediately, which is the right way round.
+  const clientId = (jwt as any).client_id ?? (jwt as any).azp;
+  if (typeof clientId !== "string" || !oauthClientExists(clientId)) {
+    return refused("This connector's access has been revoked.");
+  }
+
+  return serveMcp(request, accessFromScopes(scopesFromJwt(jwt), `oauth:${clientId}`));
 }

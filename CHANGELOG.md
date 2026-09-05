@@ -50,6 +50,19 @@ entry needing your attention cannot get lost among routine ones.
 
 ### Fixed
 
+- **Security** — Better Auth and its OAuth provider move to the 1.7 line,
+  which closes GHSA-p2fr-6hmx-4528: a connector's token is now bound to the
+  resource it was authorised for and cannot be widened at the token endpoint.
+  It was never exploitable on this server, which has one user and one
+  resource, but it was open. The upgrade needed one thing the library could
+  not do on its own: 1.7 adds a required `issuer` column to the account
+  table, and its migrator refuses to add one to a table that already has
+  rows rather than guess a value. Every account here is an email-and-password
+  one, so the server fills it in before the migrator runs; an existing
+  deployment boots, migrates and signs in as before, and a test proves it
+  against a 1.6-shaped database. Existing connectors, API keys and
+  consents carry over. Reported in an external review (#55).
+
 - **Security** — the container no longer runs as root. The server, the
   Obsidian sync daemon and every git command run as the image's unprivileged
   `node` user; root is kept only for the moment at start that makes the data

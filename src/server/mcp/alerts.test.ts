@@ -91,7 +91,9 @@ describe("alertsFrom", () => {
   });
 
   it("reports the index: failed, rebuilding, and notes too large to index", () => {
-    expect(alertsFrom(healthy({ index: { ready: true, lastRebuildError: "boom", unindexedNotes: 0 } }))).toEqual([
+    // A failed rebuild leaves ready false too: one block, the actionable one,
+    // not a second saying it is rebuilding.
+    expect(alertsFrom(healthy({ index: { ready: false, lastRebuildError: "boom", unindexedNotes: 0 } }))).toEqual([
       { level: "error", text: expect.stringMatching(/failed to rebuild/) },
     ]);
     expect(alertsFrom(healthy({ index: { ready: false, lastRebuildError: null, unindexedNotes: 0 } }))).toEqual([
@@ -140,7 +142,9 @@ describe("alertsFrom", () => {
       insecureBaseUrl: true,
     });
     const all = alertsFrom(everything);
-    expect(all.length).toBe(9);
+    // Nine conditions, eight blocks: a failed rebuild leaves the index not
+    // ready too, and that is one alert, not two.
+    expect(all.length).toBe(8);
     for (const a of all) expect(a.text.startsWith(`${ALERT_PREFIX} `), a.text).toBe(true);
   });
 });

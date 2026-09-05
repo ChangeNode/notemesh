@@ -256,7 +256,7 @@ describe("binary attachments", () => {
       now: new Date(2026, 7, 3, 19, 58),
     });
 
-    const copy = out.copies![0];
+    const copy = out.copies![0]!;
     expect(fs.readFileSync(path.join(server, copy))).toEqual(assistantBytes);
     expect(fs.readFileSync(path.join(server, "image.png"))).toEqual(deviceBytes);
   });
@@ -283,5 +283,42 @@ describe("naming", () => {
 
   it("zero-pads the timestamp", () => {
     expect(conflictStamp(new Date(2026, 0, 2, 3, 4))).toBe("202601020304");
+  });
+});
+
+describe("a conflict where one side deleted", () => {
+  it("keeps copies aligned with paths, null where there was nothing of ours to save", async () => {
+    // Ours: edit Alpha, delete Daily. Theirs: edit both. Two conflicts, one copy.
+    write(server, "Projects/Alpha.md", "# Alpha\n\nline one ASSISTANT\nline two\nline three\n");
+    fs.rmSync(path.join(server, "Daily/2026-08-03.md"));
+    commitAll(server, "assistant: edit alpha, delete daily");
+    git(device, "pull", "-q");
+    write(device, "Projects/Alpha.md", "# Alpha\n\nline one DEVICE\nline two\nline three\n");
+    write(device, "Daily/2026-08-03.md", "# Today\n\n- [ ] task one\n- [ ] DEVICE\n");
+    commitAll(device, "device: edit both");
+    git(device, "push", "-q");
+    git(server, "fetch", "-q", "origin", "main");
+
+    const probe = await probeMerge(server, "HEAD", "origin/main");
+    expect(probe.clean).toBe(false);
+    expect([...probe.paths].sort()).toEqual(["Daily/2026-08-03.md", "Projects/Alpha.md"]);
+
+    const out = await resolveConflict({
+      dir: server,
+      remoteRef: "origin/main",
+      paths: probe.paths,
+      now: new Date(2026, 7, 3, 19, 58),
+    });
+    expect(out.ok).toBe(true);
+    expect(out.copies).toHaveLength(out.paths.length);
+    const daily = out.paths.indexOf("Daily/2026-08-03.md");
+    const alpha = out.paths.indexOf("Projects/Alpha.md");
+    expect(out.copies![daily]).toBeNull();
+    expect(out.copies![alpha]).toBe("Projects/Alpha (Conflicted copy notemesh 202608031958).md");
+    expect(read(server, out.copies![alpha]!)).toContain("ASSISTANT");
+    expect(read(server, "Daily/2026-08-03.md")).toContain("DEVICE");
+    expect(out.message).toContain("Daily/2026-08-03.md (nothing of ours to save)");
+    expect(out.message).toContain("Projects/Alpha.md (the assistant's version saved as Projects/Alpha (Conflicted copy");
+    expect(filesWithMarkers(server)).toEqual([]);
   });
 });

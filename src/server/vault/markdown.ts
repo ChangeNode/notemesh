@@ -168,9 +168,20 @@ export function extractStructure(body: string): NoteStructure {
     }
     // Comments that open and close on this line contribute nothing; one that
     // opens and does not close swallows the rest of the line and the lines
-    // after it.
-    line = line.replace(/<!--[\s\S]*?-->/g, " ");
-    const open = line.indexOf("<!--");
+    // after it. Openers are looked for on the code-span-masked line: a
+    // backticked `<!--` in a note about HTML syntax is text, and treating it
+    // as an opener swallowed every line after it until a closer that never
+    // came. Masking preserves length, so an index on the masked copy is the
+    // same index on the line, and both are cut the same way. (The closer
+    // above is found on the raw line: inside a comment there are no spans.)
+    let spans = maskCodeSpans(line);
+    for (const m of [...spans.matchAll(/<!--[\s\S]*?-->/g)].reverse()) {
+      const a = m.index!;
+      const b = a + m[0].length;
+      line = line.slice(0, a) + " " + line.slice(b);
+      spans = spans.slice(0, a) + " " + spans.slice(b);
+    }
+    const open = spans.indexOf("<!--");
     if (open >= 0) {
       inComment = true;
       line = line.slice(0, open);

@@ -133,7 +133,7 @@ describe("a conflict, end to end", () => {
     expect(record.copies).toHaveLength(1);
     expect(record).not.toHaveProperty("strategy");
     expect(record).not.toHaveProperty("branch");
-    const copy = record.copies![0];
+    const copy = record.copies![0]!;
     expect(copy).toMatch(/Conflicted copy notemesh/);
     expect(read(vault, copy)).toContain("ASSISTANT");
 
@@ -176,7 +176,7 @@ describe("what a conflict tells connectors", () => {
     const result = await backend.syncNow();
     expect(result.ok, result.output).toBe(true);
 
-    const copy = backend.status().conflicts![0].copies![0];
+    const copy = backend.status().conflicts![0].copies![0]!;
     const notices = takeNotices("phone");
     expect(notices).toHaveLength(1);
     expect(notices[0]).toContain("Daily/2026-08-03.md");

@@ -162,7 +162,9 @@ export function alertsFrom(s: AlertSnapshot): Alert[] {
       text: `${P} the search index failed to rebuild; search, tasks and tags may be incomplete. Try Rebuild Index on the Status tab.`,
     });
   }
-  if (!s.index.ready) {
+  // A failed rebuild leaves the index not ready as well; that is the error
+  // above, and saying "rebuilding" beside it would imply it will finish.
+  if (!s.index.ready && s.index.lastRebuildError === null) {
     out.push({
       level: "warn",
       text: `${P} the search index is rebuilding; search, tasks, tags and links are incomplete for the moment.`,

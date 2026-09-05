@@ -377,7 +377,7 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
     },
     safe(({ path, oldString, newString, line, replaceAll }: EditArgs) => {
       const res = previewEdit(path, oldString, newString, { line, replaceAll });
-      return json({ ...res, matches: fenceEach(res.matches, "text") });
+      return json(withBoundary({ ...res, matches: fenceEach(res.matches, "text") }));
     }),
   );
 

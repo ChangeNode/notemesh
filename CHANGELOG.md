@@ -217,6 +217,12 @@ nothing was renamed or removed.
 
 ### Fixed
 
+- A backticked `<!--` in a note — the way a note *about* HTML or Obsidian
+  syntax writes one — no longer opens an HTML comment for the parser, which
+  used to hide every heading, task, tag and link after it from search and
+  `get_outline` until a `-->` that never came. A real comment still hides what
+  it encloses.
+
 - **Security** — one note can no longer add an unbounded number of rows to
   the index. A file made of nothing but tags, links or tasks used to add one
   row per item — on the order of a million from a single synced file at the

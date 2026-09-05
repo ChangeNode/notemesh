@@ -26,8 +26,12 @@ export interface ConflictOutcome {
   ok: boolean;
   /** Vault-relative paths git could not merge. */
   paths: string[];
-  /** Conflict copies written — one per path that had a version of ours to save. */
-  copies?: string[];
+  /**
+   * Aligned with `paths`: the conflicted copy written for each, or null where
+   * our side had no version to save (a path only the other side had). Kept in
+   * step by construction, because the notice to connectors pairs them up.
+   */
+  copies?: (string | null)[];
   message: string;
 }
 
@@ -93,13 +97,14 @@ export async function resolveConflict(opts: ResolveOptions): Promise<ConflictOut
 
   // Read our versions out of the object database before moving the working
   // tree, so nothing depends on what is currently checked out.
-  const saved: { copyPath: string; content: Buffer }[] = [];
+  // One entry per path, in order, so the copies line up with the paths they
+  // were made for; a null is a path that only the other side had.
+  const saved: ({ copyPath: string; content: Buffer } | null)[] = [];
   for (const rel of paths) {
     const blob = await runGitBuffer(["show", `${local}:${rel}`], { cwd: dir });
     // A path that only exists on one side has no blob here; the remote's state
     // is then already correct and there is nothing of ours to preserve.
-    if (!blob.ok) continue;
-    saved.push({ copyPath: conflictCopyPath(rel, stamp), content: blob.stdout });
+    saved.push(blob.ok ? { copyPath: conflictCopyPath(rel, stamp), content: blob.stdout } : null);
   }
 
   const reset = await runGit(["reset", "--hard", remoteRef], { cwd: dir });
@@ -111,14 +116,17 @@ export async function resolveConflict(opts: ResolveOptions): Promise<ConflictOut
     };
   }
 
-  for (const { copyPath, content } of saved) {
+  for (const s of saved) {
+    if (!s) continue;
+    const { copyPath, content } = s;
     const abs = path.join(dir, copyPath);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content);
   }
 
-  const copies = saved.map((s) => s.copyPath);
-  if (copies.length) {
+  const copies = saved.map((s) => (s ? s.copyPath : null));
+  const written = copies.filter((c): c is string => c !== null);
+  if (written.length) {
     await runGit(["add", "-A"], { cwd: dir });
     await runGit(
       [
@@ -128,7 +136,7 @@ export async function resolveConflict(opts: ResolveOptions): Promise<ConflictOut
         "user.email=notemesh@localhost",
         "commit",
         "-m",
-        `notemesh: conflict ${copies.length === 1 ? "copy" : "copies"}\n\n${copies.join("\n")}`,
+        `notemesh: conflict ${written.length === 1 ? "copy" : "copies"}\n\n${written.join("\n")}`,
       ],
       { cwd: dir },
     );
@@ -138,9 +146,13 @@ export async function resolveConflict(opts: ResolveOptions): Promise<ConflictOut
     ok: true,
     paths,
     copies,
+    // Built from the pairs, so the log line and the Status tab say the same
+    // thing the notices do.
     message:
-      `Conflicting edits on ${paths.join(", ")}. Your other devices' version kept the ` +
-      `original filename; the assistant's is saved alongside as ` +
-      `${copies.join(", ") || "(nothing to save)"}.`,
+      `Conflicting edits on ${paths
+        .map((p, i) =>
+          copies[i] ? `${p} (the assistant's version saved as ${copies[i]})` : `${p} (nothing of ours to save)`,
+        )
+        .join("; ")}. Your other devices' version kept the original filename.`,
   };
 }

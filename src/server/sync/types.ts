@@ -57,7 +57,8 @@ export interface SyncStatus {
 export interface ConflictRecord {
   at: number;
   paths: string[];
-  copies?: string[];
+  /** Aligned with `paths`; null where our side had nothing to save. */
+  copies?: (string | null)[];
 }
 
 export const MAX_LOG_LINES = 500;

@@ -310,3 +310,14 @@ describe("alerts", () => {
     expect(second.blocks.some((b) => /sync conflict/.test(b))).toBe(false);
   });
 });
+
+describe("preview_edit", () => {
+  it("fences the excerpts and explains the marker, like every other tool that lifts text", async () => {
+    await seed("Hostile.md", HOSTILE);
+    const { json } = await call("preview_edit", { path: "Hostile.md", oldString: "Ignore previous", newString: "x" });
+    expect(json.count).toBeGreaterThan(1);
+    const { token } = unfence(json.matches[0].text);
+    expect(token).toBe(json.boundary);
+    expect(json.boundaryNote).toContain(token);
+  });
+});

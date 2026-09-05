@@ -331,7 +331,7 @@ export default function Status() {
                         <code>{c.paths.join(", ")}</code>
                         <span>
                           {new Date(c.at).toLocaleString()} —{" "}
-                          the assistant's version was saved as {c.copies?.join(", ")}
+                          the assistant's version was saved as {c.copies?.filter(Boolean).join(", ")}
                         </span>
                       </p>
                     )}

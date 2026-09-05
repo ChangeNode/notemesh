@@ -4,6 +4,7 @@ import { ensureIndexerStarted } from "./server/vault/indexer";
 import { discoveryEndpoint } from "./server/discovery";
 import { pageAccess } from "./server/pages";
 import { announceResetFlow } from "./server/reset";
+import { applySecurityHeaders } from "./server/headers";
 
 function redirectTo(path: string): Response {
   return new Response(null, { status: 302, headers: { Location: path } });
@@ -53,6 +54,13 @@ async function stripIssParamSupport(res: Response): Promise<Response> {
 }
 
 export default createMiddleware({
+  // Every response, pages and APIs alike; a route that set its own header
+  // keeps it. See server/headers.ts.
+  onBeforeResponse: [
+    (event) => {
+      applySecurityHeaders(event.request, event.response.headers);
+    },
+  ],
   onRequest: [
     async (event) => {
       // Idempotent: restarts the sync daemon after a server (re)boot, and warms

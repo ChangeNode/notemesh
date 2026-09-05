@@ -631,3 +631,25 @@ describe("theme", () => {
     expect(html).toContain('name="color-scheme" content="dark"');
   });
 });
+
+describe("browser security headers on pages", () => {
+  it("are on the login page, without HSTS on a plain-HTTP deployment", async () => {
+    const res = await fetch(`${server.url}/login`);
+    expect(res.status).toBe(200);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("form-action 'self'");
+    expect(csp).toContain("object-src 'none'");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("permissions-policy")).toContain("camera=()");
+    expect(res.headers.has("strict-transport-security")).toBe(false);
+  });
+
+  it("are on API responses too", async () => {
+    const res = await fetch(`${server.url}/api/health`);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+  });
+});

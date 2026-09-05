@@ -638,6 +638,8 @@ describe("attachments over signed URLs", () => {
   it("serves it as a download that cannot be sniffed back", async () => {
     const res = await fetch(big.url);
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    // The route's own policy, not the application-wide one from middleware.
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
     expect(res.headers.get("content-disposition")).toMatch(/^attachment;/);
     expect(res.headers.get("cache-control")).toContain("no-store");
     await res.arrayBuffer();

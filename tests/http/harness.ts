@@ -39,7 +39,24 @@ async function freePort(): Promise<number> {
   });
 }
 
+/**
+ * Suites run in parallel and each draws a free port by binding and releasing
+ * it, so two of them can draw the same one; the loser then dies at listen
+ * with EADDRINUSE and its whole file fails. Seen once every few full runs
+ * as the number of HTTP suites grew. A collision is retried on a new port.
+ */
 export async function startServer(env: Record<string, string> = {}): Promise<Server> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startServerOnce(env);
+    } catch (e) {
+      if (attempt < 4 && /EADDRINUSE/.test(String((e as Error).message))) continue;
+      throw e;
+    }
+  }
+}
+
+async function startServerOnce(env: Record<string, string>): Promise<Server> {
   if (!fs.existsSync(BUILD)) {
     // Loud rather than skipped: a silently skipped integration suite is one
     // nobody notices has stopped running.

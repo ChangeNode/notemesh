@@ -44,9 +44,13 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
-## Unreleased (1.2.0)
+## 1.2.0 — 2026-09-06
 
-**Taking this update:** redeploy. Nothing else.
+**Taking this update:** redeploy. Nothing else. A security release: fourteen
+findings from an external review, none of them changing how you use the
+server. The first boot after the update migrates the account table for the
+Better Auth upgrade on its own, and existing connectors, API keys and consents
+carry over.
 
 ### Fixed
 

@@ -51,7 +51,7 @@
     "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "author": "ChangeNode (Will Iverson) <https://changenode.com/>",
   "license": "AGPL-3.0-or-later"

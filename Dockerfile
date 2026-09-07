@@ -1,6 +1,6 @@
 # Build stage
 # trixie (not bookworm): better-sqlite3 v13's linux prebuilds need glibc >= 2.38.
-FROM node:22-trixie-slim AS build
+FROM node:24-trixie-slim AS build
 WORKDIR /app
 RUN corepack enable && apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -9,7 +9,7 @@ COPY . .
 RUN pnpm build
 
 # Runtime stage
-FROM node:22-trixie-slim
+FROM node:24-trixie-slim
 WORKDIR /app
 # The ob CLI is spawned as a child process (not bundled by the server build),
 # so install it globally in the runtime image. Keep the version pinned in

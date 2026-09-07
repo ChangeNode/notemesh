@@ -26,7 +26,8 @@ on:
 permissions:
   contents: write # the Release
   packages: write # ghcr.io
-  id-token: write # provenance attestation
+  id-token: write # provenance attestation: signing
+  attestations: write # provenance attestation: storing it (the 1.2.0 run lacked this and stopped here)
 
 jobs:
   release:

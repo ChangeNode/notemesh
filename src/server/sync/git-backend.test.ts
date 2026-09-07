@@ -208,3 +208,82 @@ describe("the wording of a conflict notice", () => {
     );
   });
 });
+
+// A pulled file's mtime is the pull. Git remembers the commit that last
+// touched it, and that is what list_notes reports (vault/modified.ts).
+describe("modification times", () => {
+  const JAN = "2024-01-15T10:00:00Z";
+  const JAN_MS = Date.parse(JAN);
+
+  function commitAllAt(dir: string, message: string, date: string) {
+    git(dir, "add", "-A");
+    execFileSync("git", ["commit", "-q", "-m", message], {
+      cwd: dir,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "T",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "T",
+        GIT_COMMITTER_EMAIL: "t@t",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_SYSTEM: "/dev/null",
+        GIT_AUTHOR_DATE: date,
+        GIT_COMMITTER_DATE: date,
+      },
+    });
+  }
+
+  it("a pulled note reports the commit that last touched it, not the pull", async () => {
+    const { backend } = await configuredBackend();
+    write(device, "Notes/Old.md", "# Old\n");
+    commitAllAt(device, "device: an old note", JAN);
+    git(device, "push", "-q");
+
+    const result = await backend.syncNow();
+    expect(result.ok, result.output).toBe(true);
+
+    const { listNotes } = await import("~/server/vault/notes");
+    const old = listNotes().find((n) => n.path === "Notes/Old.md")!;
+    expect(old.modified).toBe("2024-01-15T10:00:00+00:00");
+    // The mtime is the pull, moments ago — the number a listing would have
+    // shown without git's help.
+    expect(Date.now() - old.mtime).toBeLessThan(60_000);
+
+    // The index agrees, so sorting by it later means the same thing.
+    const { reindexPath } = await import("~/server/vault/indexer");
+    const { db } = await import("~/server/db");
+    reindexPath("Notes/Old.md");
+    expect(db().prepare("SELECT modified FROM notes WHERE path = ?").get("Notes/Old.md")).toEqual({
+      modified: JAN_MS,
+    });
+  });
+
+  it("start() loads the times for a vault that was cloned with its history", async () => {
+    write(device, "Notes/Old.md", "# Old\n");
+    commitAllAt(device, "device: an old note", JAN);
+    git(device, "push", "-q");
+
+    const { backend } = await configuredBackend();
+    const { listNotes } = await import("~/server/vault/notes");
+    // Nothing to pull, so only start() can have learned this.
+    expect(listNotes().find((n) => n.path === "Notes/Old.md")!.modified).not.toBe("2024-01-15T10:00:00+00:00");
+    backend.start();
+    await vi.waitFor(() => {
+      expect(listNotes().find((n) => n.path === "Notes/Old.md")!.modified).toBe("2024-01-15T10:00:00+00:00");
+    });
+  });
+
+  it("a note a tool writes reports the write, not the commit git remembers", async () => {
+    const { backend } = await configuredBackend();
+    write(device, "Notes/Old.md", "# Old\n");
+    commitAllAt(device, "device: an old note", JAN);
+    git(device, "push", "-q");
+    expect((await backend.syncNow()).ok).toBe(true);
+
+    const { listNotes, appendToNote } = await import("~/server/vault/notes");
+    const before = Date.now();
+    appendToNote("Notes/Old.md", "- more\n");
+    const old = listNotes().find((n) => n.path === "Notes/Old.md")!;
+    expect(Date.parse(old.modified)).toBeGreaterThanOrEqual(before - 1000);
+  });
+});

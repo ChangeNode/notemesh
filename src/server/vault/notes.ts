@@ -16,10 +16,15 @@ import {
   MAX_WRITE_BYTES,
 } from "./paths";
 import { writeVaultFile } from "./disk";
+import { forgetModification, isoInZone, modifiedFor } from "./modified";
+import { configuredTimeZone } from "./timezone";
 
 export interface NoteInfo {
   path: string;
+  /** Filesystem mtime, epoch ms. What a checkout or sync set; kept for callers that compare it. */
   mtime: number;
+  /** When the file last changed as a person means it, ISO 8601 in the configured timezone. See modified.ts. */
+  modified: string;
   size: number;
   /** Present, and false, only for a note over the index size cap: listed and readable, not searchable. */
   indexed?: false;
@@ -602,6 +607,8 @@ export function moveNote(notePath: string, newPath: string): { from: string; to:
   if (fs.existsSync(absTo)) throw new VaultPathError(`Target already exists: ${toVaultRelative(absTo)}`);
   fs.mkdirSync(path.dirname(absTo), { recursive: true });
   fs.renameSync(absFrom, absTo);
+  // A rename keeps the file's own time; only the old path's record is stale.
+  forgetModification(toVaultRelative(absFrom));
   return { from: toVaultRelative(absFrom), to: toVaultRelative(absTo) };
 }
 
@@ -609,6 +616,7 @@ export function deleteNote(notePath: string): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   fs.rmSync(abs);
+  forgetModification(toVaultRelative(abs));
   return toVaultRelative(abs);
 }
 
@@ -634,7 +642,7 @@ function listFiles(folder: string | undefined, include: (name: string) => boolea
   const root = folder ? resolveFolderPath(folder) : env.vaultDir;
   if (!fs.existsSync(root)) throw new VaultPathError(`Folder not found: ${folder}`);
   const out: NoteInfo[] = [];
-  walk(root, out, 0, include);
+  walk(root, out, 0, include, configuredTimeZone());
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
@@ -647,6 +655,7 @@ function walk(
   out: NoteInfo[],
   depth = 0,
   include: (name: string) => boolean = isMarkdown,
+  timeZone = "UTC",
 ) {
   if (depth > MAX_WALK_DEPTH) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -654,7 +663,7 @@ function walk(
     const abs = path.join(dir, entry.name);
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
-      walk(abs, out, depth + 1, include);
+      walk(abs, out, depth + 1, include, timeZone);
     } else if (entry.isFile() && include(entry.name)) {
       const st = fs.statSync(abs);
       // Round: statSync reports sub-millisecond precision, so mtimeMs is a
@@ -662,7 +671,14 @@ function walk(
       // and comparing them for equality — and a fractional tail makes both
       // unreliable. The indexer already rounds at its own two ingestion points,
       // so this keeps the value a caller sees consistent with the stored one.
-      const info: NoteInfo = { path: toVaultRelative(abs), mtime: Math.round(st.mtimeMs), size: st.size };
+      const rel = toVaultRelative(abs);
+      const mtime = Math.round(st.mtimeMs);
+      const info: NoteInfo = {
+        path: rel,
+        mtime,
+        modified: isoInZone(modifiedFor(rel, mtime), timeZone),
+        size: st.size,
+      };
       // The same rule the indexer applies, decided from the same number, so the
       // listing can say why a note that plainly exists is missing from search.
       if (isMarkdown(entry.name) && st.size > MAX_INDEX_BYTES) info.indexed = false;

@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
-import { getSetting } from "../db";
 import { resolveNotePath, toVaultRelative, VaultPathError } from "./paths";
 import { createNote, appendToNote, prependToNote, readNoteRange, noteExists } from "./notes";
 
@@ -72,24 +71,10 @@ function dailyConfig(): DailyConfig {
   return { folder: r.folder, format: r.format, template: r.template };
 }
 
-// "Today" has to be resolved in the user's timezone, not the server's. A
-// container runs in UTC, so an evening in the Americas is already tomorrow as
-// far as the process is concerned and the daily note lands on the wrong day.
-export const DEFAULT_TIMEZONE = "UTC";
-
-export function isValidTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function configuredTimeZone(): string {
-  const tz = getSetting("timezone");
-  return tz && isValidTimeZone(tz) ? tz : DEFAULT_TIMEZONE;
-}
+// The timezone helpers live in timezone.ts (notes.ts needs them too, and
+// this module imports notes.ts); re-exported so existing callers stand.
+export { DEFAULT_TIMEZONE, isValidTimeZone, configuredTimeZone } from "./timezone";
+import { DEFAULT_TIMEZONE, configuredTimeZone, isValidTimeZone } from "./timezone";
 
 /** Calendar date, decoupled from any instant so no zone can shift it again. */
 export interface DateParts {

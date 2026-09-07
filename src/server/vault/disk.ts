@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import { db } from "../db";
 import { env } from "../env";
-import { VaultPathError, formatBytes } from "./paths";
+import { VaultPathError, formatBytes, toVaultRelative } from "./paths";
+import { recordLocalModification } from "./modified";
 
 /**
  * How much room the vault has left, and what is using it.
@@ -216,6 +217,9 @@ export function writeVaultFile(abs: string, content: string): void {
   } finally {
     fs.closeSync(fd);
   }
+  // Written, so this is its modification time from here on, whatever git
+  // remembers about the path from before (vault/modified.ts).
+  recordLocalModification(toVaultRelative(abs));
 }
 
 // The watcher. A level is logged when it changes, not every minute, so the

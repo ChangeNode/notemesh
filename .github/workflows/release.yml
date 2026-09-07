@@ -1,0 +1,122 @@
+name: Release
+
+# A version tag — v1.2.0 — publishes the image and the GitHub Release.
+#
+# The image goes to two registries under the same tags: GitHub's own
+# (ghcr.io/changenode/notemesh, no account needed beyond this repo) and Docker
+# Hub (wiverson/notemesh, which the Docker MCP registry requires). The Release
+# carries that version's section of CHANGELOG.md as its notes, so the notes
+# are written once, in the file the changelog's own preamble says people
+# decide from.
+#
+# Two guards before anything is pushed: the tag must match package.json —
+# the catalog test already holds package.json, the version the server reports
+# at initialize, and the changelog heading together, so the tag is the one
+# thing left to check — and the changelog must have a dated section for it.
+#
+# The Railway template keeps building from source; this is an additional
+# channel for pinning a version, for other Docker hosts, and for the
+# registry listings. The image is what the CI image job already builds and
+# checks on every push, for two architectures.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the Release
+  packages: write # ghcr.io
+  id-token: write # provenance attestation
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tag names the version package.json carries
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          echo "tag: $VERSION  package.json: $expected"
+          test "$VERSION" = "$expected"
+
+      - name: The changelog has a dated section for it
+        run: node scripts/release-notes.mjs "$VERSION" > release-notes.md && wc -l release-notes.md
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 1.2.0, 1.2 and latest, on both registries. `latest` follows the newest
+      # tag pushed, which is the release just made; a patch to an older line
+      # would need the `latest` flavor turned off for that run.
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/changenode/notemesh
+            docker.io/wiverson/notemesh
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=NoteMesh
+            org.opencontainers.image.description=Your Obsidian vault, served to Claude, ChatGPT and Codex over MCP
+            org.opencontainers.image.source=https://github.com/ChangeNode/notemesh
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest the provenance of the ghcr.io image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/changenode/notemesh
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            cat release-notes.md
+            echo
+            echo "## Image"
+            echo
+            echo '```'
+            echo "docker pull ghcr.io/changenode/notemesh:${VERSION#v}"
+            echo "docker pull wiverson/notemesh:${VERSION#v}"
+            echo '```'
+            echo
+            echo "Digest: \`${{ steps.build.outputs.digest }}\`"
+          } > release-body.md
+          gh release create "$VERSION" --title "NoteMesh ${VERSION#v}" --notes-file release-body.md --verify-tag

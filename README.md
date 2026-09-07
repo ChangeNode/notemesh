@@ -232,6 +232,36 @@ construction, and the boundary explanation says so. A git conflict the server
 resolved by writing a conflicted copy is delivered the same way, once per
 connector.
 
+## Running the image elsewhere
+
+Every release is also published as a container image, for two architectures,
+under the same version on two registries:
+
+```bash
+docker pull ghcr.io/changenode/notemesh:1.2.0
+docker pull wiverson/notemesh:1.2.0
+```
+
+The Railway template keeps building from this repository's `Dockerfile`, and
+its update flow is unchanged; the image is for pinning an exact version, for
+Railway's deploy-from-image option, for any other Docker host, and for the
+registry listings. It is the same image CI builds and checks on every push:
+`tini` as PID 1, the server running as the unprivileged `node` user, git and
+git-lfs and the Obsidian CLI included. It needs a volume at `/data` and an
+`ENCRYPTION_KEY`; `BASE_URL` is the public origin the server is reached at.
+
+```bash
+docker run -d --name notemesh -p 3000:3000 \
+  -v notemesh-data:/data \
+  -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+  -e BASE_URL=https://notes.example.com \
+  ghcr.io/changenode/notemesh:1.2.0
+```
+
+Each release on GitHub carries the changelog section for that version, the
+pull commands, and the image digest; the `ghcr.io` image also carries a
+build-provenance attestation.
+
 `read_note` returns `{totalLines, offset, count, hasMore}` alongside `content`,
 so a long note is paged with `offset` rather than dumped in one response — a
 465 KB note would otherwise be ~121k tokens in a single tool call.

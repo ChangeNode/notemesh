@@ -44,6 +44,25 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
+## 1.2.1 — 2026-09-07
+
+**Taking this update:** redeploy. Nothing else.
+
+### Changed
+
+- The server runs on Node 24 — the image, CI and the `engines` field all
+  move together. Nothing changes in what it does; Node 22 reaches the end of
+  its active line first, and the image should not be the last thing on it.
+
+### Added
+
+- Every release is now published as a container image, for amd64 and arm64,
+  as `ghcr.io/changenode/notemesh` and `wiverson/notemesh` under the version,
+  the minor line and `latest`, with a GitHub Release carrying that version's
+  section of this file. The Railway template keeps building from source and
+  its update flow is unchanged; the image is for pinning a version, for other
+  Docker hosts, and for the registry listings. See the README.
+
 ## 1.2.0 — 2026-09-06
 
 **Taking this update:** redeploy. Nothing else. A security release: fourteen

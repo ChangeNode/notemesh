@@ -135,15 +135,17 @@ jobs:
           pid1=$(docker exec nm cat /proc/1/comm)
           echo "PID 1: $pid1"
           test "$pid1" = "tini"
-          children=$(docker exec nm sh -c 'for s in /proc/[0-9]*/status; do grep -q "^PPid:[[:space:]]*1$" "$s" && sed -n "s/^Name:[[:space:]]*//p" "$s"; done')
+          # By command line, not by the Name: field: Node 24 names its main
+          # thread, so status reports MainThread rather than node.
+          children=$(docker exec nm sh -c 'for p in /proc/[0-9]*; do grep -q "^PPid:[[:space:]]*1$" "$p/status" 2>/dev/null && tr "\\0" " " < "$p/cmdline" && echo; done')
           echo "children of PID 1: $children"
-          echo "$children" | grep -qx node
+          echo "$children" | grep -q "^node "
 
       # The server process is node's, not root's; the volume became node's and
       # its earlier file is still readable; /app is not writable by node.
       - name: node runs unprivileged, owns its data, and cannot write /app
         run: |
-          uid=$(docker exec nm sh -c 'for s in /proc/[0-9]*/status; do grep -q "^Name:[[:space:]]*node$" "$s" && sed -n "s/^Uid:[[:space:]]*\([0-9]*\).*/\1/p" "$s" && break; done')
+          uid=$(docker exec nm sh -c 'for p in /proc/[0-9]*; do tr "\\0" " " < "$p/cmdline" 2>/dev/null | grep -q "^node " && sed -n "s/^Uid:[[:space:]]*\([0-9]*\).*/\1/p" "$p/status" && break; done')
           echo "node uid: $uid"
           test "$uid" = "$(docker exec nm id -u node)"
           docker exec nm sh -c 'setpriv --reuid=node --regid=node --init-groups sh -c "cat /data/vault/Before.md && touch /data/vault/After.md && test ! -w /app/.output"'

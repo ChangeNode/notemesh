@@ -216,3 +216,77 @@ describe("a full disk, as a tool reports it", () => {
     expect(res.content[0].text).not.toMatch(/server logs/);
   });
 });
+
+// Sorting and narrowing happen before paging: total and hasMore describe the
+// narrowed list, and page two follows page one under the same order.
+describe("list_notes and list_attachments, sorted and narrowed", () => {
+  type Handler = (args: unknown, extra: unknown) => { content: { text: string }[]; isError?: boolean };
+  type Envelope = { total: number; count: number; hasMore: boolean; items: { path: string }[] };
+
+  async function tools() {
+    const { createMcpServer } = await import("./server");
+    const server = createMcpServer({ read: true, write: false, label: "test" }) as unknown as {
+      _registeredTools: Record<string, { handler: Handler } | undefined>;
+    };
+    return (tool: string, args: Record<string, unknown>) => {
+      const res = server._registeredTools[tool]!.handler(args, {});
+      return { res, body: res.isError ? null : (JSON.parse(res.content[0].text) as Envelope) };
+    };
+  }
+
+  const T0 = Date.UTC(2026, 0, 1, 12, 0, 0);
+  function plant(rel: string, size: number, modifiedMs: number) {
+    const abs = path.join(root, "vault", rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, "x".repeat(size));
+    fs.utimesSync(abs, modifiedMs / 1000, modifiedMs / 1000);
+  }
+
+  beforeEach(() => {
+    plant("b.md", 3, T0 + 2000);
+    plant("a.md", 1, T0 + 3000);
+    plant("c.md", 2, T0 + 1000);
+    plant("img/one.png", 5, T0 + 1000);
+    plant("img/two.png", 4, T0 + 2000);
+  });
+
+  it("sorts by modified, newest first, and pages under that order", async () => {
+    const call = await tools();
+    const first = call("list_notes", { sort: "modified", limit: 2 }).body!;
+    expect(first.items.map((i) => i.path)).toEqual(["a.md", "b.md"]);
+    expect(first).toMatchObject({ total: 3, count: 2, hasMore: true });
+    const second = call("list_notes", { sort: "modified", limit: 2, offset: 2 }).body!;
+    expect(second.items.map((i) => i.path)).toEqual(["c.md"]);
+    expect(second.hasMore).toBe(false);
+  });
+
+  it("modifiedAfter narrows the whole listing, so total is the narrowed count", async () => {
+    const call = await tools();
+    const { setSetting } = await import("../db");
+    setSetting("timezone", "Pacific/Auckland");
+    // Auckland's 2026-01-02 begins at 11:00Z on the 1st; every note is after that.
+    expect(call("list_notes", { modifiedAfter: "2026-01-02" }).body!.total).toBe(3);
+    // 12:00:02Z exactly: strictly after keeps only the one at 12:00:03Z.
+    const after = call("list_notes", { modifiedAfter: "2026-01-01T12:00:02Z", limit: 1 }).body!;
+    expect(after).toMatchObject({ total: 1, count: 1, hasMore: false });
+    expect(after.items[0].path).toBe("a.md");
+  });
+
+  it("attachments sort by size, largest first, and narrow the same way", async () => {
+    const call = await tools();
+    expect(call("list_attachments", { sort: "size" }).body!.items.map((i) => i.path)).toEqual([
+      "img/one.png",
+      "img/two.png",
+    ]);
+    expect(call("list_attachments", { modifiedAfter: "2026-01-01T12:00:01Z" }).body!.items.map((i) => i.path)).toEqual([
+      "img/two.png",
+    ]);
+  });
+
+  it("a modifiedAfter it cannot read is a tool error that says what it wanted", async () => {
+    const call = await tools();
+    const { res } = call("list_notes", { modifiedAfter: "last tuesday" });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/ISO 8601 timestamp .* or a date/);
+  });
+});

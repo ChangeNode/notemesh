@@ -5,6 +5,8 @@ import { withBoundary, fenceEach, fenceDeep } from "./boundary";
 import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
+import { arrange, type SortKey, type SortOrder } from "../vault/listing";
+import { configuredTimeZone } from "../vault/timezone";
 import { isDiskFull, diskFullMessage } from "../vault/disk";
 import { alertBlocks, type RequestInfo } from "./alerts";
 import { reindexPath } from "../vault/indexer";
@@ -98,6 +100,24 @@ const PAGE_ARGS = {
     .describe(`Max items to return (default ${DEFAULT_PAGE}, max ${MAX_PAGE})`),
   offset: z.number().int().min(0).optional().describe("Items to skip, for paging"),
 };
+
+// Ordering and narrowing for the file listings. Applied to the whole listing
+// before paging (vault/listing.ts), so total and hasMore describe the
+// narrowed list.
+const LIST_ARGS = {
+  sort: z.enum(["name", "modified", "size"]).optional()
+    .describe("Order by path (default), modified time, or size"),
+  order: z.enum(["asc", "desc"]).optional()
+    .describe("Ascending or descending; defaults to asc for name, desc (newest or largest first) otherwise"),
+  modifiedAfter: z.string().optional()
+    .describe(
+      "Only entries modified after this instant: an ISO 8601 timestamp, or a date (YYYY-MM-DD) meaning " +
+        "midnight in the configured timezone. A timestamp without an offset is read in that timezone too.",
+    ),
+  ...PAGE_ARGS,
+};
+
+type ListArgs = { folder?: string; sort?: SortKey; order?: SortOrder; modifiedAfter?: string; limit?: number; offset?: number };
 
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
@@ -269,15 +289,18 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       annotations: READ,
       description:
         "List markdown notes in the vault (optionally within a folder), with modified time and size. " +
+        "modified is ISO 8601 in the configured timezone and means the last change a person made: on a " +
+        "git-synced vault, the commit that last touched the note. Sort by modified (newest first) for a " +
+        "recently-updated list, or pass modifiedAfter to see only what changed since a date. " +
         "An entry too large to index carries indexed: false — it is readable with read_note but absent " +
         "from search, tags, tasks and links.",
       inputSchema: {
         folder: z.string().optional().describe("Folder to list; omit for the whole vault"),
-        ...PAGE_ARGS,
+        ...LIST_ARGS,
       },
     },
-    safe(({ folder, limit, offset }: { folder?: string; limit?: number; offset?: number }) =>
-      page(listNotes(folder), limit, offset),
+    safe(({ folder, sort, order, modifiedAfter, limit, offset }: ListArgs) =>
+      page(arrange(listNotes(folder), { sort, order, modifiedAfter }, configuredTimeZone()), limit, offset),
     ),
   );
 
@@ -287,16 +310,17 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       title: "List attachments",
       annotations: READ,
       description:
-        "List non-markdown vault files (images, PDFs, audio…), with modified time and size. " +
+        "List non-markdown vault files (images, PDFs, audio…), with modified time and size, sortable and " +
+        "narrowable the same way as list_notes. " +
         "Embeds are written by filename (![[screen.png]]) while the file lives in its own " +
         "folder — use this to find the path read_attachment wants.",
       inputSchema: {
         folder: z.string().optional().describe("Folder to list; omit for the whole vault"),
-        ...PAGE_ARGS,
+        ...LIST_ARGS,
       },
     },
-    safe(({ folder, limit, offset }: { folder?: string; limit?: number; offset?: number }) =>
-      page(listAttachments(folder), limit, offset),
+    safe(({ folder, sort, order, modifiedAfter, limit, offset }: ListArgs) =>
+      page(arrange(listAttachments(folder), { sort, order, modifiedAfter }, configuredTimeZone()), limit, offset),
     ),
   );
 

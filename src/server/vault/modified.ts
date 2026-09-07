@@ -116,6 +116,15 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
  * a person reading it sees their own clock, the same one daily_note uses.
  */
 export function isoInZone(ms: number, timeZone: string): string {
+  const f = formatterFor(timeZone);
+  const p: Record<string, string> = {};
+  for (const part of f.formatToParts(ms)) p[part.type] = part.value;
+  // "GMT-07:00", or bare "GMT" at zero offset.
+  const off = p.timeZoneName === "GMT" ? "+00:00" : p.timeZoneName.replace(/^GMT/, "");
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${off}`;
+}
+
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
   let f = formatters.get(timeZone);
   if (!f) {
     f = new Intl.DateTimeFormat("en-US", {
@@ -131,9 +140,30 @@ export function isoInZone(ms: number, timeZone: string): string {
     });
     formatters.set(timeZone, f);
   }
-  const p: Record<string, string> = {};
-  for (const part of f.formatToParts(ms)) p[part.type] = part.value;
-  // "GMT-07:00", or bare "GMT" at zero offset.
-  const off = p.timeZoneName === "GMT" ? "+00:00" : p.timeZoneName.replace(/^GMT/, "");
-  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${off}`;
+  return f;
+}
+
+/** The zone's offset from UTC at that instant, in ms (Auckland in January: +13h). */
+export function zoneOffsetMs(ms: number, timeZone: string): number {
+  const name = formatterFor(timeZone).formatToParts(ms).find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+  const m = /^GMT([+-])(\d{2}):(\d{2})$/.exec(name);
+  if (!m) return 0;
+  const sign = m[1] === "-" ? -1 : 1;
+  return sign * (Number(m[2]) * 3_600_000 + Number(m[3]) * 60_000);
+}
+
+/**
+ * The instant at which the zone's clocks read this wall-clock time. Solved by
+ * guessing the same digits in UTC and correcting by the offset there, then
+ * once more in case the correction crossed a daylight-saving change.
+ */
+export function wallClockInZone(
+  parts: { year: number; month: number; day: number; hour?: number; minute?: number; second?: number },
+  timeZone: string,
+): number {
+  const guess = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0);
+  const first = zoneOffsetMs(guess, timeZone);
+  const ms = guess - first;
+  const second = zoneOffsetMs(ms, timeZone);
+  return second === first ? ms : guess - second;
 }

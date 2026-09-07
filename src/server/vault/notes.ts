@@ -634,7 +634,7 @@ export function listAttachments(folder?: string): NoteInfo[] {
   return listFiles(folder, (name) => !isMarkdown(name));
 }
 
-function isMarkdown(name: string): boolean {
+export function isMarkdown(name: string): boolean {
   return name.toLowerCase().endsWith(".md");
 }
 

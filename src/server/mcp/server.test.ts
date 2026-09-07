@@ -47,6 +47,7 @@ const READ_TOOLS = [
   "get_outline",
   "get_vault_info",
   "list_attachments",
+  "list_directory",
   "list_folders",
   "list_link_issues",
   "list_notes",
@@ -288,5 +289,38 @@ describe("list_notes and list_attachments, sorted and narrowed", () => {
     const { res } = call("list_notes", { modifiedAfter: "last tuesday" });
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toMatch(/ISO 8601 timestamp .* or a date/);
+  });
+});
+
+describe("list_directory", () => {
+  type Handler = (args: unknown, extra: unknown) => { content: { text: string }[]; isError?: boolean };
+
+  it("is a read tool with the listing envelope, sorted and paged like the others", async () => {
+    const { createMcpServer } = await import("./server");
+    const server = createMcpServer({ read: true, write: false, label: "test" }) as unknown as {
+      _registeredTools: Record<string, { handler: Handler } | undefined>;
+    };
+    const T0 = Date.UTC(2026, 0, 1, 12, 0, 0);
+    for (const [rel, at] of [
+      ["Old/a.md", T0 + 1000],
+      ["New/b.md", T0 + 3000],
+      ["c.md", T0 + 2000],
+    ] as const) {
+      const abs = path.join(root, "vault", rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, "x");
+      fs.utimesSync(abs, at / 1000, at / 1000);
+    }
+    const { reindexPath } = await import("../vault/indexer");
+    for (const rel of ["Old/a.md", "New/b.md", "c.md"]) reindexPath(rel);
+
+    const res = server._registeredTools.list_directory!.handler({ sort: "modified", limit: 2 }, {});
+    expect(res.isError).toBeUndefined();
+    const body = JSON.parse(res.content[0].text);
+    expect(body).toMatchObject({ total: 3, count: 2, hasMore: true });
+    expect(body.items.map((i: { path: string; kind: string }) => [i.path, i.kind])).toEqual([
+      ["New", "folder"],
+      ["c.md", "file"],
+    ]);
   });
 });

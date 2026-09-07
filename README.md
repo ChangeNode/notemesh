@@ -37,7 +37,7 @@ The tool surface mirrors the official Obsidian CLI's vault commands:
 
 | Group | Tools |
 | --- | --- |
-| Files | `read_note`, `list_notes`, `list_folders`, `create_note`, `edit_note`, `preview_edit`, `update_note`, `append_to_note`, `prepend_to_note`, `move_note`, `delete_note`* |
+| Files | `read_note`, `list_notes`, `list_directory`, `list_folders`, `create_note`, `edit_note`, `preview_edit`, `update_note`, `append_to_note`, `prepend_to_note`, `move_note`, `delete_note`* |
 | Attachments | `list_attachments`, `read_attachment` (images, PDFs and other non-markdown files) |
 | Daily notes | `daily_note` (read / append / prepend / path) — the folder and filename format come from your vault's own Daily Notes settings* |
 | Search | `search_vault` (full-text over titles, headings, and bodies) |
@@ -203,7 +203,7 @@ against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 
 | Limit | Value | Applies to |
 | --- | --- | --- |
-| List results | 100 default, 500 max | `list_notes`, `list_folders`, `list_tags`, `notes_by_tag`, `list_tasks`, `list_link_issues` |
+| List results | 100 default, 500 max | `list_notes`, `list_attachments`, `list_directory`, `list_folders`, `list_tags`, `notes_by_tag`, `list_tasks`, `list_link_issues` |
 | Search results | 20 default, 100 max | `search_vault` |
 | Note read window | 2,000 lines or 100 KB, whichever first | `read_note`, `daily_note` read |
 | Attachment inlined | 1 MB | `read_attachment` — larger files come back as a 15-minute signed download URL |

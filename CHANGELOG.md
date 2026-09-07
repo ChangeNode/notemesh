@@ -44,6 +44,51 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
+## 1.3.0 — 2026-09-07
+
+**Taking this update:** redeploy, then restart or reconnect your MCP client so it
+sees `list_directory`. Clients cache the tool list when they connect; the two
+listing tools that gained arguments work either way, since the arguments are
+optional.
+
+### Added
+
+- **`list_directory`** — one level of the vault the way `ls` shows it: files
+  and folders side by side, each with a name, path, kind, modified time and
+  size. A folder's time is the newest thing beneath it and its size the bytes
+  beneath, read from the index; a folder with nothing indexed under it shows
+  its own mtime and says so with `modifiedFrom: "folder"`. Pass an entry's
+  path back to descend. With it the server offers 30 tools covering notes,
+  attachments, daily notes, search, properties, tasks, links and tags.
+
+- **Sorting and narrowing** on `list_notes`, `list_attachments` and
+  `list_directory`: `sort` by `name` (the default), `modified` or `size`,
+  `order` (`asc` or `desc`; by modified or size the default is newest or largest
+  first), and `modifiedAfter`, which keeps only what changed after an instant.
+  All three apply before paging, so `total` and `hasMore` describe the narrowed
+  list and page two follows page one under the same order. `sort: "modified"`
+  is the recently-updated list; `modifiedAfter: "2026-09-01"` is what changed
+  this month. The instant can be an ISO 8601 timestamp, or a bare date meaning
+  midnight in the timezone the Settings tab holds (the one daily notes use); a
+  timestamp without an offset is read on that clock too.
+
+### Changed
+
+- Every listing now carries **`modified`**, an ISO 8601 timestamp in the
+  configured timezone, meaning the last change a person made. On a git-synced
+  vault that is the commit that last touched the file. Until now the only time
+  on offer was the file's mtime, and on the git backend a pull sets every
+  pulled file's mtime to the moment of the pull, so a listing said the whole
+  vault changed at the last sync. The server now reads git's own record once
+  at start and again after every pull, and falls back to the mtime for files
+  git has no opinion on — an Obsidian-synced vault, where sync preserves the
+  mtime and it was right all along, or a note a tool wrote a moment ago. The
+  raw `mtime` stays beside it, unchanged, for anything that compared it.
+
+- The index gains a `modified` column on notes and attachments. It is added
+  to an existing database on boot and filled by the rebuild, so there is
+  nothing to do.
+
 ## 1.2.1 — 2026-09-07
 
 **Taking this update:** redeploy. Nothing else.

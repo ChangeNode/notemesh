@@ -6,6 +6,7 @@ import { signAttachmentUrl } from "../vault/attachment-url";
 import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
 import { arrange, type SortKey, type SortOrder } from "../vault/listing";
+import { listDirectory } from "../vault/directory";
 import { configuredTimeZone } from "../vault/timezone";
 import { isDiskFull, diskFullMessage } from "../vault/disk";
 import { alertBlocks, type RequestInfo } from "./alerts";
@@ -249,7 +250,7 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
     // Reported to every client on connect, so it is the deployment's version
     // rather than a number that happens to live here. A test keeps it in step
     // with package.json.
-    version: "1.2.1",
+    version: "1.3.0",
   });
 
   const writable = access.write;
@@ -380,6 +381,27 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
     },
     safe(({ limit, offset }: { limit?: number; offset?: number }) =>
       page(listFolders(), limit, offset),
+    ),
+  );
+
+  server.registerTool(
+    "list_directory",
+    {
+      title: "List a directory",
+      annotations: READ,
+      description:
+        "List one level of the vault the way ls does: files and folders side by side, each with name, " +
+        "path, kind, modified and size. A folder's modified is the newest item beneath it and its size " +
+        "the bytes beneath, from the index; one with nothing indexed beneath shows its own mtime and " +
+        "modifiedFrom: \"folder\". Sortable and narrowable like list_notes, so sort: modified on a " +
+        "folder shows where the recent work is. Pass an entry's path back to descend.",
+      inputSchema: {
+        folder: z.string().optional().describe("Folder to list; omit for the vault root"),
+        ...LIST_ARGS,
+      },
+    },
+    safe(({ folder, sort, order, modifiedAfter, limit, offset }: ListArgs) =>
+      page(arrange(listDirectory(folder), { sort, order, modifiedAfter }, configuredTimeZone()), limit, offset),
     ),
   );
 

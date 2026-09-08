@@ -8,6 +8,7 @@ import { VaultPathError } from "../vault/paths";
 import { arrange, type SortKey, type SortOrder } from "../vault/listing";
 import { listDirectory } from "../vault/directory";
 import { rewriteLinksForMove } from "../vault/links";
+import { moveFolder, deleteFolder } from "../vault/folders";
 import { configuredTimeZone } from "../vault/timezone";
 import { isDiskFull, diskFullMessage } from "../vault/disk";
 import { alertBlocks, type RequestInfo } from "./alerts";
@@ -594,6 +595,37 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       }),
     );
 
+    server.registerTool(
+      "move_folder",
+      {
+        title: "Move / rename folder",
+        annotations: REMOVE,
+        description:
+          "Move or rename a folder with everything in it, rewriting every [[wikilink]] that pointed " +
+          "at a note or attachment inside it, as move_note does for one note. Fails if the target " +
+          "exists or lies inside the folder.",
+        inputSchema: {
+          path: z.string().describe("Current vault-relative folder path"),
+          newPath: z.string().describe("New vault-relative folder path"),
+        },
+      },
+      safe(({ path, newPath }: { path: string; newPath: string }) => {
+        const res = moveFolder(path, newPath);
+        for (const [from, to] of res.moved) {
+          w(from, "move_folder");
+          w(to, "move_folder");
+        }
+        for (const rel of res.rewritten.notes) if (!res.moved.has(rel) && ![...res.moved.values()].includes(rel)) w(rel, "move_folder");
+        const n = res.moved.size;
+        const r = res.rewritten;
+        const summary =
+          r.links === 0
+            ? ""
+            : ` Updated ${r.links} link${r.links === 1 ? "" : "s"} in ${r.notes.length} note${r.notes.length === 1 ? "" : "s"}: ${r.notes.join(", ")}.`;
+        return text(`Moved ${res.from} → ${res.to} (${n} file${n === 1 ? "" : "s"}).${summary}`);
+      }),
+    );
+
     // On unless explicitly turned off, so an unset instance gets it. Both
     // backends keep the file — Obsidian Sync in version history, git in the
     // previous commit — so a deletion here is recoverable, which is what makes
@@ -610,6 +642,19 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
           inputSchema: { path: z.string().describe("Vault-relative path of the note to delete") },
         },
         safe(({ path }: { path: string }) => text(`Deleted ${w(deleteNote(path), "delete_note")}`)),
+      );
+
+      server.registerTool(
+        "delete_folder",
+        {
+          title: "Delete folder",
+          annotations: REMOVE,
+          description:
+            "Delete an empty folder. Refused while anything is inside it; delete_note removes notes. " +
+            "Offered under the same setting as delete_note.",
+          inputSchema: { path: z.string().describe("Vault-relative path of the empty folder") },
+        },
+        safe(({ path }: { path: string }) => text(`Deleted ${deleteFolder(path)}`)),
       );
     }
   }

@@ -192,8 +192,8 @@ describe("tool definitions, as a client reads them", () => {
       // Every tool that can write says whether it can discard content.
       if (!ro) expect(t.annotations!.destructiveHint, `${t.name} says whether it is destructive`).toBeTypeOf("boolean");
     }
-    // The three that can lose content a person wrote, and only those.
+    // The five that can lose content a person wrote, and only those.
     const destructive = (await catalog()).filter((t) => t.annotations!.destructiveHint).map((t) => t.name).sort();
-    expect(destructive).toEqual(["delete_note", "move_note", "update_note"]);
+    expect(destructive).toEqual(["delete_folder", "delete_note", "move_folder", "move_note", "update_note"]);
   });
 });

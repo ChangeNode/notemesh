@@ -68,8 +68,10 @@ const WRITE_TOOLS = [
   "append_to_note",
   "create_note",
   // Present unless the setting turns it off — see the delete_note block below.
+  "delete_folder",
   "delete_note",
   "edit_note",
+  "move_folder",
   "move_note",
   "prepend_to_note",
   "remove_property",
@@ -104,6 +106,16 @@ describe("tool surface", () => {
 // Deleting is on by default: both backends keep the file in their history, so
 // it is recoverable rather than destructive. The setting still turns it off,
 // and read scope still never gets it — those are the parts that matter.
+describe("delete_folder", () => {
+  it("comes and goes with delete_note", async () => {
+    await setDelete(false);
+    expect(await toolNames(true, true)).not.toContain("delete_folder");
+    await setDelete(true);
+    expect(await toolNames(true, true)).toContain("delete_folder");
+    expect(await toolNames(true, false)).not.toContain("delete_folder");
+  });
+});
+
 describe("delete_note", () => {
   it("is present by default for a writable client", async () => {
     expect(await toolNames(true, true)).toContain("delete_note");
@@ -186,6 +198,22 @@ describe("preview_edit", () => {
     const bad = call("prepend_to_note", { path: "Note.md", content: "x", heading: "Zed" });
     expect(bad.isError).toBe(true);
     expect(bad.content[0].text).toMatch(/No heading "Zed"/);
+  });
+
+  it("move_folder moves everything, rewrites the links, and reindexes old, new and rewritten paths", async () => {
+    const { call, reindex } = await serverWith(true);
+    const { reindexPath } = await vi.importActual<typeof import("../vault/indexer")>("../vault/indexer");
+    const v = path.join(root, "vault");
+    fs.mkdirSync(path.join(v, "Old"), { recursive: true });
+    fs.writeFileSync(path.join(v, "Old", "a.md"), "x\n");
+    fs.writeFileSync(path.join(v, "Src.md"), "[[Old/a]]\n");
+    reindexPath("Old/a.md");
+    reindexPath("Src.md");
+    const res = call("move_folder", { path: "Old", newPath: "New" });
+    expect(res.isError).toBeUndefined();
+    expect(res.content[0].text).toBe("Moved Old → New (1 file). Updated 1 link in 1 note: Src.md.");
+    expect(fs.readFileSync(path.join(v, "Src.md"), "utf8")).toBe("[[New/a]]\n");
+    expect(reindex.mock.calls.map((c) => c[0])).toEqual(["Old/a.md", "New/a.md", "Src.md"]);
   });
 
   it("move_note rewrites links by default, says what it touched, and updateLinks: false leaves them", async () => {

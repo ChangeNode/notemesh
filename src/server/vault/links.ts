@@ -110,24 +110,37 @@ export function rewriteText(
  * did, which is why the order matters.
  */
 export function rewriteLinksForMove(from: string, to: string): RewriteResult {
+  return rewriteLinksForMoves(new Map([[from, to]]));
+}
+
+/**
+ * The same for many files moved at once — a folder. A note that linked to
+ * a moved sibling may itself have moved, so sources are read at their new
+ * paths, and the ambiguity check sees the vault as it is after all of them.
+ */
+export function rewriteLinksForMoves(moves: Map<string, string>): RewriteResult {
+  if (moves.size === 0) return { notes: [], links: 0 };
   const d = db();
-  const rows = d
-    .prepare("SELECT source_path, target FROM links WHERE resolved_path = ?")
-    .all(from) as { source_path: string; target: string }[];
-  const bySource = new Map<string, Set<string>>();
+  const rows: { source_path: string; target: string; resolved_path: string }[] = [];
+  const select = d.prepare("SELECT source_path, target, resolved_path FROM links WHERE resolved_path = ?");
+  for (const from of moves.keys()) {
+    rows.push(...(select.all(from) as typeof rows));
+  }
+  // Per source note, each raw target and the moved file it resolved to.
+  const bySource = new Map<string, Map<string, string>>();
   for (const r of rows) {
-    const set = bySource.get(r.source_path) ?? new Set<string>();
-    set.add(r.target.trim());
-    bySource.set(r.source_path, set);
+    const targets = bySource.get(r.source_path) ?? new Map<string, string>();
+    targets.set(r.target.trim(), r.resolved_path);
+    bySource.set(r.source_path, targets);
   }
   if (bySource.size === 0) return { notes: [], links: 0 };
 
-  // Basenames as they will be after the move, for the ambiguity check.
+  // Basenames as they will be after the moves, for the ambiguity check.
   const counts = new Map<string, number>();
   const paths = (d.prepare("SELECT path FROM notes UNION ALL SELECT path FROM attachments").all() as { path: string }[])
     .map((r) => r.path)
-    .filter((p) => p !== from)
-    .concat([to]);
+    .filter((p) => !moves.has(p))
+    .concat([...moves.values()]);
   for (const p of paths) {
     const base = path.basename(stripMd(p)).toLowerCase();
     counts.set(base, (counts.get(base) ?? 0) + 1);
@@ -136,12 +149,15 @@ export function rewriteLinksForMove(from: string, to: string): RewriteResult {
 
   const result: RewriteResult = { notes: [], links: 0 };
   for (const [source, targets] of bySource) {
-    // The moved note's own links to itself: it is now at `to`.
-    const rel = source === from ? to : source;
+    // A source that moved itself is read where it is now.
+    const rel = moves.get(source) ?? source;
     const abs = path.join(env.vaultDir, rel);
     if (!fs.existsSync(abs)) continue;
     const content = readVaultFile(abs);
-    const rewritten = rewriteText(content, targets, (t) => newTarget(t, from, to, basenameCount));
+    const rewritten = rewriteText(content, new Set(targets.keys()), (t) => {
+      const from = targets.get(t)!;
+      return newTarget(t, from, moves.get(from)!, basenameCount);
+    });
     if (!rewritten) continue;
     writeVaultFile(abs, rewritten.text);
     result.notes.push(rel);

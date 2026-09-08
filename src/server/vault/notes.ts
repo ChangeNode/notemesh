@@ -255,11 +255,16 @@ export function noteExists(notePath: string): boolean {
 // resolveNotePath; these are cosmetic/robustness).
 const RESERVED_SEGMENTS = new Set(["~", "__proto__", "constructor", "prototype", "CON", "PRN", "AUX", "NUL"]);
 
+/** Refuses a path with a segment that is a hazard on some platform or in some runtime. */
+export function assertNoReservedSegments(abs: string) {
+  if (toVaultRelative(abs).split("/").some((s) => RESERVED_SEGMENTS.has(s))) {
+    throw new VaultPathError(`Reserved name in path: ${toVaultRelative(abs)}`);
+  }
+}
+
 export function createNote(notePath: string, content: string): string {
   const abs = resolveNotePath(notePath);
-  if (toVaultRelative(abs).split("/").some((s) => RESERVED_SEGMENTS.has(s))) {
-    throw new VaultPathError("Note path contains a reserved name");
-  }
+  assertNoReservedSegments(abs);
   if (fs.existsSync(abs)) {
     throw new VaultPathError(`Note already exists: ${toVaultRelative(abs)} (use update_note to replace it)`);
   }

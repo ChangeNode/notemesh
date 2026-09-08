@@ -5,7 +5,10 @@ import { indexerStatus } from "./indexer";
 import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
-import { resolveNotePath, readVaultFile, VaultPathError } from "./paths";
+import { resolveNotePath, resolveFolderPath, toVaultRelative, readVaultFile, VaultPathError } from "./paths";
+import { parseInstant } from "./listing";
+import { isoInZone } from "./modified";
+import { configuredTimeZone as zoneSetting } from "./timezone";
 import { headroom, writeVaultFile } from "./disk";
 import { readNote, createNote } from "./notes";
 import { dailyNotePath , timestampInZone, configuredTimeZone} from "./daily";
@@ -17,6 +20,20 @@ export interface SearchHit {
   snippet: string;
   /** The words in `snippet` that matched, deduplicated, in order of appearance. */
   matches: string[];
+  /** ISO 8601 in the configured timezone; the same value list_notes shows. */
+  modified: string;
+}
+
+export interface SearchOptions {
+  limit?: number;
+  offset?: number;
+  context?: boolean;
+  /** Only notes within this folder. */
+  folder?: string;
+  /** Only notes modified strictly after this instant; the forms parseInstant accepts. */
+  modifiedAfter?: string;
+  /** relevance (the default) or modified, newest first. */
+  sort?: "relevance" | "modified";
 }
 
 // FTS5 brackets each matched term with delimiters we choose. They used to be
@@ -51,10 +68,7 @@ export interface SearchPage {
   total: number;
 }
 
-export function searchVault(
-  query: string,
-  opts: { limit?: number; offset?: number; context?: boolean } = {},
-): SearchPage {
+export function searchVault(query: string, opts: SearchOptions = {}): SearchPage {
   // Search keeps its own limits (20 / 100) rather than the list tools' 100 / 500:
   // every hit carries a snippet, so a page here is far heavier than a page of
   // paths. With offset a caller who wants more can page.
@@ -68,25 +82,58 @@ export function searchVault(
     .join(" ");
   if (!terms) return { hits: [], total: 0 };
   const snippetTokens = opts.context ? 24 : 10;
+  const timeZone = zoneSetting();
+
+  // Narrowing joins the notes table, which holds the path prefix and the
+  // modified time; the FTS table carries only the text. Both queries below
+  // share the same WHERE so the count describes the same set as the page.
+  const where: string[] = ["notes_fts MATCH ?"];
+  const params: unknown[] = [terms];
+  if (opts.folder !== undefined && opts.folder !== "") {
+    const abs = resolveFolderPath(opts.folder);
+    if (!fs.existsSync(abs)) throw new VaultPathError(`Folder not found: ${opts.folder}`);
+    const prefix = `${toVaultRelative(abs)}/`;
+    if (prefix !== "./" && prefix !== "/") {
+      where.push("substr(notes.path, 1, ?) = ?");
+      params.push(prefix.length, prefix);
+    }
+  }
+  if (opts.modifiedAfter !== undefined) {
+    where.push("COALESCE(notes.modified, notes.mtime) > ?");
+    params.push(parseInstant(opts.modifiedAfter, timeZone));
+  }
+  const from = "FROM notes_fts JOIN notes ON notes.path = notes_fts.path";
+  const order = opts.sort === "modified" ? "COALESCE(notes.modified, notes.mtime) DESC, notes.path" : "notes_fts.rank";
+
   // A COUNT over the same MATCH is a posting-list walk — far cheaper than the
   // snippet() query below, which builds text for every row it returns. It is
   // what lets the envelope say hasMore honestly instead of leaving a caller to
   // guess from a full page. LIMIT and OFFSET stay in SQL so the whole result
   // set is never materialised; that is why this cannot go through page().
   const total = (
-    db().prepare(`SELECT COUNT(*) AS n FROM notes_fts WHERE notes_fts MATCH ?`).get(terms) as { n: number }
+    db().prepare(`SELECT COUNT(*) AS n ${from} WHERE ${where.join(" AND ")}`).get(...params) as { n: number }
   ).n;
   const rows = db()
     .prepare(
-      `SELECT path, title, snippet(notes_fts, 3, ?, ?, ' … ', ?) AS snippet
-       FROM notes_fts WHERE notes_fts MATCH ? ORDER BY rank LIMIT ? OFFSET ?`,
+      `SELECT notes.path AS path, notes_fts.title AS title, snippet(notes_fts, 3, ?, ?, ' … ', ?) AS snippet,
+              COALESCE(notes.modified, notes.mtime) AS modified
+       ${from} WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ? OFFSET ?`,
     )
-    .all(HL_START, HL_END, snippetTokens, terms, limit, offset) as {
+    .all(HL_START, HL_END, snippetTokens, ...params, limit, offset) as {
     path: string;
     title: string;
     snippet: string;
+    modified: number;
   }[];
-  return { hits: rows.map((r) => ({ path: r.path, title: r.title, ...splitHighlights(r.snippet) })), total };
+  return {
+    hits: rows.map((r) => ({
+      path: r.path,
+      title: r.title,
+      ...splitHighlights(r.snippet),
+      modified: isoInZone(r.modified, timeZone),
+    })),
+    total,
+  };
 }
 
 // Normalize a note path the way the index stores it (vault-relative, .md).

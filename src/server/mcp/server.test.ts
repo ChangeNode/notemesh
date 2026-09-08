@@ -291,6 +291,24 @@ describe("list_notes and list_attachments, sorted and narrowed", () => {
     expect(call("list_directory", { name: "*.md" }).body!).toMatchObject({ total: 3 });
   });
 
+  it("search_vault takes the same narrowing and reports modified on each hit", async () => {
+    const call = await tools();
+    const { reindexPath } = await import("../vault/indexer");
+    for (const rel of ["a.md", "b.md", "c.md"]) {
+      // Same word in each, keeping the mtime the fixture set.
+      const abs = path.join(root, "vault", rel);
+      const { mtime } = fs.statSync(abs);
+      fs.writeFileSync(abs, "zebra\n");
+      fs.utimesSync(abs, mtime, mtime);
+      reindexPath(rel);
+    }
+    const body = call("search_vault", { query: "zebra", folder: ".", modifiedAfter: "2026-01-01T12:00:01Z", sort: "modified" })
+      .body!;
+    expect(body.total).toBe(2);
+    expect(body.items.map((i) => i.path)).toEqual(["a.md", "b.md"]);
+    expect((body.items[0] as { modified?: string }).modified).toBe("2026-01-01T12:00:03+00:00");
+  });
+
   it("a modifiedAfter it cannot read is a tool error that says what it wanted", async () => {
     const call = await tools();
     const { res } = call("list_notes", { modifiedAfter: "last tuesday" });

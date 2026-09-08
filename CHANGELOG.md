@@ -47,9 +47,10 @@ entry needing your attention cannot get lost among routine ones.
 ## 1.3.0 — 2026-09-07
 
 **Taking this update:** redeploy, then restart or reconnect your MCP client so it
-sees `list_directory`. Clients cache the tool list when they connect; the two
-listing tools that gained arguments work either way, since the arguments are
-optional.
+sees the four new tools: `list_directory`, `find_in_note`, `move_folder` and
+`delete_folder`. Clients cache the tool list when they connect; the tools that
+gained arguments work either way, since every new argument is optional. One
+default changed: `move_note` now rewrites links, as described under Changed.
 
 ### Added
 
@@ -58,8 +59,45 @@ optional.
   size. A folder's time is the newest thing beneath it and its size the bytes
   beneath, read from the index; a folder with nothing indexed under it shows
   its own mtime and says so with `modifiedFrom: "folder"`. Pass an entry's
-  path back to descend. With it the server offers 33 tools covering notes,
-  attachments, daily notes, search, properties, tasks, links and tags.
+  path back to descend.
+
+- **`find_in_note`** — where text occurs in one note, by line: every match with
+  its line, column and the line's text, optionally with the lines around it,
+  paged like a listing. Locating a passage in a note too long to read at once
+  meant paging `read_note` in windows, or using `preview_edit` as a grep.
+  Literal and case-insensitive by default; `regex: true` reads the pattern as a
+  JavaScript regular expression.
+
+- **`move_folder`** and **`delete_folder`** — a folder could be created through
+  a note's path and then never touched. `move_folder` renames or moves one with
+  everything in it and fixes every link to anything inside, as `move_note` now
+  does for one note. `delete_folder` removes an empty folder and refuses one
+  with anything in it; it appears under the same setting as `delete_note`.
+  There is no create: git cannot store an empty folder, so one made here would
+  not survive a sync on that backend. With these the server offers
+  33 tools covering notes, attachments, daily notes, search, properties,
+  tasks, links and tags.
+
+- **`heading`** on `append_to_note` and `prepend_to_note` — "add this under
+  Ideas" is the most common Obsidian append, and it took `get_outline` plus a
+  hand-built `edit_note`. Append goes at the end of the heading's section,
+  before the next heading of the same or a higher level; prepend goes directly
+  under the heading. The heading must occur once; the refusal names the lines,
+  and a missing heading names the headings the note has.
+
+- **`name`** on the three listing tools — find a file by filename: a glob over
+  the whole name when it has `*` or `?` (`2026-08*`, `*.png`), otherwise a
+  fragment matched anywhere. Case-insensitive.
+
+- **`folder`, `modifiedAfter` and `sort`** on `search_vault`, and `modified` on
+  every hit. "What did I write about X this month in Projects" was two tools
+  and a join by hand. `sort: "modified"` orders newest first instead of by
+  relevance; the count is of the narrowed set, so `hasMore` stays honest.
+
+- **`created`** beside `modified` on every listing, and `sort: "created"`. The
+  same git pass gives it for free: the oldest commit mentioning the path,
+  where modified is the newest. Files git has not seen use the filesystem's
+  birthtime. It is never later than modified.
 
 - **Sorting and narrowing** on `list_notes`, `list_attachments` and
   `list_directory`: `sort` by `name` (the default), `modified` or `size`,
@@ -73,6 +111,15 @@ optional.
   timestamp without an offset is read on that clock too.
 
 ### Changed
+
+- **`move_note` rewrites links.** It used to rename the file and nothing else,
+  so an assistant renaming a note silently orphaned its backlinks; Obsidian
+  rewrites them on a rename inside the app, and now so does this. Every
+  `[[wikilink]]` that resolved to the note is rewritten, keeping its alias,
+  heading or block suffix and its form: a bare name stays bare unless the new
+  name is shared with another file, in which case it becomes a path. Links
+  inside code fences and inline code are left alone. The result says how many
+  links in which notes changed. `updateLinks: false` is the old behaviour.
 
 - Every listing now carries **`modified`**, an ISO 8601 timestamp in the
   configured timezone, meaning the last change a person made. On a git-synced

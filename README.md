@@ -203,7 +203,7 @@ against the path reported by `get_vault_info` (`vaultPath`), not another copy.
 
 | Limit | Value | Applies to |
 | --- | --- | --- |
-| List results | 100 default, 500 max | `list_notes`, `list_attachments`, `list_directory`, `list_folders`, `list_tags`, `notes_by_tag`, `list_tasks`, `list_link_issues` |
+| List results | 100 default, 500 max | `list_notes`, `list_attachments`, `list_directory`, `list_folders`, `list_tags`, `notes_by_tag`, `list_tasks`, `list_link_issues`, `find_in_note` (matches counted up to 10,000) |
 | Search results | 20 default, 100 max | `search_vault` |
 | Note read window | 2,000 lines or 100 KB, whichever first | `read_note`, `daily_note` read |
 | Attachment inlined | 1 MB | `read_attachment` — larger files come back as a 15-minute signed download URL |

@@ -699,9 +699,22 @@ export interface FindMatch {
   line: number;
   /** 1-based column of the match on that line, in UTF-16 units. */
   column: number;
-  /** The matching line, excerpted around the match when it is long. */
+  /**
+   * The matching line, excerpted around the match when it is longer than
+   * EXCERPT_CHARS; a cut end is marked with an ellipsis. See windowStart.
+   */
   text: string;
-  /** The lines around it, joined with newlines, when context was asked for. */
+  /**
+   * 1-based column of the first character of text after any leading
+   * ellipsis, so the match begins in text at column - windowStart, plus one
+   * when text starts with the ellipsis. 1 when the line was not clipped.
+   */
+  windowStart: number;
+  /**
+   * The lines around it, joined with newlines, when context was asked for.
+   * Each is cut at EXCERPT_CHARS from its start, with an ellipsis, so no
+   * line in a result exceeds that width.
+   */
   context?: string;
 }
 
@@ -770,9 +783,13 @@ export function findInNote(notePath: string, pattern: string, opts: FindOptions 
   const matches: FindMatch[] = [];
   for (let i = 0; i < lines.length && matches.length < MAX_FIND_MATCHES; i++) {
     for (const col of find(lines[i])) {
-      const match: FindMatch = { line: i + 1, column: col + 1, text: excerptLine(lines[i], col) };
+      const window = excerptLine(lines[i], col);
+      const match: FindMatch = { line: i + 1, column: col + 1, text: window.text, windowStart: window.start + 1 };
       if (context > 0) {
-        match.context = lines.slice(Math.max(0, i - context), Math.min(lines.length, i + context + 1)).join("\n");
+        match.context = lines
+          .slice(Math.max(0, i - context), Math.min(lines.length, i + context + 1))
+          .map(clipLine)
+          .join("\n");
       }
       matches.push(match);
       if (matches.length >= MAX_FIND_MATCHES) break;
@@ -781,11 +798,16 @@ export function findInNote(notePath: string, pattern: string, opts: FindOptions 
   return { path: toVaultRelative(abs), matches };
 }
 
-function excerptLine(line: string, col: number): string {
-  if (line.length <= EXCERPT_CHARS) return line;
+/** A window of EXCERPT_CHARS around col; start is the 0-based index the window begins at. */
+function excerptLine(line: string, col: number): { text: string; start: number } {
+  if (line.length <= EXCERPT_CHARS) return { text: line, start: 0 };
   const start = Math.max(0, Math.min(col - Math.floor(EXCERPT_CHARS / 4), line.length - EXCERPT_CHARS));
   const end = Math.min(line.length, start + EXCERPT_CHARS);
-  return (start > 0 ? "…" : "") + line.slice(start, end) + (end < line.length ? "…" : "");
+  return { text: (start > 0 ? "…" : "") + line.slice(start, end) + (end < line.length ? "…" : ""), start };
+}
+
+function clipLine(line: string): string {
+  return line.length <= EXCERPT_CHARS ? line : line.slice(0, EXCERPT_CHARS) + "…";
 }
 
 export function moveNote(notePath: string, newPath: string): { from: string; to: string } {

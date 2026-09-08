@@ -255,9 +255,9 @@ describe("findInNote", () => {
     const res = findInNote("Note.md", "zebra");
     expect(res.path).toBe("Note.md");
     expect(res.matches).toEqual([
-      { line: 2, column: 1, text: "Zebra here" },
-      { line: 4, column: 1, text: "zebra and zebra" },
-      { line: 4, column: 11, text: "zebra and zebra" },
+      { line: 2, column: 1, text: "Zebra here", windowStart: 1 },
+      { line: 4, column: 1, text: "zebra and zebra", windowStart: 1 },
+      { line: 4, column: 11, text: "zebra and zebra", windowStart: 1 },
     ]);
     expect(findInNote("Note.md", "zebra", { ignoreCase: false }).matches.map((m) => m.line)).toEqual([4, 4]);
   });
@@ -272,6 +272,10 @@ describe("findInNote", () => {
     put("Twenty.md", Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
     const [mid] = findInNote("Twenty.md", "line 10", { context: 99 }).matches;
     expect(mid.context!.split("\n")).toEqual(Array.from({ length: 11 }, (_, i) => `line ${i + 5}`));
+    // Context lines are cut at the same width as text, from their start.
+    put("Wide.md", "z".repeat(300) + "\nhit\n");
+    const [w] = findInNote("Wide.md", "hit", { context: 1 }).matches;
+    expect(w.context).toBe("z".repeat(EXCERPT_CHARS) + "…\nhit\n");
   });
 
   it("takes a regular expression on request and refuses a broken one", () => {
@@ -286,12 +290,21 @@ describe("findInNote", () => {
 
   it("strips the carriage return from a CRLF note's lines and excerpts a long line around the match", () => {
     put("Note.md", "alpha\r\nbeta\r\n");
-    expect(findInNote("Note.md", "beta").matches).toEqual([{ line: 2, column: 1, text: "beta" }]);
+    expect(findInNote("Note.md", "beta").matches).toEqual([{ line: 2, column: 1, text: "beta", windowStart: 1 }]);
     put("Long.md", "x".repeat(300) + "needle" + "y".repeat(300) + "\n");
     const [m] = findInNote("Long.md", "needle").matches;
     expect(m.column).toBe(301);
     expect(m.text).toMatch(/^…x+needley+…$/);
     expect(m.text.length).toBeLessThanOrEqual(EXCERPT_CHARS + 2);
+    // windowStart maps column into the window: the match is where it says.
+    const at = m.column - m.windowStart + (m.text.startsWith("…") ? 1 : 0);
+    expect(m.text.slice(at, at + "needle".length)).toBe("needle");
+    // A match near the start keeps the line's head, and windowStart says so.
+    put("Head.md", "needle" + "y".repeat(300) + "\n");
+    const [h] = findInNote("Head.md", "needle").matches;
+    expect(h.windowStart).toBe(1);
+    expect(h.text.slice(0, 6)).toBe("needle");
+    expect(h.text.endsWith("…")).toBe(true);
   });
 
   it("refuses an empty or absurd pattern and a missing note", () => {

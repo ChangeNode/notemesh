@@ -66,7 +66,10 @@ default changed: `move_note` now rewrites links, as described under Changed.
   paged like a listing. Locating a passage in a note too long to read at once
   meant paging `read_note` in windows, or using `preview_edit` as a grep.
   Literal and case-insensitive by default; `regex: true` reads the pattern as a
-  JavaScript regular expression.
+  JavaScript regular expression. A line over 160 characters comes back as a
+  window around the match, and `windowStart` says where that window begins, so
+  `column` still locates the match inside it; context lines are cut at the
+  same width.
 
 - **`move_folder`** and **`delete_folder`** — a folder could be created through
   a note's path and then never touched. `move_folder` renames or moves one with

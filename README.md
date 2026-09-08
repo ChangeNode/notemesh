@@ -62,7 +62,10 @@ the Obsidian defaults; the **Settings** tab says which of the two you have.
 The **Tools** tab in the admin UI lists the same tools with their full
 descriptions and parameters. That page asks the running server over the
 protocol, so it is what your client is actually offered — this table is a
-summary, and the tab is the answer.
+summary, and the tab is the answer. [Tool Descriptions](Tool%20Descriptions.md)
+is the longer explanation beside them: what each tool takes, and the things a
+one-line description leaves out — where `daily_note` gets its folder, what
+`modified` means on each backend, how `move_note` rewrites links.
 
 Everything an MCP client writes lands in the synced vault folder and propagates
 to your other devices — through Obsidian Sync (end-to-end encrypted, as always),

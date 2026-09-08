@@ -9,14 +9,22 @@ import { isBinaryFile, isLfsPointer, formatBytes } from "./paths";
 // should be, and a pointer is small plain ASCII with no NUL — so the binary
 // sniff calls it text and every read path would serve it as real content.
 
+let root: string;
 let dir: string;
 
+// Fixtures live inside a configured vault: on Linux every open checks where
+// its descriptor landed against the vault, and a file anywhere else is
+// refused, which is the point of the check and not something to test around.
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-paths-"));
+  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "notemesh-paths-")));
+  dir = path.join(root, "vault");
+  fs.mkdirSync(dir, { recursive: true });
+  process.env.DATA_DIR = root;
 });
 
 afterEach(() => {
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(root, { recursive: true, force: true });
+  delete process.env.DATA_DIR;
 });
 
 function file(name: string, content: string | Buffer): string {

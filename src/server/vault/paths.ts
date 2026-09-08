@@ -51,7 +51,14 @@ let realVault: { configured: string; real: string } | null = null;
 function realVaultDir(): string {
   const configured = env.vaultDir;
   if (!realVault || realVault.configured !== configured) {
-    realVault = { configured, real: fs.realpathSync(configured) };
+    let real: string;
+    try {
+      real = fs.realpathSync(configured);
+    } catch {
+      // No vault directory: nothing can be inside it, so nothing opens.
+      throw new VaultPathError("The vault directory is not accessible");
+    }
+    realVault = { configured, real };
   }
   return realVault.real;
 }

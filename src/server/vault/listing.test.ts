@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrange, parseInstant } from "./listing";
+import { arrange, nameMatcher, parseInstant } from "./listing";
 import { isoInZone } from "./modified";
 
 // What a person types for modifiedAfter, and what order a listing comes back
@@ -60,6 +60,32 @@ const listing = [
   entry("c.md", T0 + 1000, 20, T0 - 2000),
 ];
 
+describe("nameMatcher", () => {
+  it("matches a fragment anywhere, ignoring case", () => {
+    const m = nameMatcher("meeting");
+    expect(m("Meeting notes.md")).toBe(true);
+    expect(m("2026-08-01 team MEETING.md")).toBe(true);
+    expect(m("Minutes.md")).toBe(false);
+  });
+
+  it("a glob covers the whole name", () => {
+    const m = nameMatcher("2026-08*");
+    expect(m("2026-08-01.md")).toBe(true);
+    expect(m("x2026-08-01.md")).toBe(false);
+    expect(nameMatcher("*.PNG")("shot.png")).toBe(true);
+    expect(nameMatcher("*.png")("shot.png.md")).toBe(false);
+    expect(nameMatcher("day-?.md")("day-1.md")).toBe(true);
+    expect(nameMatcher("day-?.md")("day-10.md")).toBe(false);
+  });
+
+  it("treats everything but * and ? literally", () => {
+    expect(nameMatcher("a.b")("axb.md")).toBe(false);
+    expect(nameMatcher("a.b")("a.b.md")).toBe(true);
+    expect(nameMatcher("[draft]*")("[draft] plan.md")).toBe(true);
+    expect(nameMatcher("(1)")("copy (1).md")).toBe(true);
+  });
+});
+
 describe("arrange", () => {
   it("is alphabetical by path unless asked otherwise", () => {
     expect(arrange(listing, {}, "UTC").map((e) => e.path)).toEqual(["a.md", "b.md", "c.md", "d.md"]);
@@ -99,6 +125,25 @@ describe("arrange", () => {
     expect(arrange(listing, { modifiedAfter: "2026-01-02" }, "UTC")).toHaveLength(0);
     // Auckland's 2026-01-02 begins at 11:00Z on the 1st — still after T0's few seconds.
     expect(arrange(listing, { modifiedAfter: "2026-01-02" }, AKL)).toHaveLength(0);
+  });
+
+  it("name narrows by filename, alongside modifiedAfter, before the sort", () => {
+    const items = [
+      entry("Daily/2026-08-01.md", T0 + 1000, 1),
+      entry("Daily/2026-08-02.md", T0 + 3000, 1),
+      entry("Notes/2026-08 review.md", T0 + 2000, 1),
+      entry("Notes/plan.md", T0 + 4000, 1),
+    ];
+    expect(arrange(items, { name: "2026-08*", sort: "modified" }, "UTC").map((e) => e.path)).toEqual([
+      "Daily/2026-08-02.md",
+      "Notes/2026-08 review.md",
+      "Daily/2026-08-01.md",
+    ]);
+    expect(
+      arrange(items, { name: "2026-08", modifiedAfter: isoInZone(T0 + 1000, "UTC") }, "UTC").map((e) => e.path),
+    ).toEqual(["Daily/2026-08-02.md", "Notes/2026-08 review.md"]);
+    // A directory entry carries its own name; that is what is matched.
+    expect(arrange([{ ...entry("Notes/plan.md", T0, 1), name: "plan.md" }], { name: "plan" }, "UTC")).toHaveLength(1);
   });
 
   it("does not disturb the listing it was given", () => {

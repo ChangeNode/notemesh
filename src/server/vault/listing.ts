@@ -14,13 +14,32 @@ export interface ListOptions {
   order?: SortOrder;
   /** Keep only entries modified strictly after this instant; see parseInstant for the forms. */
   modifiedAfter?: string;
+  /** Keep only entries whose filename matches; see nameMatcher for the forms. */
+  name?: string;
 }
 
 interface Listed {
   path: string;
+  /** The filename, when the entry carries one; otherwise the last segment of path. */
+  name?: string;
   modified: string;
   created: string;
   size: number;
+}
+
+/**
+ * What a person types to find a file by name. With * or ? it is a glob over
+ * the whole filename, so 2026-08* is that month's daily notes and *.png the
+ * images; without either it is a fragment matched anywhere, so "meeting"
+ * finds Meeting notes.md. Case-insensitive either way, since a person rarely
+ * remembers the case of a filename and Obsidian's own switcher ignores it.
+ */
+export function nameMatcher(pattern: string): (name: string) => boolean {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const glob = /[*?]/.test(pattern);
+  const source = glob ? `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$` : escaped;
+  const re = new RegExp(source, "i");
+  return (name) => re.test(name);
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -69,9 +88,11 @@ export function arrange<T extends Listed>(items: T[], opts: ListOptions, timeZon
   const order = opts.order ?? (sort === "name" ? "asc" : "desc");
   const dir = order === "asc" ? 1 : -1;
 
+  const byName = opts.name === undefined ? null : nameMatcher(opts.name);
   const decorated = items
     .map((item) => ({ item, at: Date.parse(item.modified), born: Date.parse(item.created) }))
-    .filter((d) => after === null || d.at > after);
+    .filter((d) => after === null || d.at > after)
+    .filter((d) => byName === null || byName(d.item.name ?? d.item.path.slice(d.item.path.lastIndexOf("/") + 1)));
   const key =
     sort === "modified"
       ? (a: (typeof decorated)[number], b: (typeof decorated)[number]) => a.at - b.at

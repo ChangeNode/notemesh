@@ -284,6 +284,13 @@ describe("list_notes and list_attachments, sorted and narrowed", () => {
     ]);
   });
 
+  it("name finds a file by filename on every listing tool", async () => {
+    const call = await tools();
+    expect(call("list_notes", { name: "A*" }).body!.items.map((i) => i.path)).toEqual(["a.md"]);
+    expect(call("list_attachments", { name: "two" }).body!.items.map((i) => i.path)).toEqual(["img/two.png"]);
+    expect(call("list_directory", { name: "*.md" }).body!).toMatchObject({ total: 3 });
+  });
+
   it("a modifiedAfter it cannot read is a tool error that says what it wanted", async () => {
     const call = await tools();
     const { res } = call("list_notes", { modifiedAfter: "last tuesday" });

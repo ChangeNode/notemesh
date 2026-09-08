@@ -115,10 +115,23 @@ const LIST_ARGS = {
       "Only entries modified after this instant: an ISO 8601 timestamp, or a date (YYYY-MM-DD) meaning " +
         "midnight in the configured timezone. A timestamp without an offset is read in that timezone too.",
     ),
+  name: z.string().optional()
+    .describe(
+      "Only entries whose filename matches: a glob over the whole name when it has * or ? (2026-08*, " +
+        "*.png), otherwise a fragment matched anywhere in it. Case-insensitive.",
+    ),
   ...PAGE_ARGS,
 };
 
-type ListArgs = { folder?: string; sort?: SortKey; order?: SortOrder; modifiedAfter?: string; limit?: number; offset?: number };
+type ListArgs = {
+  folder?: string;
+  sort?: SortKey;
+  order?: SortOrder;
+  modifiedAfter?: string;
+  name?: string;
+  limit?: number;
+  offset?: number;
+};
 
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
@@ -292,8 +305,8 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
         "List markdown notes in the vault (optionally within a folder), with modified and created times " +
         "and size. Both are ISO 8601 in the configured timezone and mean what a person means: on a " +
         "git-synced vault, the commits that last touched and first added the note. Sort by modified " +
-        "(newest first) for a recently-updated list, or pass modifiedAfter to see only what changed " +
-        "since a date. " +
+        "(newest first) for a recently-updated list, pass modifiedAfter to see only what changed " +
+        "since a date, or name to find a note by filename (a glob or a fragment). " +
         "An entry too large to index carries indexed: false — it is readable with read_note but absent " +
         "from search, tags, tasks and links.",
       inputSchema: {
@@ -301,8 +314,8 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
         ...LIST_ARGS,
       },
     },
-    safe(({ folder, sort, order, modifiedAfter, limit, offset }: ListArgs) =>
-      page(arrange(listNotes(folder), { sort, order, modifiedAfter }, configuredTimeZone()), limit, offset),
+    safe(({ folder, sort, order, modifiedAfter, name, limit, offset }: ListArgs) =>
+      page(arrange(listNotes(folder), { sort, order, modifiedAfter, name }, configuredTimeZone()), limit, offset),
     ),
   );
 
@@ -321,8 +334,8 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
         ...LIST_ARGS,
       },
     },
-    safe(({ folder, sort, order, modifiedAfter, limit, offset }: ListArgs) =>
-      page(arrange(listAttachments(folder), { sort, order, modifiedAfter }, configuredTimeZone()), limit, offset),
+    safe(({ folder, sort, order, modifiedAfter, name, limit, offset }: ListArgs) =>
+      page(arrange(listAttachments(folder), { sort, order, modifiedAfter, name }, configuredTimeZone()), limit, offset),
     ),
   );
 
@@ -402,8 +415,8 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
         ...LIST_ARGS,
       },
     },
-    safe(({ folder, sort, order, modifiedAfter, limit, offset }: ListArgs) =>
-      page(arrange(listDirectory(folder), { sort, order, modifiedAfter }, configuredTimeZone()), limit, offset),
+    safe(({ folder, sort, order, modifiedAfter, name, limit, offset }: ListArgs) =>
+      page(arrange(listDirectory(folder), { sort, order, modifiedAfter, name }, configuredTimeZone()), limit, offset),
     ),
   );
 

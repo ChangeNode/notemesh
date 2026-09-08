@@ -188,6 +188,28 @@ describe("preview_edit", () => {
     expect(bad.content[0].text).toMatch(/No heading "Zed"/);
   });
 
+  it("move_note rewrites links by default, says what it touched, and updateLinks: false leaves them", async () => {
+    const { call, reindex } = await serverWith(true);
+    // The harness mocks the indexer with a spy; the fixture needs the real one.
+    const { reindexPath } = await vi.importActual<typeof import("../vault/indexer")>("../vault/indexer");
+    plant("x\n");
+    const src = path.join(root, "vault", "Src.md");
+    fs.writeFileSync(src, "[[Note]] twice [[Note|n]]\n");
+    reindexPath("Note.md");
+    reindexPath("Src.md");
+    const res = call("move_note", { path: "Note.md", newPath: "Renamed.md" });
+    expect(res.isError).toBeUndefined();
+    expect(res.content[0].text).toBe("Moved Note.md → Renamed.md. Updated 2 links in 1 note: Src.md.");
+    expect(fs.readFileSync(src, "utf8")).toBe("[[Renamed]] twice [[Renamed|n]]\n");
+    expect(reindex.mock.calls.map((c) => c[0])).toEqual(["Note.md", "Renamed.md", "Src.md"]);
+
+    reindexPath("Renamed.md");
+    reindexPath("Src.md");
+    const kept = call("move_note", { path: "Renamed.md", newPath: "Again.md", updateLinks: false });
+    expect(kept.content[0].text).toBe("Moved Renamed.md → Again.md.");
+    expect(fs.readFileSync(src, "utf8")).toBe("[[Renamed]] twice [[Renamed|n]]\n");
+  });
+
   it("is offered to a read-only credential and touches nothing", async () => {
     const { call, has, reindex, notify } = await serverWith(false);
     expect(has("edit_note")).toBe(false);

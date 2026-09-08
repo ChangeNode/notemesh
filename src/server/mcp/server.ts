@@ -7,6 +7,7 @@ import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
 import { arrange, type SortKey, type SortOrder } from "../vault/listing";
 import { listDirectory } from "../vault/directory";
+import { rewriteLinksForMove } from "../vault/links";
 import { configuredTimeZone } from "../vault/timezone";
 import { isDiskFull, diskFullMessage } from "../vault/disk";
 import { alertBlocks, type RequestInfo } from "./alerts";
@@ -566,17 +567,30 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       {
         title: "Move / rename note",
         annotations: REMOVE,
-        description: "Move or rename a note within the vault. Fails if the target exists.",
+        description:
+          "Move or rename a note within the vault, and rewrite every [[wikilink]] in other notes " +
+          "that pointed at it so they keep resolving, as Obsidian does on a rename. A link keeps its " +
+          "form: a bare name stays bare unless the new name would be ambiguous. Links inside code are " +
+          "left alone. updateLinks: false skips the rewrite. Fails if the target exists.",
         inputSchema: {
           path: z.string().describe("Current vault-relative path"),
           newPath: z.string().describe("New vault-relative path"),
+          updateLinks: z.boolean().optional().describe("Rewrite links that pointed at the note (default true)"),
         },
       },
-      safe(({ path, newPath }: { path: string; newPath: string }) => {
+      safe(({ path, newPath, updateLinks }: { path: string; newPath: string; updateLinks?: boolean }) => {
         const res = moveNote(path, newPath);
+        // The index still knows who linked to the old path; rewrite before
+        // telling it, then reindex the notes that changed.
+        const rewritten = updateLinks === false ? { notes: [], links: 0 } : rewriteLinksForMove(res.from, res.to);
         w(res.from, "move_note");
         w(res.to, "move_note");
-        return text(`Moved ${res.from} → ${res.to}`);
+        for (const rel of rewritten.notes) if (rel !== res.to) w(rel, "move_note");
+        const summary =
+          rewritten.links === 0
+            ? ""
+            : ` Updated ${rewritten.links} link${rewritten.links === 1 ? "" : "s"} in ${rewritten.notes.length} note${rewritten.notes.length === 1 ? "" : "s"}: ${rewritten.notes.join(", ")}.`;
+        return text(`Moved ${res.from} → ${res.to}.${summary}`);
       }),
     );
 

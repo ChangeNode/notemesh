@@ -34,12 +34,45 @@ interface Listed {
  * finds Meeting notes.md. Case-insensitive either way, since a person rarely
  * remembers the case of a filename and Obsidian's own switcher ignores it.
  */
+export const MAX_NAME_PATTERN_CHARS = 200;
+
 export function nameMatcher(pattern: string): (name: string) => boolean {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const glob = /[*?]/.test(pattern);
-  const source = glob ? `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$` : escaped;
-  const re = new RegExp(source, "i");
-  return (name) => re.test(name);
+  if (pattern.length > MAX_NAME_PATTERN_CHARS) {
+    throw new VaultPathError(`name is longer than ${MAX_NAME_PATTERN_CHARS} characters`);
+  }
+  const p = pattern.toLowerCase();
+  if (!/[*?]/.test(p)) return (name) => name.toLowerCase().includes(p);
+  return (name) => globMatch(p, name.toLowerCase());
+}
+
+/**
+ * * and ? over the whole name, without a regular expression: a pattern like
+ * *a*a*a*a* made a backtracking regex take seconds against an ordinary
+ * filename. This is the two-pointer wildcard match, which on a mismatch
+ * retreats to the last * and advances the name by one, so its work is at
+ * most the product of the two lengths, never exponential.
+ */
+export function globMatch(pattern: string, name: string): boolean {
+  let p = 0;
+  let n = 0;
+  let star = -1;
+  let starName = 0;
+  while (n < name.length) {
+    if (p < pattern.length && (pattern[p] === "?" || pattern[p] === name[n])) {
+      p++;
+      n++;
+    } else if (p < pattern.length && pattern[p] === "*") {
+      star = p++;
+      starName = n;
+    } else if (star !== -1) {
+      p = star + 1;
+      n = ++starName;
+    } else {
+      return false;
+    }
+  }
+  while (p < pattern.length && pattern[p] === "*") p++;
+  return p === pattern.length;
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;

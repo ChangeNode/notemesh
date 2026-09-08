@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrange, nameMatcher, parseInstant } from "./listing";
+import { arrange, globMatch, nameMatcher, parseInstant } from "./listing";
 import { isoInZone } from "./modified";
 
 // What a person types for modifiedAfter, and what order a listing comes back
@@ -83,6 +83,29 @@ describe("nameMatcher", () => {
     expect(nameMatcher("a.b")("a.b.md")).toBe(true);
     expect(nameMatcher("[draft]*")("[draft] plan.md")).toBe(true);
     expect(nameMatcher("(1)")("copy (1).md")).toBe(true);
+  });
+
+  it("handles the glob edge cases a regex would have", () => {
+    expect(globMatch("*", "")).toBe(true);
+    expect(globMatch("*", "anything")).toBe(true);
+    expect(globMatch("", "")).toBe(true);
+    expect(globMatch("", "x")).toBe(false);
+    expect(globMatch("a*b*c", "abc")).toBe(true);
+    expect(globMatch("a*b*c", "a--b--c")).toBe(true);
+    expect(globMatch("a*b*c", "a--c--b")).toBe(false);
+    expect(globMatch("**a", "xa")).toBe(true);
+    expect(globMatch("?", "")).toBe(false);
+    expect(globMatch("a?", "a")).toBe(false);
+    expect(globMatch("*.md", "note.md")).toBe(true);
+    expect(globMatch("*.md", "note.md.bak")).toBe(false);
+  });
+
+  it("stays fast on the pattern that made a regex take seconds, and caps the length", () => {
+    const name = "a".repeat(255);
+    const t0 = performance.now();
+    for (let i = 0; i < 100; i++) expect(nameMatcher("*a*a*a*a*a*a*a*b")(name)).toBe(false);
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(() => nameMatcher("*".repeat(201))).toThrow(/longer than 200/);
   });
 });
 

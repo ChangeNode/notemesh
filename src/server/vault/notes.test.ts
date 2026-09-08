@@ -278,14 +278,22 @@ describe("findInNote", () => {
     expect(w.context).toBe("z".repeat(EXCERPT_CHARS) + "…\nhit\n");
   });
 
-  it("takes a regular expression on request and refuses a broken one", () => {
-    put("Note.md", "2026-08-01\nnot a date\n2026-09-15\n");
-    expect(findInNote("Note.md", "\\d{4}-\\d{2}-\\d{2}", { regex: true }).matches.map((m) => m.line)).toEqual([1, 3]);
-    // Literal by default: the same pattern is just characters.
-    expect(findInNote("Note.md", "\\d{4}-\\d{2}-\\d{2}").matches).toEqual([]);
-    expect(() => findInNote("Note.md", "(", { regex: true })).toThrow(/not a valid regular expression/);
-    // An empty match cannot loop forever.
-    expect(findInNote("Note.md", "x*", { regex: true }).matches.length).toBeGreaterThan(0);
+  it("is literal: what looks like a regular expression is just characters", () => {
+    put("Note.md", "2026-08-01\nnot a date\n2026-09-15\nliterally \\d{4}-\\d{2}-\\d{2} here\n");
+    expect(findInNote("Note.md", "\\d{4}-\\d{2}-\\d{2}").matches.map((m) => m.line)).toEqual([4]);
+    expect(findInNote("Note.md", "^(a+)+$").matches).toEqual([]);
+  });
+
+  it("builds only the requested page and counts the rest", () => {
+    put("Note.md", "a a a\nb\na\n");
+    const page = findInNote("Note.md", "a", { offset: 1, limit: 2 });
+    expect(page).toMatchObject({ total: 4, offset: 1 });
+    expect(page.matches.map((m) => [m.line, m.column])).toEqual([
+      [1, 3],
+      [1, 5],
+    ]);
+    expect(findInNote("Note.md", "a", { offset: 10, limit: 5 }).matches).toEqual([]);
+    expect(findInNote("Note.md", "a", { offset: 10, limit: 5 }).total).toBe(4);
   });
 
   it("strips the carriage return from a CRLF note's lines and excerpts a long line around the match", () => {
@@ -314,9 +322,17 @@ describe("findInNote", () => {
     expect(() => findInNote("Nope.md", "x")).toThrow(/Note not found/);
   });
 
-  it("stops counting at the cap", () => {
+  it("stops counting at the cap, on one line as across many, without building what it does not return", () => {
     put("Note.md", "a a a a a a a a a a\n".repeat(1100));
     expect(findInNote("Note.md", "a").matches).toHaveLength(MAX_FIND_MATCHES);
+    expect(findInNote("Note.md", "a").total).toBe(MAX_FIND_MATCHES);
+    // One line of a million characters, one-character pattern: a count and
+    // one page, not a million entries.
+    put("Line.md", "a".repeat(1_000_000) + "\n");
+    const page = findInNote("Line.md", "a", { limit: 3 });
+    expect(page.total).toBe(MAX_FIND_MATCHES);
+    expect(page.matches).toHaveLength(3);
+    expect(page.matches[2].column).toBe(3);
   });
 });
 

@@ -409,9 +409,12 @@ describe("find_in_note", () => {
     // Fenced: the boundary token wraps the line text.
     expect(body.items[0].text).toContain("Zebra here");
     expect(body.items[0].text).not.toBe("Zebra here");
-    const { res } = call({ pattern: "(", regex: true });
+    // A page past the end is empty but still counted.
+    const { body: tail } = call({ pattern: "zebra", offset: 2 });
+    expect(tail).toMatchObject({ total: 3, count: 1, hasMore: false });
+    const { res } = call({ pattern: "" });
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toMatch(/not a valid regular expression/);
+    expect(res.content[0].text).toMatch(/must not be empty/);
   });
 });
 

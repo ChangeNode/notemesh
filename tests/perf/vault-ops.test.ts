@@ -100,11 +100,12 @@ describe("a 2,000-note vault", () => {
     const literal = await timed("find_in_note literal over 50,000 lines", () => findInNote(big, "line 4999"));
     expect(literal.value.matches.length).toBeGreaterThan(0);
     expect(literal.ms).toBeLessThan(2_000);
-    const regex = await timed("find_in_note regex over 50,000 lines", () =>
-      findInNote(big, "^line \\d*9 of", { regex: true }),
-    );
-    expect(regex.value.matches.length).toBe(5_000);
-    expect(regex.ms).toBeLessThan(3_000);
+    // One page of a note that is a single nine-million-character line, under the read cap.
+    fs.writeFileSync(path.join(vault, "Line.md"), "a".repeat(9_000_000) + "\n");
+    const line = await timed("find_in_note over a 9 MB single line, one page", () => findInNote("Line.md", "a", { limit: 50 }));
+    expect(line.value.total).toBe(10_000);
+    expect(line.value.matches).toHaveLength(50);
+    expect(line.ms).toBeLessThan(3_000);
   }, 120_000);
 
   it("moves a folder of 50 notes with links from everywhere, opening only the notes that link", async () => {

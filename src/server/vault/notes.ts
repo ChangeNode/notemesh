@@ -719,12 +719,22 @@ export interface FindMatch {
 }
 
 export interface FindOptions {
-  /** Treat pattern as a JavaScript regular expression instead of literal text. */
-  regex?: boolean;
   /** Default true, as Obsidian's own search is. */
   ignoreCase?: boolean;
   /** Lines to include on each side of a match, 0 to MAX_FIND_CONTEXT. */
   context?: number;
+  /** The page to build: matches before offset are counted, not returned. */
+  offset?: number;
+  limit?: number;
+}
+
+export interface FindPage {
+  path: string;
+  /** Matches found, counting stopping at MAX_FIND_MATCHES. */
+  total: number;
+  offset: number;
+  /** The page: matches offset .. offset + limit, built only for that window. */
+  matches: FindMatch[];
 }
 
 export const MAX_FIND_CONTEXT = 5;
@@ -738,10 +748,15 @@ const MAX_PATTERN_CHARS = 500;
  * preview_edit was being used for. Every match is its own entry, so a line
  * that says the word twice appears twice, at two columns.
  *
- * A regular expression runs one line at a time: a pattern that backtracks
- * badly is bounded by the longest line rather than the whole note.
+ * Literal text only. A regular expression option was here for a day and
+ * left: a nine-character pattern can hold the event loop for seconds, and
+ * nothing short of a second engine makes that safe.
+ *
+ * The scan is budgeted: matches are counted up to MAX_FIND_MATCHES and only
+ * the requested page is built, so a note that is one enormous line of a
+ * repeated character costs a count, not an allocation per match.
  */
-export function findInNote(notePath: string, pattern: string, opts: FindOptions = {}): { path: string; matches: FindMatch[] } {
+export function findInNote(notePath: string, pattern: string, opts: FindOptions = {}): FindPage {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   if (pattern === "") throw new VaultPathError("pattern must not be empty");
@@ -750,39 +765,19 @@ export function findInNote(notePath: string, pattern: string, opts: FindOptions 
   }
   const ignoreCase = opts.ignoreCase !== false;
   const context = Math.min(Math.max(Math.trunc(opts.context ?? 0), 0), MAX_FIND_CONTEXT);
-
-  let find: (line: string) => number[];
-  if (opts.regex) {
-    let re: RegExp;
-    try {
-      re = new RegExp(pattern, ignoreCase ? "gi" : "g");
-    } catch (e) {
-      throw new VaultPathError(`pattern is not a valid regular expression: ${(e as Error).message}`);
-    }
-    find = (line) => {
-      const cols: number[] = [];
-      re.lastIndex = 0;
-      for (let m = re.exec(line); m !== null; m = re.exec(line)) {
-        cols.push(m.index);
-        if (m[0] === "") re.lastIndex++; // an empty match would otherwise repeat forever
-      }
-      return cols;
-    };
-  } else {
-    const needle = ignoreCase ? pattern.toLowerCase() : pattern;
-    find = (line) => {
-      const hay = ignoreCase ? line.toLowerCase() : line;
-      const cols: number[] = [];
-      for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) cols.push(i);
-      return cols;
-    };
-  }
+  const offset = Math.max(Math.trunc(opts.offset ?? 0), 0);
+  const limit = Math.max(Math.trunc(opts.limit ?? MAX_FIND_MATCHES), 0);
+  const needle = ignoreCase ? pattern.toLowerCase() : pattern;
 
   const content = readVaultFile(abs);
   const lines = content.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
   const matches: FindMatch[] = [];
-  for (let i = 0; i < lines.length && matches.length < MAX_FIND_MATCHES; i++) {
-    for (const col of find(lines[i])) {
+  let total = 0;
+  for (let i = 0; i < lines.length && total < MAX_FIND_MATCHES; i++) {
+    const hay = ignoreCase ? lines[i].toLowerCase() : lines[i];
+    for (let col = hay.indexOf(needle); col !== -1 && total < MAX_FIND_MATCHES; col = hay.indexOf(needle, col + needle.length)) {
+      const n = total++;
+      if (n < offset || n >= offset + limit) continue;
       const window = excerptLine(lines[i], col);
       const match: FindMatch = { line: i + 1, column: col + 1, text: window.text, windowStart: window.start + 1 };
       if (context > 0) {
@@ -792,13 +787,11 @@ export function findInNote(notePath: string, pattern: string, opts: FindOptions 
           .join("\n");
       }
       matches.push(match);
-      if (matches.length >= MAX_FIND_MATCHES) break;
     }
   }
-  return { path: toVaultRelative(abs), matches };
+  return { path: toVaultRelative(abs), total, offset, matches };
 }
 
-/** A window of EXCERPT_CHARS around col; start is the 0-based index the window begins at. */
 function excerptLine(line: string, col: number): { text: string; start: number } {
   if (line.length <= EXCERPT_CHARS) return { text: line, start: 0 };
   const start = Math.max(0, Math.min(col - Math.floor(EXCERPT_CHARS / 4), line.length - EXCERPT_CHARS));

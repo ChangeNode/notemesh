@@ -159,7 +159,8 @@ export function rewriteLinksForMoves(moves: Map<string, string>): RewriteResult 
       return newTarget(t, from, moves.get(from)!, basenameCount);
     });
     if (!rewritten) continue;
-    writeVaultFile(abs, rewritten.text);
+    // Atomic per note, unsynced: see WriteOptions.
+    writeVaultFile(abs, rewritten.text, { sync: false });
     result.notes.push(rel);
     result.links += rewritten.links;
   }

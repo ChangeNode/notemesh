@@ -36,8 +36,21 @@ export function modifiedFor(relPath: string, mtimeMs: number): number {
  */
 export function createdFor(relPath: string, st: { birthtimeMs: number; mtimeMs: number }): number {
   const modified = modifiedFor(relPath, st.mtimeMs);
-  const candidate = born.get(relPath) ?? (st.birthtimeMs > 0 ? Math.round(st.birthtimeMs) : modified);
+  const candidate =
+    born.get(relPath) ?? indexedCreated(relPath) ?? (st.birthtimeMs > 0 ? Math.round(st.birthtimeMs) : modified);
   return Math.min(candidate, modified);
+}
+
+/**
+ * What the index already holds for the path. A write replaces the file's
+ * inode (disk.ts), so the filesystem's birthtime is the last write; the
+ * index remembers what it was, and a rewrite keeps it.
+ */
+function indexedCreated(relPath: string): number | null {
+  const row = db()
+    .prepare("SELECT created FROM notes WHERE path = ? UNION ALL SELECT created FROM attachments WHERE path = ?")
+    .get(relPath, relPath) as { created: number | null } | undefined;
+  return row?.created ?? null;
 }
 
 /**

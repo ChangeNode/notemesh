@@ -1,7 +1,9 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import { db } from "../db";
 import { env } from "../env";
-import { VaultPathError, formatBytes, toVaultRelative } from "./paths";
+import { VaultPathError, assertDescriptorInVault, formatBytes, toVaultRelative } from "./paths";
 import { recordLocalModification } from "./modified";
 
 /**
@@ -186,40 +188,100 @@ export function diskFullMessage(): string {
  * the guard and the translation cannot be forgotten at a new call site; a test
  * scans the vault sources for a raw writeFileSync.
  */
-export function writeVaultFile(abs: string, content: string): void {
+export interface WriteOptions {
+  /**
+   * Sync the file and its directory before returning (the default). A batch
+   * rewriting a thousand notes passes false: each note is still old-or-new,
+   * and a thousand fsyncs turned a 74 ms rewrite into twelve seconds.
+   */
+  sync?: boolean;
+}
+
+export function writeVaultFile(abs: string, content: string, opts: WriteOptions = {}): void {
   const bytes = Buffer.from(content, "utf8");
   assertHeadroom(bytes.length);
-  // Opened without following a symlink at the final component, the way every
-  // read is (#57). The path was checked at resolve time, but sync can swap a
-  // symlink into place between that check and this write, and a by-path
-  // write would then follow it out of the vault — to whatever the link
-  // named. With O_NOFOLLOW the open refuses instead. (rename and unlink, used
-  // by move and delete, act on a link itself rather than its target, so they
-  // have no equivalent gap.)
+  const sync = opts.sync !== false;
+
+  // The note is never opened for writing. It used to be, with O_TRUNC: a
+  // write that failed after the open — the disk full after all, an I/O
+  // error, the process killed — left the note empty or half written. Now
+  // the bytes go to a temporary file beside it, are synced, and are renamed
+  // over it: the note is the old version or the new one, never anything
+  // else. The directory is synced after so the rename itself survives a
+  // crash. rename replaces a symlink rather than following one, so the
+  // swap-in case (#57) cannot write through a link; it is refused outright
+  // when seen, as before.
+  const existing = lstatOrNull(abs);
+  if (existing?.isSymbolicLink()) throw new VaultPathError("Symlinks are not accessible");
+  const mode = existing?.isFile() ? existing.mode & 0o777 : 0o644;
+  const dir = path.dirname(abs);
+  const temp = path.join(dir, `.${path.basename(abs)}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`);
+
   let fd: number;
   try {
     fd = fs.openSync(
-      abs,
-      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW,
-      0o644,
+      temp,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
+      mode,
     );
   } catch (e) {
-    if ((e as { code?: string })?.code === "ELOOP") throw new VaultPathError("Symlinks are not accessible");
     if (isDiskFull(e)) throw new VaultPathError(diskFullMessage());
     throw e;
   }
   try {
+    // Where the descriptor landed: a directory above swapped for a symlink
+    // would have put the temporary file outside the vault (paths.ts).
+    assertDescriptorInVault(fd);
     let offset = 0;
     while (offset < bytes.length) offset += fs.writeSync(fd, bytes, offset, bytes.length - offset);
+    if (sync) fs.fsyncSync(fd);
   } catch (e) {
+    fs.closeSync(fd);
+    fs.rmSync(temp, { force: true });
     if (isDiskFull(e)) throw new VaultPathError(diskFullMessage());
     throw e;
-  } finally {
-    fs.closeSync(fd);
   }
+  fs.closeSync(fd);
+
+  if (lstatOrNull(abs)?.isSymbolicLink()) {
+    fs.rmSync(temp, { force: true });
+    throw new VaultPathError("Symlinks are not accessible");
+  }
+  try {
+    fs.renameSync(temp, abs);
+  } catch (e) {
+    fs.rmSync(temp, { force: true });
+    throw e;
+  }
+  if (sync) fsyncDirectory(dir);
   // Written, so this is its modification time from here on, whatever git
   // remembers about the path from before (vault/modified.ts).
   recordLocalModification(toVaultRelative(abs));
+}
+
+function lstatOrNull(p: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(p);
+  } catch {
+    return null;
+  }
+}
+
+/** The rename is durable only once the directory entry is: sync it, where the platform allows. */
+function fsyncDirectory(dir: string): void {
+  let fd: number;
+  try {
+    fd = fs.openSync(dir, fs.constants.O_RDONLY | (fs.constants.O_DIRECTORY ?? 0));
+  } catch {
+    return;
+  }
+  try {
+    fs.fsyncSync(fd);
+  } catch {
+    // Some filesystems refuse fsync on a directory; the rename still happened.
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 // The watcher. A level is logged when it changes, not every minute, so the

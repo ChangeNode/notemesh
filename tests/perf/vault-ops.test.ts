@@ -167,7 +167,8 @@ describe("a 2,000-note vault", () => {
     opens.mockRestore();
     expect(rewrite.value.links).toBe(1000);
     expect(rewrite.value.notes).toHaveLength(1000);
-    // One read and one write per linking note, nothing else.
+    // One read and one write (its temporary file) per linking note, nothing
+    // else: no per-file sync of the directory in a batch.
     expect(n).toBeLessThanOrEqual(2 * 1000 + 2);
     expect(rewrite.ms).toBeLessThan(5_000);
 

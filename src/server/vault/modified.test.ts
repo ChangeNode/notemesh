@@ -149,6 +149,23 @@ describe("createdFor", () => {
   });
 });
 
+describe("createdFor across a rewrite", () => {
+  it("keeps the created time the index holds when a write gives the file a new inode", async () => {
+    const abs = path.join(vault, "A.md");
+    fs.writeFileSync(abs, "one\n");
+    fs.utimesSync(abs, INSTANT / 1000, INSTANT / 1000);
+    const { reindexPath } = await import("./indexer");
+    reindexPath("A.md");
+    const { createdFor } = await import("./modified");
+    const { writeVaultFile } = await import("./disk");
+    const before = createdFor("A.md", fs.statSync(abs));
+    expect(before).toBeLessThanOrEqual(INSTANT);
+    writeVaultFile(abs, "two\n");
+    // A different inode, born now; created is still what it was.
+    expect(createdFor("A.md", fs.statSync(abs))).toBe(before);
+  });
+});
+
 describe("applyGitHistory", () => {
   it("writes created into the index rows too, and counts them", async () => {
     const { db } = await import("../db");

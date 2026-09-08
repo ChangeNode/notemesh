@@ -29,13 +29,57 @@ export const MAX_WRITE_BYTES = MAX_NOTE_BYTES;
 // raises. Everything a caller then asks — fstat, a sniff of the head, the read
 // itself — is asked of this one descriptor, so it all describes one inode.
 export function openNoFollow(abs: string): number {
+  let fd: number;
   try {
-    return fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   } catch (e: unknown) {
     if ((e as { code?: string })?.code === "ELOOP") {
       throw new VaultPathError("Symlinks are not accessible");
     }
     throw e;
+  }
+  try {
+    assertDescriptorInVault(fd);
+  } catch (e) {
+    fs.closeSync(fd);
+    throw e;
+  }
+  return fd;
+}
+
+let realVault: { configured: string; real: string } | null = null;
+function realVaultDir(): string {
+  const configured = env.vaultDir;
+  if (!realVault || realVault.configured !== configured) {
+    realVault = { configured, real: fs.realpathSync(configured) };
+  }
+  return realVault.real;
+}
+
+/**
+ * Where an open descriptor really is. O_NOFOLLOW guards the final path
+ * component only; a directory above it swapped for a symlink between the
+ * resolve-time check and the open is followed by the kernel, and the
+ * descriptor is then a file outside the vault. Node has no openat, so the
+ * traversal cannot be made descriptor-relative; what it can do, on Linux,
+ * is ask the kernel where the descriptor landed and refuse if that is not
+ * under the vault. Reads and writes go through this. rename and unlink
+ * have no descriptor form in Node, so move and delete keep the resolve-time
+ * check only; SECURITY.md says so.
+ *
+ * Linux only: /proc is where the answer lives, and the image runs there.
+ */
+export function assertDescriptorInVault(fd: number): void {
+  if (process.platform !== "linux") return;
+  let target: string;
+  try {
+    target = fs.readlinkSync(`/proc/self/fd/${fd}`);
+  } catch {
+    return; // no /proc: nothing to ask
+  }
+  const root = realVaultDir();
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new VaultPathError("Symlinks are not accessible");
   }
 }
 

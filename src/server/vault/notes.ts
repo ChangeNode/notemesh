@@ -7,6 +7,7 @@ import {
   toVaultRelative,
   readVaultFile,
   withVaultFile,
+  openVaultFile,
   hasNul,
   isLfsPointerHead,
   formatBytes,
@@ -178,44 +179,68 @@ export interface AttachmentMeta {
  * sniffs and (for callers that want them) the bytes all come from it. The
  * `read` handed to `fn` is valid only inside it.
  */
+function resolveAttachmentPath(notePath: string): string {
+  const abs = resolveNotePath(notePath, { allowMissingExt: true });
+  return fs.existsSync(abs) ? abs : resolveByFilename(notePath);
+}
+
+/** What one open descriptor says the attachment is; the refusals a caller gets before any bytes. */
+function attachmentMetaFrom(abs: string, stat: fs.Stats, head: Buffer): AttachmentMeta {
+  // Mirror read_note's refusal in the other direction: handing a markdown note
+  // back as base64 octet-stream is never what the caller wanted, and leaving it
+  // to "work" makes the two tools quietly inconsistent.
+  if (!hasNul(head) && path.extname(abs).toLowerCase() === ".md") {
+    throw new VaultPathError(
+      `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
+    );
+  }
+  // The pointer is small, so this fires well before the size cap.
+  if (isLfsPointerHead(head)) throw lfsPointerError();
+
+  const ext = path.extname(abs).slice(1).toLowerCase();
+  const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
+  return {
+    path: toVaultRelative(abs),
+    mimeType,
+    bytes: stat.size,
+    isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
+    tooLarge: stat.size > MAX_ATTACHMENT_BYTES,
+  };
+}
+
 function withAttachment<T>(
   notePath: string,
   fn: (meta: AttachmentMeta, read: () => Buffer<ArrayBuffer>) => T,
 ): T {
-  let abs = resolveNotePath(notePath, { allowMissingExt: true });
-  if (!fs.existsSync(abs)) abs = resolveByFilename(notePath);
-  return withVaultFile(abs, ({ stat, head, read }) => {
-    // Mirror read_note's refusal in the other direction: handing a markdown note
-    // back as base64 octet-stream is never what the caller wanted, and leaving it
-    // to "work" makes the two tools quietly inconsistent.
-    if (!hasNul(head) && path.extname(abs).toLowerCase() === ".md") {
-      throw new VaultPathError(
-        `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
-      );
-    }
-    // The pointer is small, so this fires well before the size cap.
-    if (isLfsPointerHead(head)) throw lfsPointerError();
-
-    const ext = path.extname(abs).slice(1).toLowerCase();
-    const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
-    const meta: AttachmentMeta = {
-      path: toVaultRelative(abs),
-      mimeType,
-      bytes: stat.size,
-      isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
-      tooLarge: stat.size > MAX_ATTACHMENT_BYTES,
-    };
-    return fn(meta, read);
-  });
+  const abs = resolveAttachmentPath(notePath);
+  return withVaultFile(abs, ({ stat, head, read }) => fn(attachmentMetaFrom(abs, stat, head), read));
 }
 
 export function attachmentMeta(notePath: string): AttachmentMeta {
   return withAttachment(notePath, (meta) => meta);
 }
 
-/** The whole file, whatever its size, with its metadata: what the signed download link serves. */
-export function readAttachmentFile(notePath: string): { meta: AttachmentMeta; data: Buffer<ArrayBuffer> } {
-  return withAttachment(notePath, (meta, read) => ({ meta, data: read() }));
+/**
+ * The file as a stream from its verified descriptor, with its metadata: what
+ * the signed download link serves. Whatever its size, because a synced vault
+ * can hold a video, and reading one whole into memory to serve it took the
+ * process down. The stream owns the descriptor and closes it when it ends or
+ * is destroyed; the metadata's refusals fire before any of that.
+ */
+export function openAttachmentStream(notePath: string): { meta: AttachmentMeta; stream: fs.ReadStream } {
+  const abs = resolveAttachmentPath(notePath);
+  const { fd, stat, head } = openVaultFile(abs);
+  let meta: AttachmentMeta;
+  try {
+    meta = attachmentMetaFrom(abs, stat, head);
+  } catch (e) {
+    fs.closeSync(fd);
+    throw e;
+  }
+  // start: 0, or the stream would continue from wherever the head sniff left
+  // the offset. The path is informational once an fd is given.
+  const stream = fs.createReadStream(abs, { fd, start: 0, autoClose: true, highWaterMark: 256 * 1024 });
+  return { meta, stream };
 }
 
 export function readAttachment(notePath: string): {

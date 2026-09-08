@@ -22,6 +22,8 @@ import path from "node:path";
 export interface Server {
   url: string;
   dataDir: string;
+  /** The server process, for a test that watches what a request costs it. */
+  pid: number;
   stop(): Promise<void>;
   log(): string;
 }
@@ -45,7 +47,35 @@ async function freePort(): Promise<number> {
  * with EADDRINUSE and its whole file fails. Seen once every few full runs
  * as the number of HTTP suites grew. A collision is retried on a new port.
  */
+/**
+ * The suites boot the compiled server, and a build older than the sources
+ * tests the code before the change — silently, since everything still runs.
+ * CI builds first; locally this refuses, naming the step.
+ */
+function assertBuildIsFresh() {
+  let built: number;
+  try {
+    built = fs.statSync(BUILD).mtimeMs;
+  } catch {
+    throw new Error(`${BUILD} is missing: run pnpm build before the HTTP suites`);
+  }
+  const newest = (dir: string): number => {
+    let max = 0;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) max = Math.max(max, newest(p));
+      else if (entry.isFile() && !entry.name.endsWith(".test.ts")) max = Math.max(max, fs.statSync(p).mtimeMs);
+    }
+    return max;
+  };
+  const source = Math.max(newest("src"), fs.statSync("package.json").mtimeMs);
+  if (source > built) {
+    throw new Error(`${BUILD} is older than the sources: run pnpm build before the HTTP suites`);
+  }
+}
+
 export async function startServer(env: Record<string, string> = {}): Promise<Server> {
+  assertBuildIsFresh();
   for (let attempt = 1; ; attempt++) {
     try {
       return await startServerOnce(env);
@@ -111,6 +141,7 @@ async function startServerOnce(env: Record<string, string>): Promise<Server> {
   return {
     url,
     dataDir,
+    pid: child.pid!,
     log: () => output,
     async stop() {
       child.kill("SIGTERM");

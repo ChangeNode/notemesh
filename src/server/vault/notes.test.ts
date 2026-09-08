@@ -8,6 +8,7 @@ import {
   deleteNote,
   editNote,
   findInNote,
+  openAttachmentStream,
   listAttachments,
   listFolders,
   listNotes,
@@ -16,7 +17,6 @@ import {
   prependToNote,
   previewEdit,
   readAttachment,
-  readAttachmentFile,
   readNote,
   readNoteRange,
   updateNote,
@@ -246,6 +246,40 @@ describe("appending and prepending under a heading", () => {
     put("Plain.md", "no headings\n");
     expect(() => appendToNote("Plain.md", "x", { heading: "Nope" })).toThrow(/It has no headings/);
     expect(() => appendToNote("Plain.md", "x", { heading: "  " })).toThrow(/must not be empty/);
+  });
+});
+
+describe("openAttachmentStream", () => {
+  it("hands back the metadata and a stream over the verified descriptor, never the whole file", () => {
+    const bytes = Buffer.alloc(300_000, 9);
+    bytes[0] = 0;
+    put("Attachments/blob.bin", bytes);
+    const whole = vi.spyOn(fs, "readFileSync");
+    const { meta, stream } = openAttachmentStream("Attachments/blob.bin");
+    expect(meta).toMatchObject({ path: "Attachments/blob.bin", bytes: 300_000, mimeType: "application/octet-stream" });
+    return new Promise<void>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on("data", (c) => chunks.push(c as Buffer));
+      stream.on("error", reject);
+      stream.on("close", () => {
+        try {
+          const got = Buffer.concat(chunks);
+          expect(got.length).toBe(300_000);
+          expect(got.equals(bytes)).toBe(true);
+          expect(whole).not.toHaveBeenCalled();
+          whole.mockRestore();
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+
+  it("refuses what read_attachment refuses, with nothing left open", () => {
+    put("Note.md", "text\n");
+    expect(() => openAttachmentStream("Note.md")).toThrow(/markdown note/);
+    expect(() => openAttachmentStream("Nope.png")).toThrow(/No attachment named/);
   });
 });
 
@@ -858,13 +892,15 @@ describe("readAttachment, against a swap after the stat", () => {
     expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
   });
 
-  it("cannot be redirected: the signed download is the original bytes", () => {
+  it("cannot be redirected: the signed download streams the original bytes", async () => {
     put("image.png", original);
     const abs = path.join(vault, "image.png");
     swapAfterStat(abs);
-    const { meta, data } = readAttachmentFile("image.png");
-    expect(data).toEqual(original);
+    const { meta, stream } = openAttachmentStream("image.png");
     expect(meta.bytes).toBe(original.length);
+    const chunks: Buffer[] = [];
+    for await (const c of stream) chunks.push(c as Buffer);
+    expect(Buffer.concat(chunks)).toEqual(original);
     expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
   });
 });

@@ -53,14 +53,28 @@ export function withVaultFile<T>(
   abs: string,
   fn: (file: { stat: fs.Stats; head: Buffer; read: () => Buffer<ArrayBuffer> }) => T,
 ): T {
+  const { fd, stat, head } = openVaultFile(abs);
+  try {
+    return fn({ stat, head, read: () => fs.readFileSync(fd) });
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * The open behind withVaultFile, for a caller that needs the descriptor to
+ * outlive a callback: the download route streams from it. The caller owns
+ * the descriptor and closes it, and on any throw here it is already closed.
+ */
+export function openVaultFile(abs: string): { fd: number; stat: fs.Stats; head: Buffer } {
   const fd = openNoFollow(abs);
   try {
     const stat = fs.fstatSync(fd);
     if (!stat.isFile()) throw new VaultPathError("Not a file");
-    const head = readHead(fd);
-    return fn({ stat, head, read: () => fs.readFileSync(fd) });
-  } finally {
+    return { fd, stat, head: readHead(fd) };
+  } catch (e) {
     fs.closeSync(fd);
+    throw e;
   }
 }
 

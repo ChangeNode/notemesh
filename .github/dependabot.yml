@@ -1,0 +1,12 @@
+# The workflows pin every action to a commit SHA, so a tag cannot be moved
+# under them; this is how the pins move forward. Weekly, grouped, so a
+# batch of action bumps is one pull request to review.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

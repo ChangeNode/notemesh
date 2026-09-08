@@ -7,6 +7,7 @@ import {
   createNote,
   deleteNote,
   editNote,
+  findInNote,
   listAttachments,
   listFolders,
   listNotes,
@@ -22,6 +23,7 @@ import {
   DEFAULT_READ_LINES,
   EXCERPT_CHARS,
   MAX_ATTACHMENT_BYTES,
+  MAX_FIND_MATCHES,
   MAX_PREVIEW_MATCHES,
   MAX_READ_BYTES,
 } from "./notes";
@@ -184,6 +186,64 @@ describe("appendToNote", () => {
 
   it("refuses a note that isn't there", () => {
     expect(() => appendToNote("Missing.md", "x")).toThrow(/not found/i);
+  });
+});
+
+describe("findInNote", () => {
+  it("finds every occurrence by line and column, ignoring case by default", () => {
+    put("Note.md", "one\nZebra here\nthree\nzebra and zebra\n");
+    const res = findInNote("Note.md", "zebra");
+    expect(res.path).toBe("Note.md");
+    expect(res.matches).toEqual([
+      { line: 2, column: 1, text: "Zebra here" },
+      { line: 4, column: 1, text: "zebra and zebra" },
+      { line: 4, column: 11, text: "zebra and zebra" },
+    ]);
+    expect(findInNote("Note.md", "zebra", { ignoreCase: false }).matches.map((m) => m.line)).toEqual([4, 4]);
+  });
+
+  it("gives the lines around a match when asked, bounded by the note", () => {
+    put("Note.md", "a\nb\nc\nd\ne\n");
+    const [m] = findInNote("Note.md", "b", { context: 2 }).matches;
+    expect(m.context).toBe("a\nb\nc\nd");
+    const [last] = findInNote("Note.md", "e", { context: 1 }).matches;
+    expect(last.context).toBe("d\ne\n");
+    // Asking for more than the cap gets the cap: five lines each side.
+    put("Twenty.md", Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+    const [mid] = findInNote("Twenty.md", "line 10", { context: 99 }).matches;
+    expect(mid.context!.split("\n")).toEqual(Array.from({ length: 11 }, (_, i) => `line ${i + 5}`));
+  });
+
+  it("takes a regular expression on request and refuses a broken one", () => {
+    put("Note.md", "2026-08-01\nnot a date\n2026-09-15\n");
+    expect(findInNote("Note.md", "\\d{4}-\\d{2}-\\d{2}", { regex: true }).matches.map((m) => m.line)).toEqual([1, 3]);
+    // Literal by default: the same pattern is just characters.
+    expect(findInNote("Note.md", "\\d{4}-\\d{2}-\\d{2}").matches).toEqual([]);
+    expect(() => findInNote("Note.md", "(", { regex: true })).toThrow(/not a valid regular expression/);
+    // An empty match cannot loop forever.
+    expect(findInNote("Note.md", "x*", { regex: true }).matches.length).toBeGreaterThan(0);
+  });
+
+  it("strips the carriage return from a CRLF note's lines and excerpts a long line around the match", () => {
+    put("Note.md", "alpha\r\nbeta\r\n");
+    expect(findInNote("Note.md", "beta").matches).toEqual([{ line: 2, column: 1, text: "beta" }]);
+    put("Long.md", "x".repeat(300) + "needle" + "y".repeat(300) + "\n");
+    const [m] = findInNote("Long.md", "needle").matches;
+    expect(m.column).toBe(301);
+    expect(m.text).toMatch(/^…x+needley+…$/);
+    expect(m.text.length).toBeLessThanOrEqual(EXCERPT_CHARS + 2);
+  });
+
+  it("refuses an empty or absurd pattern and a missing note", () => {
+    put("Note.md", "x\n");
+    expect(() => findInNote("Note.md", "")).toThrow(/must not be empty/);
+    expect(() => findInNote("Note.md", "p".repeat(501))).toThrow(/longer than 500/);
+    expect(() => findInNote("Nope.md", "x")).toThrow(/Note not found/);
+  });
+
+  it("stops counting at the cap", () => {
+    put("Note.md", "a a a a a a a a a a\n".repeat(1100));
+    expect(findInNote("Note.md", "a").matches).toHaveLength(MAX_FIND_MATCHES);
   });
 });
 

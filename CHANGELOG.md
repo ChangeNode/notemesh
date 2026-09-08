@@ -58,7 +58,7 @@ optional.
   size. A folder's time is the newest thing beneath it and its size the bytes
   beneath, read from the index; a folder with nothing indexed under it shows
   its own mtime and says so with `modifiedFrom: "folder"`. Pass an entry's
-  path back to descend. With it the server offers 30 tools covering notes,
+  path back to descend. With it the server offers 31 tools covering notes,
   attachments, daily notes, search, properties, tasks, links and tags.
 
 - **Sorting and narrowing** on `list_notes`, `list_attachments` and

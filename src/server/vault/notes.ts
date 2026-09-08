@@ -602,6 +602,100 @@ export function previewEdit(
   return preview;
 }
 
+export interface FindMatch {
+  /** 1-based file line. */
+  line: number;
+  /** 1-based column of the match on that line, in UTF-16 units. */
+  column: number;
+  /** The matching line, excerpted around the match when it is long. */
+  text: string;
+  /** The lines around it, joined with newlines, when context was asked for. */
+  context?: string;
+}
+
+export interface FindOptions {
+  /** Treat pattern as a JavaScript regular expression instead of literal text. */
+  regex?: boolean;
+  /** Default true, as Obsidian's own search is. */
+  ignoreCase?: boolean;
+  /** Lines to include on each side of a match, 0 to MAX_FIND_CONTEXT. */
+  context?: number;
+}
+
+export const MAX_FIND_CONTEXT = 5;
+/** Matches counted before the scan stops; total reads this and hasMore stays true. */
+export const MAX_FIND_MATCHES = 10_000;
+const MAX_PATTERN_CHARS = 500;
+
+/**
+ * Where something is in a note, by line. For a note read in pages this is
+ * the alternative to paging through it, and it is the honest form of what
+ * preview_edit was being used for. Every match is its own entry, so a line
+ * that says the word twice appears twice, at two columns.
+ *
+ * A regular expression runs one line at a time: a pattern that backtracks
+ * badly is bounded by the longest line rather than the whole note.
+ */
+export function findInNote(notePath: string, pattern: string, opts: FindOptions = {}): { path: string; matches: FindMatch[] } {
+  const abs = resolveNotePath(notePath);
+  if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
+  if (pattern === "") throw new VaultPathError("pattern must not be empty");
+  if (pattern.length > MAX_PATTERN_CHARS) {
+    throw new VaultPathError(`pattern is longer than ${MAX_PATTERN_CHARS} characters`);
+  }
+  const ignoreCase = opts.ignoreCase !== false;
+  const context = Math.min(Math.max(Math.trunc(opts.context ?? 0), 0), MAX_FIND_CONTEXT);
+
+  let find: (line: string) => number[];
+  if (opts.regex) {
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern, ignoreCase ? "gi" : "g");
+    } catch (e) {
+      throw new VaultPathError(`pattern is not a valid regular expression: ${(e as Error).message}`);
+    }
+    find = (line) => {
+      const cols: number[] = [];
+      re.lastIndex = 0;
+      for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+        cols.push(m.index);
+        if (m[0] === "") re.lastIndex++; // an empty match would otherwise repeat forever
+      }
+      return cols;
+    };
+  } else {
+    const needle = ignoreCase ? pattern.toLowerCase() : pattern;
+    find = (line) => {
+      const hay = ignoreCase ? line.toLowerCase() : line;
+      const cols: number[] = [];
+      for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) cols.push(i);
+      return cols;
+    };
+  }
+
+  const content = readVaultFile(abs);
+  const lines = content.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+  const matches: FindMatch[] = [];
+  for (let i = 0; i < lines.length && matches.length < MAX_FIND_MATCHES; i++) {
+    for (const col of find(lines[i])) {
+      const match: FindMatch = { line: i + 1, column: col + 1, text: excerptLine(lines[i], col) };
+      if (context > 0) {
+        match.context = lines.slice(Math.max(0, i - context), Math.min(lines.length, i + context + 1)).join("\n");
+      }
+      matches.push(match);
+      if (matches.length >= MAX_FIND_MATCHES) break;
+    }
+  }
+  return { path: toVaultRelative(abs), matches };
+}
+
+function excerptLine(line: string, col: number): string {
+  if (line.length <= EXCERPT_CHARS) return line;
+  const start = Math.max(0, Math.min(col - Math.floor(EXCERPT_CHARS / 4), line.length - EXCERPT_CHARS));
+  const end = Math.min(line.length, start + EXCERPT_CHARS);
+  return (start > 0 ? "…" : "") + line.slice(start, end) + (end < line.length ? "…" : "");
+}
+
 export function moveNote(notePath: string, newPath: string): { from: string; to: string } {
   const absFrom = resolveNotePath(notePath);
   const absTo = resolveNotePath(newPath);

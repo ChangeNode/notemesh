@@ -43,6 +43,7 @@ async function setDelete(on: boolean) {
 
 const READ_TOOLS = [
   "daily_note",
+  "find_in_note",
   "get_links",
   "get_outline",
   "get_vault_info",
@@ -314,6 +315,36 @@ describe("list_notes and list_attachments, sorted and narrowed", () => {
     const { res } = call("list_notes", { modifiedAfter: "last tuesday" });
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toMatch(/ISO 8601 timestamp .* or a date/);
+  });
+});
+
+describe("find_in_note", () => {
+  type Handler = (args: unknown, extra: unknown) => { content: { text: string }[]; isError?: boolean };
+
+  it("lists matches by line with the envelope, fenced, and pages them", async () => {
+    const { createMcpServer } = await import("./server");
+    const server = createMcpServer({ read: true, write: false, label: "test" }) as unknown as {
+      _registeredTools: Record<string, { handler: Handler } | undefined>;
+    };
+    const abs = path.join(root, "vault", "Long.md");
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, "one\nZebra here\nthree\nzebra and zebra\n");
+    const call = (args: Record<string, unknown>) => {
+      const res = server._registeredTools.find_in_note!.handler({ path: "Long.md", ...args }, {});
+      return { res, body: res.isError ? null : JSON.parse(res.content[0].text) };
+    };
+    const { body } = call({ pattern: "zebra", limit: 2 });
+    expect(body).toMatchObject({ path: "Long.md", total: 3, count: 2, hasMore: true });
+    expect(body.items.map((m: { line: number; column: number }) => [m.line, m.column])).toEqual([
+      [2, 1],
+      [4, 1],
+    ]);
+    // Fenced: the boundary token wraps the line text.
+    expect(body.items[0].text).toContain("Zebra here");
+    expect(body.items[0].text).not.toBe("Zebra here");
+    const { res } = call({ pattern: "(", regex: true });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/not a valid regular expression/);
   });
 });
 

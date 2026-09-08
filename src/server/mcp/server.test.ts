@@ -176,6 +176,18 @@ describe("preview_edit", () => {
     expect(notify).toHaveBeenCalledWith({ tool: "edit_note", path: "Note.md" });
   });
 
+  it("append_to_note and prepend_to_note take a heading and say so", async () => {
+    const { call } = await serverWith(true);
+    const abs = plant("## A\n\nold\n\n## B\n");
+    const res = call("append_to_note", { path: "Note.md", content: "new", heading: "A" });
+    expect(res.isError).toBeUndefined();
+    expect(res.content[0].text).toBe('Appended to Note.md under "A"');
+    expect(fs.readFileSync(abs, "utf8")).toBe("## A\n\nold\n\nnew\n\n## B\n");
+    const bad = call("prepend_to_note", { path: "Note.md", content: "x", heading: "Zed" });
+    expect(bad.isError).toBe(true);
+    expect(bad.content[0].text).toMatch(/No heading "Zed"/);
+  });
+
   it("is offered to a read-only credential and touches nothing", async () => {
     const { call, has, reindex, notify } = await serverWith(false);
     expect(has("edit_note")).toBe(false);

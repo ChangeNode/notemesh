@@ -189,6 +189,66 @@ describe("appendToNote", () => {
   });
 });
 
+describe("appending and prepending under a heading", () => {
+  const note = "# Title\n\n## Ideas\n\n- one\n\n### Sub\n\n- deep\n\n## Done\n\n- x\n";
+
+  it("appends at the end of the section, before the next heading of the same level, as its own block", () => {
+    put("Note.md", note);
+    appendToNote("Note.md", "- two", { heading: "Ideas" });
+    expect(get("Note.md")).toBe("# Title\n\n## Ideas\n\n- one\n\n### Sub\n\n- deep\n\n- two\n\n## Done\n\n- x\n");
+  });
+
+  it("a subheading's section ends at the next heading of its own level or higher", () => {
+    put("Note.md", note);
+    appendToNote("Note.md", "- deeper", { heading: "Sub" });
+    expect(get("Note.md")).toBe("# Title\n\n## Ideas\n\n- one\n\n### Sub\n\n- deep\n\n- deeper\n\n## Done\n\n- x\n");
+  });
+
+  it("appends under the last heading at the end of the note", () => {
+    put("Note.md", note);
+    appendToNote("Note.md", "- y\n", { heading: "Done" });
+    expect(get("Note.md")).toBe(note + "\n- y\n");
+  });
+
+  it("separates from a heading that follows immediately, and from an empty section", () => {
+    put("Note.md", "## A\n## B\ntext\n");
+    appendToNote("Note.md", "under a", { heading: "A" });
+    expect(get("Note.md")).toBe("## A\n\nunder a\n\n## B\ntext\n");
+  });
+
+  it("prepends directly under the heading as the section's first block", () => {
+    put("Note.md", note);
+    prependToNote("Note.md", "- zero", { heading: "Ideas" });
+    expect(get("Note.md")).toBe("# Title\n\n## Ideas\n\n- zero\n\n- one\n\n### Sub\n\n- deep\n\n## Done\n\n- x\n");
+    put("Tight.md", "## A\ntext\n");
+    prependToNote("Tight.md", "first", { heading: "A" });
+    expect(get("Tight.md")).toBe("## A\n\nfirst\n\ntext\n");
+  });
+
+  it("counts lines from the file, frontmatter included, and ignores a # inside a code fence", () => {
+    put("Note.md", "---\ntitle: t\n---\n## Real\n\n```\n## Not a heading\n```\n\n## Other\n");
+    appendToNote("Note.md", "added", { heading: "Real" });
+    expect(get("Note.md")).toBe("---\ntitle: t\n---\n## Real\n\n```\n## Not a heading\n```\n\nadded\n\n## Other\n");
+    expect(() => appendToNote("Note.md", "x", { heading: "Not a heading" })).toThrow(/No heading "Not a heading"/);
+  });
+
+  it("accepts the heading with its # marks and keeps CRLF endings", () => {
+    put("Note.md", "## A\r\n\r\ntext\r\n\r\n## B\r\n");
+    appendToNote("Note.md", "more\nlines", { heading: "## A" });
+    expect(get("Note.md")).toBe("## A\r\n\r\ntext\r\n\r\nmore\r\nlines\r\n\r\n## B\r\n");
+  });
+
+  it("refuses an ambiguous heading, naming the lines, and a missing one, naming the headings", () => {
+    put("Note.md", "## Notes\na\n## Notes\nb\n");
+    expect(() => appendToNote("Note.md", "x", { heading: "Notes" })).toThrow(/occurs 2 times in Note\.md, at lines 1, 3/);
+    expect(get("Note.md")).toBe("## Notes\na\n## Notes\nb\n");
+    expect(() => prependToNote("Note.md", "x", { heading: "Nope" })).toThrow(/No heading "Nope" in Note\.md\. Its headings: "Notes", "Notes"/);
+    put("Plain.md", "no headings\n");
+    expect(() => appendToNote("Plain.md", "x", { heading: "Nope" })).toThrow(/It has no headings/);
+    expect(() => appendToNote("Plain.md", "x", { heading: "  " })).toThrow(/must not be empty/);
+  });
+});
+
 describe("findInNote", () => {
   it("finds every occurrence by line and column, ignoring case by default", () => {
     put("Note.md", "one\nZebra here\nthree\nzebra and zebra\n");

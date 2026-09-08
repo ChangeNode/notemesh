@@ -495,14 +495,22 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       {
         title: "Append to note",
         annotations: ADD,
-        description: "Append markdown to the end of an existing note. The safest way to add content.",
+        description:
+          "Append markdown to the end of an existing note, or, with heading, to the end of that " +
+          "heading's section (before the next heading of the same or a higher level). The safest " +
+          "way to add content. The heading must occur once; get_outline lists them.",
         inputSchema: {
           path: z.string().describe("Vault-relative path of an existing note"),
-          content: z.string().describe("Markdown to add; it becomes its own block at the end"),
+          content: z.string().describe("Markdown to add; it becomes its own block"),
+          heading: z.string().optional()
+            .describe("A heading in the note, as written without the # marks; the block goes at the end of its section"),
         },
       },
-      safe(({ path, content }: { path: string; content: string }) =>
-        text(`Appended to ${w(appendToNote(path, content), "append_to_note")}`),
+      safe(({ path, content, heading }: { path: string; content: string; heading?: string }) =>
+        text(
+          `Appended to ${w(appendToNote(path, content, { heading }), "append_to_note")}` +
+            (heading === undefined ? "" : ` under ${JSON.stringify(heading)}`),
+        ),
       ),
     );
 
@@ -511,14 +519,22 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       {
         title: "Prepend to note",
         annotations: ADD,
-        description: "Insert markdown at the top of a note, after any YAML frontmatter.",
+        description:
+          "Insert markdown at the top of a note, after any YAML frontmatter, or, with heading, " +
+          "directly under that heading as the first block of its section. The heading must occur " +
+          "once; get_outline lists them.",
         inputSchema: {
           path: z.string().describe("Vault-relative path of an existing note"),
-          content: z.string().describe("Markdown to insert; it becomes its own block below the frontmatter"),
+          content: z.string().describe("Markdown to insert; it becomes its own block"),
+          heading: z.string().optional()
+            .describe("A heading in the note, as written without the # marks; the block goes directly under it"),
         },
       },
-      safe(({ path, content }: { path: string; content: string }) =>
-        text(`Prepended to ${w(prependToNote(path, content), "prepend_to_note")}`),
+      safe(({ path, content, heading }: { path: string; content: string; heading?: string }) =>
+        text(
+          `Prepended to ${w(prependToNote(path, content, { heading }), "prepend_to_note")}` +
+            (heading === undefined ? "" : ` under ${JSON.stringify(heading)}`),
+        ),
       ),
     );
 

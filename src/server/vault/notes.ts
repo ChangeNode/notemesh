@@ -16,6 +16,7 @@ import {
   MAX_WRITE_BYTES,
 } from "./paths";
 import { writeVaultFile } from "./disk";
+import { extractStructure, splitFrontmatter } from "./markdown";
 import { createdFor, forgetModification, isoInZone, modifiedFor } from "./modified";
 import { configuredTimeZone } from "./timezone";
 
@@ -320,10 +321,84 @@ export function updateNote(notePath: string, content: string, opts: UpdateOption
   return rel;
 }
 
-export function appendToNote(notePath: string, content: string): string {
+export interface SectionOptions {
+  /** A heading in the note; the addition goes inside its section instead of at the note's edge. */
+  heading?: string;
+}
+
+interface Section {
+  /** 0-based index of the heading line in the file's lines. */
+  headingIdx: number;
+  /** 0-based index of the last line of the section, inclusive. */
+  endIdx: number;
+}
+
+const LISTED_HEADINGS = 10;
+
+/**
+ * The lines a heading owns: from the heading to the line before the next
+ * heading of the same or a higher level, or the end of the note. Found with
+ * the same scan the index uses, so a "#" inside a code fence or frontmatter
+ * is not a heading here either. The heading must occur once: with two
+ * "## Notes" the caller wanted one of them, and guessing would put text in
+ * the other.
+ */
+function findSection(content: string, lines: string[], heading: string, rel: string): Section {
+  const wanted = heading.trim().replace(/^#{1,6}\s+/, "");
+  if (wanted === "") throw new VaultPathError("heading must not be empty");
+  const { body, fmOffset } = splitFrontmatter(content);
+  const headings = extractStructure(body).headings.map((h) => ({ ...h, line: h.line + fmOffset }));
+  const found = headings.filter((h) => h.text === wanted);
+  if (found.length === 0) {
+    const listed = headings.slice(0, LISTED_HEADINGS).map((h) => JSON.stringify(h.text));
+    const more = headings.length > LISTED_HEADINGS ? `, and ${headings.length - LISTED_HEADINGS} more` : "";
+    throw new VaultPathError(
+      `No heading ${JSON.stringify(wanted)} in ${rel}.` +
+        (listed.length ? ` Its headings: ${listed.join(", ")}${more}.` : " It has no headings."),
+    );
+  }
+  if (found.length > 1) {
+    throw new VaultPathError(
+      `${JSON.stringify(wanted)} occurs ${found.length} times in ${rel}, at lines ${listLines(found.map((h) => h.line))}. ` +
+        "Use edit_note to place text under one of them.",
+    );
+  }
+  const target = found[0];
+  const next = headings.find((h) => h.line > target.line && h.level <= target.level);
+  return { headingIdx: target.line - 1, endIdx: (next ? next.line - 1 : lines.length) - 1 };
+}
+
+/** Insert lines into a note's lines, keeping its line-ending convention. */
+function spliceLines(lines: string[], at: number, insert: string[], eol: string): string {
+  const out = [...lines];
+  out.splice(at, 0, ...insert);
+  return out.join(eol);
+}
+
+function blockLines(content: string): string[] {
+  return (content.endsWith("\n") ? content.slice(0, -1) : content).split(/\r?\n/);
+}
+
+export function appendToNote(notePath: string, content: string, opts: SectionOptions = {}): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const existing = readVaultFile(abs);
+  if (opts.heading !== undefined) {
+    const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+    const lines = existing.split(/\r?\n/);
+    const { headingIdx, endIdx } = findSection(existing, lines, opts.heading, toVaultRelative(abs));
+    // After the section's last line of text, so the block sits inside the
+    // section rather than after the blank lines that separate it from the
+    // next heading; a blank line on each side keeps it its own block.
+    let last = endIdx;
+    while (last > headingIdx && lines[last].trim() === "") last--;
+    const insert = ["", ...blockLines(content)];
+    if (last + 1 < lines.length && lines[last + 1].trim() !== "") insert.push("");
+    const next = spliceLines(lines, last + 1, insert, eol);
+    assertWriteSize(next);
+    writeVaultFile(abs, next);
+    return toVaultRelative(abs);
+  }
   // Separate with a blank line so appended text becomes its own block. A single
   // newline would render as a soft break inside the preceding paragraph, which
   // silently mangles the note for a tool documented as the safest way to add
@@ -341,10 +416,22 @@ export function appendToNote(notePath: string, content: string): string {
 }
 
 // Insert after YAML frontmatter (matching the Obsidian CLI's prepend behavior).
-export function prependToNote(notePath: string, content: string): string {
+export function prependToNote(notePath: string, content: string, opts: SectionOptions = {}): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const existing = readVaultFile(abs);
+  if (opts.heading !== undefined) {
+    const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+    const lines = existing.split(/\r?\n/);
+    const { headingIdx } = findSection(existing, lines, opts.heading, toVaultRelative(abs));
+    // Directly under the heading, as its first block.
+    const insert = ["", ...blockLines(content)];
+    if (headingIdx + 1 < lines.length && lines[headingIdx + 1].trim() !== "") insert.push("");
+    const next = spliceLines(lines, headingIdx + 1, insert, eol);
+    assertWriteSize(next);
+    writeVaultFile(abs, next);
+    return toVaultRelative(abs);
+  }
   // Trailing blank line for the same reason as append: keep the inserted text
   // a distinct block rather than merging into what follows.
   let block = content.endsWith("\n") ? content : content + "\n";

@@ -205,15 +205,20 @@ describe("preview_edit", () => {
     const { reindexPath } = await vi.importActual<typeof import("../vault/indexer")>("../vault/indexer");
     const v = path.join(root, "vault");
     fs.mkdirSync(path.join(v, "Old"), { recursive: true });
-    fs.writeFileSync(path.join(v, "Old", "a.md"), "x\n");
+    // a.md links to its sibling by path, so it is both moved and rewritten.
+    fs.writeFileSync(path.join(v, "Old", "a.md"), "[[Old/b]]\n");
+    fs.writeFileSync(path.join(v, "Old", "b.md"), "x\n");
     fs.writeFileSync(path.join(v, "Src.md"), "[[Old/a]]\n");
     reindexPath("Old/a.md");
+    reindexPath("Old/b.md");
     reindexPath("Src.md");
     const res = call("move_folder", { path: "Old", newPath: "New" });
     expect(res.isError).toBeUndefined();
-    expect(res.content[0].text).toBe("Moved Old → New (1 file). Updated 1 link in 1 note: Src.md.");
+    expect(res.content[0].text).toMatch(/^Moved Old → New \(2 files\)\. Updated 2 links in 2 notes: /);
     expect(fs.readFileSync(path.join(v, "Src.md"), "utf8")).toBe("[[New/a]]\n");
-    expect(reindex.mock.calls.map((c) => c[0])).toEqual(["Old/a.md", "New/a.md", "Src.md"]);
+    expect(fs.readFileSync(path.join(v, "New", "a.md"), "utf8")).toBe("[[New/b]]\n");
+    // Every old path, every new path, and the outside source: each exactly once.
+    expect(reindex.mock.calls.map((c) => c[0]).sort()).toEqual(["New/a.md", "New/b.md", "Old/a.md", "Old/b.md", "Src.md"]);
   });
 
   it("move_note rewrites links by default, says what it touched, and updateLinks: false leaves them", async () => {

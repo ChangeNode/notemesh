@@ -103,3 +103,18 @@ describe("FTS rows are keyed by the note's rowid", () => {
     expect(ftsRows("a.md")).toEqual([]);
   });
 });
+
+describe("reindexPath routes by kind, as the watcher does", () => {
+  it("indexes a non-markdown file as an attachment, never as a note", async () => {
+    const { reindexPath, d } = await load();
+    write("pic.png", "PNG not text");
+    reindexPath("pic.png");
+    expect(d.prepare("SELECT path FROM attachments").all()).toEqual([{ path: "pic.png" }]);
+    expect(d.prepare("SELECT COUNT(*) AS n FROM notes").get()).toEqual({ n: 0 });
+    expect(d.prepare("SELECT COUNT(*) AS n FROM notes_fts").get()).toEqual({ n: 0 });
+    // A note row left by an older build for the same path goes with it.
+    d.exec("INSERT INTO notes (path, title, mtime, size) VALUES ('pic.png', 'pic.png', 1, 1)");
+    reindexPath("pic.png");
+    expect(d.prepare("SELECT COUNT(*) AS n FROM notes").get()).toEqual({ n: 0 });
+  });
+});

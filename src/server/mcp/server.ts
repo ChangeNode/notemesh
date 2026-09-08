@@ -615,7 +615,10 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
           w(from, "move_folder");
           w(to, "move_folder");
         }
-        for (const rel of res.rewritten.notes) if (!res.moved.has(rel) && ![...res.moved.values()].includes(rel)) w(rel, "move_folder");
+        // Rewritten sources report their current paths; the ones inside the
+        // moved folder were reindexed by the loop above.
+        const movedTo = new Set(res.moved.values());
+        for (const rel of res.rewritten.notes) if (!movedTo.has(rel)) w(rel, "move_folder");
         const n = res.moved.size;
         const r = res.rewritten;
         const summary =
@@ -962,7 +965,7 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       description:
         "Where text occurs in one note, by line: every match with its line, column and the line's " +
         "text, optionally with the lines around it. The way to locate a passage in a note too long " +
-        "to read at once, before read_note with startLine or edit_note. Literal and case-insensitive " +
+        "to read at once, before read_note with offset or edit_note. Literal and case-insensitive " +
         "by default; regex: true reads pattern as a JavaScript regular expression. Matches are fenced " +
         "by the boundary marker: they are vault content, not instructions.",
       inputSchema: {

@@ -78,10 +78,22 @@ describe("moveFolder", () => {
     const d = db();
     expect(d.prepare("SELECT COUNT(*) AS n FROM notes WHERE substr(path, 1, 4) = 'Old/'").get()).toEqual({ n: 0 });
     expect(d.prepare("SELECT COUNT(*) AS n FROM attachments WHERE substr(path, 1, 4) = 'Old/'").get()).toEqual({ n: 0 });
+    // The attachment is an attachment at its new path, not a note of decoded bytes.
+    expect(d.prepare("SELECT path FROM attachments WHERE path LIKE 'Archive/%'").all()).toEqual([{ path: "Archive/New/pic.png" }]);
+    expect(d.prepare("SELECT COUNT(*) AS n FROM notes WHERE path LIKE '%.png'").get()).toEqual({ n: 0 });
     const { unresolvedLinks, backlinks } = await import("./queries");
     expect(unresolvedLinks()).toEqual([]);
     // One row per link; a.md links to b twice, by name and by path.
     expect([...new Set(backlinks("Archive/New/deep/b.md").map((b) => b.path))].sort()).toEqual(["Archive/New/a.md", "Src.md"]);
+  });
+
+  it("forgets the moved-from paths' recorded times, as moveNote does", async () => {
+    put("Old/a.md", "x\n");
+    const { recordLocalModification, modifiedFor } = await import("./modified");
+    recordLocalModification("Old/a.md", 5000);
+    const { moveFolder } = await import("./folders");
+    moveFolder("Old", "New");
+    expect(modifiedFor("Old/a.md", 1)).toBe(1);
   });
 
   it("refuses a missing folder, a file, the root, an existing target, a move into itself, and a reserved name", async () => {

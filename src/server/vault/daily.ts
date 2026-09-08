@@ -3,6 +3,7 @@ import path from "node:path";
 import { env } from "../env";
 import { resolveNotePath, toVaultRelative, VaultPathError } from "./paths";
 import { createNote, appendToNote, prependToNote, readNoteRange, noteExists } from "./notes";
+import { DEFAULT_TIMEZONE, configuredTimeZone, isValidTimeZone } from "./timezone";
 
 interface DailyConfig {
   folder: string;
@@ -73,8 +74,7 @@ function dailyConfig(): DailyConfig {
 
 // The timezone helpers live in timezone.ts (notes.ts needs them too, and
 // this module imports notes.ts); re-exported so existing callers stand.
-export { DEFAULT_TIMEZONE, isValidTimeZone, configuredTimeZone } from "./timezone";
-import { DEFAULT_TIMEZONE, configuredTimeZone, isValidTimeZone } from "./timezone";
+export { DEFAULT_TIMEZONE, isValidTimeZone, configuredTimeZone };
 
 /** Calendar date, decoupled from any instant so no zone can shift it again. */
 export interface DateParts {

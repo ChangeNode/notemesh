@@ -4,6 +4,7 @@ import { env } from "../env";
 import { VaultPathError, resolveFolderPath, toVaultRelative } from "./paths";
 import { assertNoReservedSegments, isMarkdown } from "./notes";
 import { rewriteLinksForMoves, type RewriteResult } from "./links";
+import { forgetModification } from "./modified";
 
 /**
  * Folders. They come into being through create_note paths; these are the
@@ -66,6 +67,9 @@ export function moveFolder(folder: string, newFolder: string): FolderMove {
 
   fs.mkdirSync(path.dirname(absTo), { recursive: true });
   fs.renameSync(absFrom, absTo);
+  // As moveNote does: a rename keeps each file's own time, and only the old
+  // paths' records are stale.
+  for (const from of moved.keys()) forgetModification(from);
 
   // Links to notes and to attachments alike: an embed written by path
   // breaks the same way a link does.

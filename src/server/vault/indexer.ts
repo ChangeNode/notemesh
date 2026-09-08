@@ -164,8 +164,14 @@ export function reindexPath(relPath: string) {
   try {
     const abs = path.join(env.vaultDir, relPath);
     if (!isSafeVaultPath(abs)) return;
-    if (fs.existsSync(abs)) indexFile(relPath, abs);
-    else removeFile(relPath);
+    if (!fs.existsSync(abs)) removeFile(relPath);
+    else if (abs.toLowerCase().endsWith(".md")) indexFile(relPath, abs);
+    else {
+      // An attachment, as the watcher would route it. Indexing it as a note
+      // would give it a notes row and a search body of decoded bytes.
+      removeFile(relPath);
+      indexAttachment(relPath, abs);
+    }
     resolveLinksFor(relPath);
   } catch (e) {
     console.error("[indexer] reindexPath failed:", e);

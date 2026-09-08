@@ -138,6 +138,48 @@ default changed: `move_note` now rewrites links, as described under Changed.
   to an existing database on boot and filled by the rebuild, so there is
   nothing to do.
 
+### Security
+
+From a review of this branch before release. None of these change how the
+server is set up or used; the first three close ways a single tool call could
+hold or crash the server, which matters because vault content can steer the
+assistant that makes the calls.
+
+- **`find_in_note` is literal only.** A regular-expression option was on this
+  branch for a day. A nine-character pattern such as `^(a+)+$` holds the event
+  loop for seconds against a short line, and nothing short of a second engine
+  makes that safe. The scan is also budgeted now: matches are counted up to
+  the cap and only the requested page is built, so a note that is one enormous
+  line of a repeated character costs a count, not an allocation per match.
+
+- **The `name` glob no longer becomes a regular expression.** `*a*a*a*a*` made
+  a backtracking regex take seconds against an ordinary filename; the matcher
+  is now the two-pointer wildcard match, bounded by the product of the two
+  lengths, and the pattern is capped at 200 characters.
+
+- **The signed attachment download streams.** It read the whole file into
+  memory before answering, whatever its size, and a synced vault can hold a
+  video: one valid download of a two-gigabyte file took the process down. It
+  now streams from the verified descriptor with backpressure, so a slow client
+  costs a few chunks in flight rather than the file.
+
+- **Notes are written atomically.** A note was opened with `O_TRUNC`, so a
+  write that failed after the open — the disk full after all, the process
+  killed — left it empty or half written. The bytes now go to a temporary
+  file beside it, are synced, and are renamed over it: the note is the old
+  version or the new one, never anything else.
+
+- **Reads and writes verify where the descriptor landed.** `O_NOFOLLOW` guards
+  the final path component only; a directory above it swapped for a symlink by
+  sync between the check and the open is followed by the kernel. On Linux the
+  server now asks where the descriptor is and refuses if that is not under the
+  vault. Move and delete have no descriptor form in Node and keep the
+  resolve-time check; SECURITY.md describes the boundary.
+
+- **The workflows pin every action to a commit**, with Dependabot moving the
+  pins, and `pnpm audit` now fails CI at high or critical instead of being
+  advisory; a reviewed exception goes in `pnpm-workspace.yaml` with its reason.
+
 ## 1.2.1 — 2026-09-07
 
 **Taking this update:** redeploy. Nothing else.

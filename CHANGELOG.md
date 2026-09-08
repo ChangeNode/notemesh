@@ -96,6 +96,12 @@ default changed: `move_note` now rewrites links, as described under Changed.
   and a join by hand. `sort: "modified"` orders newest first instead of by
   relevance; the count is of the narrowed set, so `hasMore` stays honest.
 
+- **`daily_note` applies your template.** The *Template file location* setting
+  was read and shown on the Settings tab but a note created from here started
+  empty. It now starts from the template, with `{{title}}`, `{{date}}` and
+  `{{time}}` filled the way Obsidian fills them, formats included. A missing
+  template still gives an empty note rather than a refusal.
+
 - **`created`** beside `modified` on every listing, and `sort: "created"`. The
   same git pass gives it for free: the oldest commit mentioning the path,
   where modified is the newest. Files git has not seen use the filesystem's

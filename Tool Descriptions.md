@@ -220,15 +220,18 @@ markdown note is refused here with a pointer at `read_note`.
 ### daily_note — write
 
 `action` is `read`, `append`, `prepend` or `path`, for today or for `date`
-(`YYYY-MM-DD`). Append and prepend create the note if it does not exist. A
-note the tool creates starts empty: the *Template file location* setting is
-read and reported, but the template is not applied, so a daily note first
-touched from here has no template content until you add it.
+(`YYYY-MM-DD`). Append and prepend create the note if it does not exist, from
+your template when one is configured, with `{{title}}`, `{{date}}` and
+`{{time}}` filled the way Obsidian fills them: the note's name, its day, and
+the current time in the configured timezone, the last two taking a
+moment-style format after a colon (`{{date:dddd, MMMM D}}`, `{{time:h A}}`).
+A template that is missing or unreadable gives an empty note rather than a
+refusal. A daily note that already exists is never templated again.
 
 **Where the note goes.** The folder, filename format and template come from
 Obsidian's own Daily Notes settings, read from `.obsidian/daily-notes.json`
-in the vault on every call: the plugin's *New file location* and *Date
-format* fields (and *Template file location*, see above). Change them in Obsidian and the tool
+in the vault on every call: the plugin's *New file location*, *Date format*
+and *Template file location* fields. Change them in Obsidian and the tool
 follows on the next sync. Without that file the tool falls back to
 `YYYY-MM-DD` at the vault root; the **Settings** tab says which of the two
 your vault has. Obsidian Sync does not send the `.obsidian` folder unless

@@ -31,7 +31,8 @@ function migrate(d: Database.Database) {
       size INTEGER NOT NULL,
       frontmatter TEXT,          -- JSON object or null
       word_count INTEGER NOT NULL DEFAULT 0,
-      modified INTEGER           -- last change as a person means it; see vault/modified.ts
+      modified INTEGER,          -- last change as a person means it; see vault/modified.ts
+      created INTEGER            -- first appearance, the same way
     );
 
     CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
@@ -56,7 +57,8 @@ function migrate(d: Database.Database) {
       path TEXT PRIMARY KEY,
       mtime INTEGER NOT NULL,
       size INTEGER NOT NULL,
-      modified INTEGER
+      modified INTEGER,
+      created INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS tags (
@@ -78,6 +80,8 @@ function migrate(d: Database.Database) {
   // at every boot, so a new column needs no backfill beyond existing.
   addColumn(d, "notes", "modified", "INTEGER");
   addColumn(d, "attachments", "modified", "INTEGER");
+  addColumn(d, "notes", "created", "INTEGER");
+  addColumn(d, "attachments", "created", "INTEGER");
 }
 
 function addColumn(d: Database.Database, table: string, column: string, type: string) {

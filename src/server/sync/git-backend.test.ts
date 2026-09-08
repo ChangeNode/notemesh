@@ -258,6 +258,21 @@ describe("modification times", () => {
     });
   });
 
+  it("created is the first commit that added the note, even after later ones changed it", async () => {
+    const { backend } = await configuredBackend();
+    write(device, "Notes/Old.md", "# Old\n");
+    commitAllAt(device, "device: born", JAN);
+    write(device, "Notes/Old.md", "# Old\n\nchanged\n");
+    commitAllAt(device, "device: changed", "2025-06-01T08:00:00Z");
+    git(device, "push", "-q");
+    expect((await backend.syncNow()).ok).toBe(true);
+
+    const { listNotes } = await import("~/server/vault/notes");
+    const old = listNotes().find((n) => n.path === "Notes/Old.md")!;
+    expect(old.created).toBe("2024-01-15T10:00:00+00:00");
+    expect(old.modified).toBe("2025-06-01T08:00:00+00:00");
+  });
+
   it("start() loads the times for a vault that was cloned with its history", async () => {
     write(device, "Notes/Old.md", "# Old\n");
     commitAllAt(device, "device: an old note", JAN);

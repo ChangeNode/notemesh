@@ -46,18 +46,18 @@ describe("parseInstant", () => {
   });
 });
 
-function entry(path: string, modifiedMs: number, size: number) {
-  return { path, modified: isoInZone(modifiedMs, "UTC"), size };
+function entry(path: string, modifiedMs: number, size: number, createdMs = modifiedMs - 100_000) {
+  return { path, modified: isoInZone(modifiedMs, "UTC"), created: isoInZone(createdMs, "UTC"), size };
 }
 
 const T0 = Date.UTC(2026, 0, 1);
 // d.md before a.md on purpose: they share a second, and a stable sort with
 // no tie-break would keep this order instead of the path's.
 const listing = [
-  entry("d.md", T0 + 3000, 40),
-  entry("b.md", T0 + 2000, 30),
-  entry("a.md", T0 + 3000, 10),
-  entry("c.md", T0 + 1000, 20),
+  entry("d.md", T0 + 3000, 40, T0 - 4000),
+  entry("b.md", T0 + 2000, 30, T0 - 1000),
+  entry("a.md", T0 + 3000, 10, T0 - 3000),
+  entry("c.md", T0 + 1000, 20, T0 - 2000),
 ];
 
 describe("arrange", () => {
@@ -79,6 +79,10 @@ describe("arrange", () => {
       "a.md",
       "d.md",
     ]);
+  });
+
+  it("by created is newest first, which need not be the modified order", () => {
+    expect(arrange(listing, { sort: "created" }, "UTC").map((e) => e.path)).toEqual(["b.md", "c.md", "a.md", "d.md"]);
   });
 
   it("by size is largest first", () => {

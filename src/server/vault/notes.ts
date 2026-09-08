@@ -16,7 +16,7 @@ import {
   MAX_WRITE_BYTES,
 } from "./paths";
 import { writeVaultFile } from "./disk";
-import { forgetModification, isoInZone, modifiedFor } from "./modified";
+import { createdFor, forgetModification, isoInZone, modifiedFor } from "./modified";
 import { configuredTimeZone } from "./timezone";
 
 export interface NoteInfo {
@@ -25,6 +25,8 @@ export interface NoteInfo {
   mtime: number;
   /** When the file last changed as a person means it, ISO 8601 in the configured timezone. See modified.ts. */
   modified: string;
+  /** When it came into being, the same way: git's first commit, else the filesystem's birthtime. */
+  created: string;
   size: number;
   /** Present, and false, only for a note over the index size cap: listed and readable, not searchable. */
   indexed?: false;
@@ -677,6 +679,7 @@ function walk(
         path: rel,
         mtime,
         modified: isoInZone(modifiedFor(rel, mtime), timeZone),
+        created: isoInZone(createdFor(rel, st), timeZone),
         size: st.size,
       };
       // The same rule the indexer applies, decided from the same number, so the

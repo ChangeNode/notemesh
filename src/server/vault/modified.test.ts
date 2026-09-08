@@ -29,6 +29,23 @@ afterEach(() => {
 const NUL = "\0";
 const INSTANT = Date.UTC(2026, 0, 15, 3, 30, 5); // 2026-01-15T03:30:05Z
 
+describe("parseGitHistory", () => {
+  it("takes the oldest commit for each path as created and the newest as modified", async () => {
+    const { parseGitHistory } = await import("./modified");
+    const text = `${NUL}1700000000\nA.md\n\n${NUL}1650000000\nA.md\nB.md\n\n${NUL}1600000000\nA.md\n`;
+    expect(parseGitHistory(text)).toEqual({
+      modified: new Map([
+        ["A.md", 1700000000000],
+        ["B.md", 1650000000000],
+      ]),
+      created: new Map([
+        ["A.md", 1600000000000],
+        ["B.md", 1650000000000],
+      ]),
+    });
+  });
+});
+
 describe("parseGitLog", () => {
   it("takes the first commit listed for a path, since the log is newest first", async () => {
     const { parseGitLog } = await import("./modified");
@@ -100,6 +117,55 @@ describe("modifiedFor", () => {
   });
 });
 
+describe("createdFor", () => {
+  const st = (birthtimeMs: number, mtimeMs: number) => ({ birthtimeMs, mtimeMs });
+
+  it("uses git's first commit when there is one", async () => {
+    const { createdFor, applyGitHistory } = await import("./modified");
+    applyGitHistory({ modified: new Map([["A.md", 9000]]), created: new Map([["A.md", 4000]]) });
+    expect(createdFor("A.md", st(8000, 9000))).toBe(4000);
+  });
+
+  it("falls back to the birthtime, and to the modified time where the filesystem has none", async () => {
+    const { createdFor } = await import("./modified");
+    expect(createdFor("B.md", st(3000.4, 9000))).toBe(3000);
+    expect(createdFor("B.md", st(0, 9000.6))).toBe(9001);
+  });
+
+  it("is never later than modified", async () => {
+    const { createdFor, recordLocalModification } = await import("./modified");
+    // A copy made with its mtime preserved is born after it was last changed.
+    expect(createdFor("C.md", st(9000, 5000))).toBe(5000);
+    // A recorded time is the modified time, and caps created the same way.
+    recordLocalModification("D.md", 2000);
+    expect(createdFor("D.md", st(7000, 8000))).toBe(2000);
+  });
+
+  it("is forgotten with the path", async () => {
+    const { createdFor, applyGitHistory, forgetModification } = await import("./modified");
+    applyGitHistory({ modified: new Map(), created: new Map([["A.md", 4000]]) });
+    forgetModification("A.md");
+    expect(createdFor("A.md", st(8000, 9000))).toBe(8000);
+  });
+});
+
+describe("applyGitHistory", () => {
+  it("writes created into the index rows too, and counts them", async () => {
+    const { db } = await import("../db");
+    const { applyGitHistory } = await import("./modified");
+    const d = db();
+    d.exec(`
+      INSERT INTO notes (path, title, mtime, size, modified, created) VALUES ('A.md', 'A', 1, 1, 1, 1);
+      INSERT INTO attachments (path, mtime, size, modified, created) VALUES ('img.png', 1, 1, 1, 1);
+    `);
+    const history = { modified: new Map([["A.md", 7000]]), created: new Map([["A.md", 3000], ["img.png", 2000]]) };
+    expect(applyGitHistory(history)).toBe(3);
+    expect(d.prepare("SELECT modified, created FROM notes").all()).toEqual([{ modified: 7000, created: 3000 }]);
+    expect(d.prepare("SELECT modified, created FROM attachments").all()).toEqual([{ modified: 1, created: 2000 }]);
+    expect(applyGitHistory(history)).toBe(0);
+  });
+});
+
 describe("applyGitTimes", () => {
   it("updates the index rows for notes and attachments and counts the ones that changed", async () => {
     const { db } = await import("../db");
@@ -146,6 +212,8 @@ describe("the modified column", () => {
       (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
     expect(columns("notes")).toContain("modified");
     expect(columns("attachments")).toContain("modified");
+    expect(columns("notes")).toContain("created");
+    expect(columns("attachments")).toContain("created");
     // Existing rows survive with the column empty until the boot rebuild fills it.
     expect(d.prepare("SELECT path, modified FROM notes").all()).toEqual([{ path: "A.md", modified: null }]);
   });
@@ -161,11 +229,12 @@ describe("listings", () => {
       fs.writeFileSync(abs, "x");
       fs.utimesSync(abs, INSTANT / 1000, INSTANT / 1000);
     }
+    // Born just now, modified (per utimes) in January: created is clamped to modified.
     expect(listNotes()).toEqual([
-      { path: "A.md", mtime: INSTANT, modified: "2026-01-15T16:30:05+13:00", size: 1 },
+      { path: "A.md", mtime: INSTANT, modified: "2026-01-15T16:30:05+13:00", created: "2026-01-15T16:30:05+13:00", size: 1 },
     ]);
     expect(listAttachments()).toEqual([
-      { path: "img.png", mtime: INSTANT, modified: "2026-01-15T16:30:05+13:00", size: 1 },
+      { path: "img.png", mtime: INSTANT, modified: "2026-01-15T16:30:05+13:00", created: "2026-01-15T16:30:05+13:00", size: 1 },
     ]);
   });
 
@@ -176,9 +245,12 @@ describe("listings", () => {
     fs.writeFileSync(abs, "x");
     fs.utimesSync(abs, INSTANT / 1000, INSTANT / 1000);
     recordLocalModification("A.md", Date.UTC(2026, 8, 5, 12, 0, 0));
-    expect(listNotes()).toEqual([
-      { path: "A.md", mtime: INSTANT, modified: "2026-09-05T12:00:00+00:00", size: 1 },
-    ]);
+    // created depends on the platform: Linux keeps the birthtime at "now",
+    // clamped to the recorded time; macOS moved it back to the older mtime
+    // when utimes set one. Either way it is not after modified.
+    const [a] = listNotes();
+    expect(a).toEqual({ path: "A.md", mtime: INSTANT, modified: "2026-09-05T12:00:00+00:00", created: expect.any(String), size: 1 });
+    expect(Date.parse(a.created)).toBeLessThanOrEqual(Date.parse(a.modified));
   });
 
   it("a note a tool writes reports now, whatever git remembered", async () => {

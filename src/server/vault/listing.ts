@@ -6,7 +6,7 @@ import { wallClockInZone } from "./modified";
  * before it is paged, so `total` and `hasMore` describe the narrowed list
  * and page two follows page one under the same order.
  */
-export type SortKey = "name" | "modified" | "size";
+export type SortKey = "name" | "modified" | "created" | "size";
 export type SortOrder = "asc" | "desc";
 
 export interface ListOptions {
@@ -19,6 +19,7 @@ export interface ListOptions {
 interface Listed {
   path: string;
   modified: string;
+  created: string;
   size: number;
 }
 
@@ -69,12 +70,14 @@ export function arrange<T extends Listed>(items: T[], opts: ListOptions, timeZon
   const dir = order === "asc" ? 1 : -1;
 
   const decorated = items
-    .map((item) => ({ item, at: Date.parse(item.modified) }))
+    .map((item) => ({ item, at: Date.parse(item.modified), born: Date.parse(item.created) }))
     .filter((d) => after === null || d.at > after);
   const key =
     sort === "modified"
       ? (a: (typeof decorated)[number], b: (typeof decorated)[number]) => a.at - b.at
-      : sort === "size"
+      : sort === "created"
+        ? (a: (typeof decorated)[number], b: (typeof decorated)[number]) => a.born - b.born
+        : sort === "size"
         ? (a: (typeof decorated)[number], b: (typeof decorated)[number]) => a.item.size - b.item.size
         : (a: (typeof decorated)[number], b: (typeof decorated)[number]) => a.item.path.localeCompare(b.item.path);
   // Ties fall back to the path, ascending whichever way the key runs, so a

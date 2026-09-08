@@ -7,7 +7,7 @@ import { extractStructure, splitFrontmatter } from "./markdown";
 import { db } from "../db";
 import { env } from "../env";
 import { toVaultRelative, isSafeVaultPath, openNoFollow, MAX_INDEX_BYTES } from "./paths";
-import { modifiedFor } from "./modified";
+import { createdFor, modifiedFor } from "./modified";
 
 // Notes skipped for size. They are listed and readable but absent from the
 // index, and get_vault_info reports how many so the absence from search is
@@ -116,9 +116,10 @@ function indexFile(relPath: string, absPath: string) {
     // would be orphaned. indexer-storage.test.ts pins both.
     const { rowid } = d
       .prepare(
-        `INSERT INTO notes (path, title, mtime, size, frontmatter, word_count, modified) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO notes (path, title, mtime, size, frontmatter, word_count, modified, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET title=excluded.title, mtime=excluded.mtime, size=excluded.size,
-           frontmatter=excluded.frontmatter, word_count=excluded.word_count, modified=excluded.modified
+           frontmatter=excluded.frontmatter, word_count=excluded.word_count, modified=excluded.modified,
+           created=excluded.created
          RETURNING rowid`,
       )
       .get(
@@ -129,6 +130,7 @@ function indexFile(relPath: string, absPath: string) {
         Object.keys(parsed.frontmatter).length ? JSON.stringify(parsed.frontmatter) : null,
         parsed.wordCount,
         modifiedFor(relPath, st.mtimeMs),
+        createdFor(relPath, st),
       ) as { rowid: number };
     d.prepare("DELETE FROM notes_fts WHERE rowid = ?").run(rowid);
     d.prepare("INSERT INTO notes_fts (rowid, path, title, headings, body) VALUES (?, ?, ?, ?, ?)").run(
@@ -250,10 +252,11 @@ function indexAttachment(relPath: string, absPath: string) {
     if (!isSafeVaultPath(absPath)) return;
     db()
       .prepare(
-        `INSERT INTO attachments (path, mtime, size, modified) VALUES (?, ?, ?, ?)
-         ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime, size=excluded.size, modified=excluded.modified`,
+        `INSERT INTO attachments (path, mtime, size, modified, created) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime, size=excluded.size, modified=excluded.modified,
+           created=excluded.created`,
       )
-      .run(relPath, Math.round(st.mtimeMs), st.size, modifiedFor(relPath, st.mtimeMs));
+      .run(relPath, Math.round(st.mtimeMs), st.size, modifiedFor(relPath, st.mtimeMs), createdFor(relPath, st));
   } catch {
     // vanished between event and stat
   }

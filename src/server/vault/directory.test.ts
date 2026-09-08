@@ -50,14 +50,25 @@ describe("listDirectory", () => {
     const { listDirectory } = await import("./directory");
 
     expect(listDirectory("Projects")).toEqual([
-      { name: "A", path: "Projects/A", kind: "folder", modified: iso(3), size: 30 },
-      { name: "B", path: "Projects/B", kind: "folder", modified: iso(2), size: 30 },
-      { name: "top.md", path: "Projects/top.md", kind: "file", modified: iso(4), size: 5 },
+      { name: "A", path: "Projects/A", kind: "folder", modified: iso(3), created: iso(1), size: 30 },
+      { name: "B", path: "Projects/B", kind: "folder", modified: iso(2), created: iso(2), size: 30 },
+      { name: "top.md", path: "Projects/top.md", kind: "file", modified: iso(4), created: iso(4), size: 5 },
     ]);
-    // From the root the same folder carries the newest of everything under it.
+    // From the root the same folder carries the newest and oldest of everything under it.
     expect(listDirectory()).toEqual([
-      { name: "Projects", path: "Projects", kind: "folder", modified: iso(4), size: 65 },
+      { name: "Projects", path: "Projects", kind: "folder", modified: iso(4), created: iso(1), size: 65 },
     ]);
+  });
+
+  it("a folder's created is the oldest beneath it, from git when git knows", async () => {
+    await indexed("P/x.md", 1, T(5));
+    await indexed("P/y.md", 1, T(6));
+    const { applyGitHistory } = await import("./modified");
+    applyGitHistory({ modified: new Map(), created: new Map([["P/y.md", T(2)]]) });
+    const { reindexPath } = await import("./indexer");
+    reindexPath("P/y.md");
+    const { listDirectory } = await import("./directory");
+    expect(listDirectory()).toEqual([{ name: "P", path: "P", kind: "folder", modified: iso(6), created: iso(2), size: 2 }]);
   });
 
   it("matches a folder by its whole name, not as a prefix of a sibling", async () => {
@@ -82,10 +93,11 @@ describe("listDirectory", () => {
     const { db } = await import("../db");
     db().exec("INSERT INTO notes (path, title, mtime, size) VALUES ('Legacy/n.md', 'n', 1, 7)");
     const { listDirectory } = await import("./directory");
+    // Folders born just now and given an older mtime: created clamps to modified.
     expect(listDirectory()).toEqual([
-      { name: "Empty", path: "Empty", kind: "folder", modified: iso(5), size: 0, modifiedFrom: "folder" },
-      { name: "Fresh", path: "Fresh", kind: "folder", modified: iso(6), size: 0, modifiedFrom: "folder" },
-      { name: "Legacy", path: "Legacy", kind: "folder", modified: iso(7), size: 7, modifiedFrom: "folder" },
+      { name: "Empty", path: "Empty", kind: "folder", modified: iso(5), created: iso(5), size: 0, modifiedFrom: "folder" },
+      { name: "Fresh", path: "Fresh", kind: "folder", modified: iso(6), created: iso(6), size: 0, modifiedFrom: "folder" },
+      { name: "Legacy", path: "Legacy", kind: "folder", modified: iso(7), created: iso(7), size: 7, modifiedFrom: "folder" },
     ]);
   });
 
@@ -98,10 +110,13 @@ describe("listDirectory", () => {
     recordLocalModification("small.md", T(8));
     const { listDirectory } = await import("./directory");
     expect(listDirectory()).toEqual([
-      { name: "huge.md", path: "huge.md", kind: "file", modified: iso(2), size: MAX_INDEX_BYTES + 1, indexed: false },
-      { name: "pic.png", path: "pic.png", kind: "file", modified: iso(3), size: 3 },
-      { name: "small.md", path: "small.md", kind: "file", modified: iso(8), size: 1 },
+      { name: "huge.md", path: "huge.md", kind: "file", modified: iso(2), created: iso(2), size: MAX_INDEX_BYTES + 1, indexed: false },
+      { name: "pic.png", path: "pic.png", kind: "file", modified: iso(3), created: iso(3), size: 3 },
+      { name: "small.md", path: "small.md", kind: "file", modified: iso(8), created: expect.any(String), size: 1 },
     ]);
+    // Platform-dependent (see modified.test.ts), but never after modified.
+    const small = listDirectory().find((e) => e.name === "small.md")!;
+    expect(Date.parse(small.created)).toBeLessThanOrEqual(Date.parse(small.modified));
   });
 
   it("skips dotfiles and symlinks, and renders in the configured timezone", async () => {

@@ -106,8 +106,8 @@ const PAGE_ARGS = {
 // before paging (vault/listing.ts), so total and hasMore describe the
 // narrowed list.
 const LIST_ARGS = {
-  sort: z.enum(["name", "modified", "size"]).optional()
-    .describe("Order by path (default), modified time, or size"),
+  sort: z.enum(["name", "modified", "created", "size"]).optional()
+    .describe("Order by path (default), modified time, created time, or size"),
   order: z.enum(["asc", "desc"]).optional()
     .describe("Ascending or descending; defaults to asc for name, desc (newest or largest first) otherwise"),
   modifiedAfter: z.string().optional()
@@ -289,10 +289,11 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       title: "List notes",
       annotations: READ,
       description:
-        "List markdown notes in the vault (optionally within a folder), with modified time and size. " +
-        "modified is ISO 8601 in the configured timezone and means the last change a person made: on a " +
-        "git-synced vault, the commit that last touched the note. Sort by modified (newest first) for a " +
-        "recently-updated list, or pass modifiedAfter to see only what changed since a date. " +
+        "List markdown notes in the vault (optionally within a folder), with modified and created times " +
+        "and size. Both are ISO 8601 in the configured timezone and mean what a person means: on a " +
+        "git-synced vault, the commits that last touched and first added the note. Sort by modified " +
+        "(newest first) for a recently-updated list, or pass modifiedAfter to see only what changed " +
+        "since a date. " +
         "An entry too large to index carries indexed: false — it is readable with read_note but absent " +
         "from search, tags, tasks and links.",
       inputSchema: {
@@ -391,8 +392,9 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       annotations: READ,
       description:
         "List one level of the vault the way ls does: files and folders side by side, each with name, " +
-        "path, kind, modified and size. A folder's modified is the newest item beneath it and its size " +
-        "the bytes beneath, from the index; one with nothing indexed beneath shows its own mtime and " +
+        "path, kind, modified, created and size. A folder's modified is the newest item beneath it, its " +
+        "created the oldest, and its size the bytes beneath, from the index; one with nothing indexed " +
+        "beneath shows its own times and " +
         "modifiedFrom: \"folder\". Sortable and narrowable like list_notes, so sort: modified on a " +
         "folder shows where the recent work is. Pass an entry's path back to descend.",
       inputSchema: {

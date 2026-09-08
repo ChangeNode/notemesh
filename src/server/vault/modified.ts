@@ -19,9 +19,25 @@ import { runGit } from "../sync/git-exec";
  * index never disagree about the same file.
  */
 const times = new Map<string, number>(); // vault-relative path -> epoch ms
+// The first commit that added each path: git's answer to "created". Git is
+// the only source that survives a clone, so it is authoritative when present.
+const born = new Map<string, number>();
 
 export function modifiedFor(relPath: string, mtimeMs: number): number {
   return times.get(relPath) ?? Math.round(mtimeMs);
+}
+
+/**
+ * When the file came into being. Git's first commit for the path when there
+ * is one; otherwise the filesystem's birthtime, which a tool's own create
+ * sets correctly and a checkout sets to the checkout. Never later than the
+ * modified time: a copy made with its mtime preserved is born after it was
+ * last changed, and a person reading created > modified would assume a bug.
+ */
+export function createdFor(relPath: string, st: { birthtimeMs: number; mtimeMs: number }): number {
+  const modified = modifiedFor(relPath, st.mtimeMs);
+  const candidate = born.get(relPath) ?? (st.birthtimeMs > 0 ? Math.round(st.birthtimeMs) : modified);
+  return Math.min(candidate, modified);
 }
 
 /**
@@ -36,11 +52,20 @@ export function recordLocalModification(relPath: string, at = Date.now()) {
 
 export function forgetModification(relPath: string) {
   times.delete(relPath);
+  born.delete(relPath);
 }
 
 /** Test seam: the module is a singleton, so a suite starts from nothing. */
 export function resetModifiedTimes() {
   times.clear();
+  born.clear();
+}
+
+export interface GitHistory {
+  /** Newest commit touching each path. */
+  modified: Map<string, number>;
+  /** Oldest commit touching each path. */
+  created: Map<string, number>;
 }
 
 /**
@@ -49,8 +74,9 @@ export function resetModifiedTimes() {
  * commit's header is a NUL followed by epoch seconds; NUL cannot appear in a
  * path, so a file named with digits alone is never mistaken for a header.
  */
-export function parseGitLog(text: string): Map<string, number> {
-  const out = new Map<string, number>();
+export function parseGitHistory(text: string): GitHistory {
+  const modified = new Map<string, number>();
+  const created = new Map<string, number>();
   let current: number | null = null;
   for (const line of text.split("\n")) {
     if (line === "") continue;
@@ -59,12 +85,19 @@ export function parseGitLog(text: string): Map<string, number> {
       current = Number.isFinite(secs) ? secs * 1000 : null;
       continue;
     }
-    if (current !== null && !out.has(line)) out.set(line, current);
+    if (current === null) continue;
+    if (!modified.has(line)) modified.set(line, current);
+    // Every later mention is an older commit, so the last one seen is the first commit.
+    created.set(line, current);
   }
-  return out;
+  return { modified, created };
 }
 
-export async function loadGitTimes(dir: string): Promise<Map<string, number> | null> {
+export function parseGitLog(text: string): Map<string, number> {
+  return parseGitHistory(text).modified;
+}
+
+export async function loadGitHistory(dir: string): Promise<GitHistory | null> {
   // quotePath=false so a non-ASCII filename comes back as itself rather than
   // octal-escaped and quoted, which would never match the walk's path.
   const res = await runGit(
@@ -72,7 +105,7 @@ export async function loadGitTimes(dir: string): Promise<Map<string, number> | n
     { cwd: dir, timeoutMs: 60_000 },
   );
   if (!res.ok) return null;
-  return parseGitLog(res.stdout);
+  return parseGitHistory(res.stdout);
 }
 
 /**
@@ -82,18 +115,28 @@ export async function loadGitTimes(dir: string): Promise<Map<string, number> | n
  * Returns the number of index rows updated.
  */
 export function applyGitTimes(map: Map<string, number>): number {
-  for (const [p, t] of map) {
+  return applyGitHistory({ modified: map, created: new Map() });
+}
+
+export function applyGitHistory(history: GitHistory): number {
+  for (const [p, t] of history.modified) {
     const have = times.get(p);
     if (have === undefined || have < t) times.set(p, t);
   }
+  for (const [p, t] of history.created) born.set(p, t);
   const d = db();
   const notes = d.prepare("UPDATE notes SET modified = ? WHERE path = ? AND modified IS NOT ?");
   const atts = d.prepare("UPDATE attachments SET modified = ? WHERE path = ? AND modified IS NOT ?");
+  const notesBorn = d.prepare("UPDATE notes SET created = ? WHERE path = ? AND created IS NOT ?");
+  const attsBorn = d.prepare("UPDATE attachments SET created = ? WHERE path = ? AND created IS NOT ?");
   let n = 0;
   d.transaction(() => {
-    for (const p of map.keys()) {
+    for (const p of history.modified.keys()) {
       const t = times.get(p)!;
       n += notes.run(t, p, t).changes + atts.run(t, p, t).changes;
+    }
+    for (const [p, t] of history.created) {
+      n += notesBorn.run(t, p, t).changes + attsBorn.run(t, p, t).changes;
     }
   })();
   return n;
@@ -101,9 +144,9 @@ export function applyGitTimes(map: Map<string, number>): number {
 
 /** The pass the git backend runs at start and after every pull. Null when git could not be read. */
 export async function refreshGitTimes(dir: string): Promise<number | null> {
-  const map = await loadGitTimes(dir);
-  if (!map) return null;
-  return applyGitTimes(map);
+  const history = await loadGitHistory(dir);
+  if (!history) return null;
+  return applyGitHistory(history);
 }
 
 // ---- Presentation --------------------------------------------------------

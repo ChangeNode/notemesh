@@ -96,12 +96,14 @@ default changed: `move_note` now rewrites links, as described under Changed.
   and a join by hand. `sort: "modified"` orders newest first instead of by
   relevance; the count is of the narrowed set, so `hasMore` stays honest.
 
-- **Turn on settings sync from the Settings tab.** A vault linked before 1.1
-  never had Obsidian's config sync turned on, so its `daily-notes.json` stayed
-  on your machine and the daemon reported "config syncing disabled"; the only
-  route was re-linking through the wizard. The Daily notes panel now has a
-  button that makes the one call the link step makes, and says when the file
-  will arrive.
+- **Settings sync is turned on for every Obsidian-synced vault.** A vault
+  linked before 1.1 never had Obsidian's config sync on, so its
+  `daily-notes.json` stayed on your machine, the daemon reported "config
+  syncing disabled", and the only route was re-linking through the wizard.
+  The server now turns it on once every time it starts, best effort, with a
+  line in the sync log; the file arrives with the next sync. It also asks for
+  Obsidian's app settings alongside the core plugin ones, for features that
+  will read them.
 
 - **`daily_note` applies your template.** The *Template file location* setting
   was read and shown on the Settings tab but a note created from here started

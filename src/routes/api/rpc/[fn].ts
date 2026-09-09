@@ -89,7 +89,6 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   getSetupProgress: async () => (await import("~/server/setup")).getSetupProgress,
   getClaimState: async () => (await import("~/server/setup")).getClaimState,
   relinkVault: async () => (await import("~/server/setup")).relinkVault,
-  syncObsidianSettings: async () => (await import("~/server/setup")).syncObsidianSettings,
   setupChooseBackend: async () => (await import("~/server/setup")).setupChooseBackend,
   setupGitRepo: async () => (await import("~/server/setup")).setupGitRepo,
   setupObsidianLogin: async () => (await import("~/server/setup")).setupObsidianLogin,

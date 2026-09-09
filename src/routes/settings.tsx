@@ -1,11 +1,9 @@
-import { createResource, createSignal, For, Show } from "solid-js";
+import { createResource, For, Show } from "solid-js";
 import { AdminShell, Check } from "~/components/AdminShell";
 import { api } from "~/lib/api";
 
 export default function Settings() {
   const [data, { refetch }] = createResource(() => api.getSettingsPage());
-  const [settingsSync, setSettingsSync] = createSignal<{ ok: boolean; message: string } | null>(null);
-  const [syncing, setSyncing] = createSignal(false);
 
   return (
     <AdminShell>
@@ -162,40 +160,10 @@ export default function Settings() {
                       Read from your vault's Daily Notes plugin settings — except this vault hasn't
                       sent <code>.obsidian/daily-notes.json</code>, so the{" "}
                       <code>daily_note</code> tool is using Obsidian's defaults. Settings sync is
-                      turned on when a vault is linked; a vault linked before that, or a git repo
-                      without its <code>.obsidian</code> folder committed, won't have it.
-                      <Show when={d.backend === "obsidian"}>
-                        {" "}
-                        <button
-                          type="button"
-                          class="secondary outline"
-                          disabled={syncing()}
-                          onClick={() => {
-                            setSyncing(true);
-                            setSettingsSync(null);
-                            api
-                              .syncObsidianSettings()
-                              .then((r) => setSettingsSync(r))
-                              .catch((e: unknown) =>
-                                setSettingsSync({ ok: false, message: e instanceof Error ? e.message : String(e) }),
-                              )
-                              .finally(() => {
-                                setSyncing(false);
-                                refetch();
-                              });
-                          }}
-                        >
-                          {syncing() ? "Turning on…" : "Turn on settings sync"}
-                        </button>
-                        <Show when={settingsSync()}>
-                          {(r) => (
-                            <span class={r().ok ? "" : "error"} role="status">
-                              {" "}
-                              {r().message}
-                            </span>
-                          )}
-                        </Show>
-                      </Show>
+                      turned on when a vault is linked and again every time the server starts, so
+                      the file should arrive with the next sync; if this stays, the sync log on the
+                      Status tab says why. A git repo needs its <code>.obsidian</code> folder
+                      committed.
                     </>
                   }
                 >

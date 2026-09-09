@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// The one call the wizard's link step makes to turn on settings sync, on its
-// own, for a vault linked before that step existed. Driven through a fake
-// `ob` on OB_BIN, as cli.test.ts drives the CLI.
+// The one call that turns on Obsidian's settings sync, made by the link step
+// for a new vault and by the supervisor once per boot for every vault.
+// Driven through a fake `ob` on OB_BIN, as cli.test.ts drives the CLI.
 
 let root: string;
 
@@ -33,33 +33,33 @@ function fakeOb(stdout: string, code = 0) {
   return () => (fs.existsSync(argsFile) ? fs.readFileSync(argsFile, "utf8") : "");
 }
 
-describe("runSettingsSync", () => {
-  it("asks the daemon for the core plugin settings and says the file arrives on the next sync", async () => {
+describe("enableSettingsSync", () => {
+  it("asks the daemon for the core plugin and app settings, and says the files arrive on the next sync", async () => {
     const args = fakeOb("Config sync enabled");
-    const { runSettingsSync } = await import("./settings-sync");
-    const res = await runSettingsSync();
+    const { enableSettingsSync } = await import("./settings-sync");
+    const res = await enableSettingsSync();
     expect(res.ok).toBe(true);
     expect(res.message).toMatch(/next sync/);
-    expect(args()).toMatch(/sync-config --path \S+\/vault --configs core-plugin-data/);
+    expect(args()).toMatch(/sync-config --path \S+\/vault --configs core-plugin-data,app/);
     const { syncBackend } = await import("../sync");
-    expect(syncBackend().getLogs().some((l) => /Syncing your vault's core plugin settings/.test(l.line))).toBe(true);
+    expect(syncBackend().getLogs().some((l) => /settings sync is on/.test(l.line))).toBe(true);
   });
 
   it("reports the daemon's own words when it refuses, and logs a warning", async () => {
     fakeOb("error: not signed in", 1);
-    const { runSettingsSync } = await import("./settings-sync");
-    const res = await runSettingsSync();
+    const { enableSettingsSync } = await import("./settings-sync");
+    const res = await enableSettingsSync();
     expect(res).toEqual({ ok: false, message: "error: not signed in" });
     const { syncBackend } = await import("../sync");
-    expect(syncBackend().getLogs().some((l) => l.level === "warn" && /Could not enable settings sync/.test(l.line))).toBe(true);
+    expect(syncBackend().getLogs().some((l) => l.level === "warn" && /Could not turn on/.test(l.line))).toBe(true);
   });
 
   it("refuses for a git-backed vault without running anything", async () => {
     const args = fakeOb("should not run");
     const { setSetting } = await import("../db");
     setSetting("sync_backend", "git");
-    const { runSettingsSync } = await import("./settings-sync");
-    const res = await runSettingsSync();
+    const { enableSettingsSync } = await import("./settings-sync");
+    const res = await enableSettingsSync();
     expect(res.ok).toBe(false);
     expect(res.message).toMatch(/git-backed vault/);
     expect(args()).toBe("");

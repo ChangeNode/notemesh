@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../env";
 import { obIsAuthenticated, obSyncConfigured, obSyncOnce } from "./cli";
+import { enableSettingsSync } from "./settings-sync";
 import {
   MAX_LOG_LINES,
   appendLogLine,
@@ -114,6 +115,7 @@ export class SyncSupervisor implements SyncBackend {
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private authProbeAt = 0;
   private authProbing = false;
+  private settingsSyncTried = false;
 
   // Parse daemon output lines into a running tally of the current sync burst.
   private trackActivity(rawLine: string) {
@@ -159,6 +161,13 @@ export class SyncSupervisor implements SyncBackend {
     this.state = "running";
     this.startedAt = Date.now();
     this.log(`[supervisor] starting ob sync --continuous`);
+    // Once per process, not per restart: a vault linked before the link step
+    // turned settings sync on never had it, and nothing else turns it on.
+    // Best effort; the daemon starts regardless (see settings-sync.ts).
+    if (!this.settingsSyncTried) {
+      this.settingsSyncTried = true;
+      void enableSettingsSync().catch(() => {});
+    }
 
     const child = execa(this.obBin(), ["sync", "--continuous", "--path", env.vaultDir], {
       env: { HOME: env.obHomeDir },

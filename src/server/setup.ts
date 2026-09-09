@@ -17,7 +17,7 @@ import {
 } from "./ob/cli";
 import { storeObsidianAccount, storeVaultPassword } from "./ob/credentials";
 import { syncBackend } from "./sync";
-import { runSettingsSync, type SettingsSyncResult } from "./ob/settings-sync";
+import { SETTINGS_SYNC_CATEGORIES } from "./ob/settings-sync";
 import { requireAdmin } from "./session";
 import { probeRemote, cloneVault, repoDisplayName } from "./sync/git";
 import { storeGitCredentials, clearGitCredentials } from "./sync/git-credentials";
@@ -106,13 +106,6 @@ export async function getSetupProgress(): Promise<{
  * notices: it sends every admin page to the wizard, so it should be something
  * the operator chose, not something a background check did to them.
  */
-/** The config sync the link step runs, by itself — see ob/settings-sync.ts. */
-export async function syncObsidianSettings(): Promise<SettingsSyncResult> {
-  "use server";
-  await requireAdmin();
-  return runSettingsSync();
-}
-
 export async function relinkVault(): Promise<{ ok: boolean }> {
   "use server";
   await requireAdmin();
@@ -334,7 +327,7 @@ export async function setupConfigureVault(
   // failing setup over a convenience would be the wrong trade; the Settings tab
   // can still set the folder by hand. Reported into the sync log so the reason
   // is visible if the daily path later looks wrong.
-  const configs = await obSyncConfigs(["core-plugin-data"]);
+  const configs = await obSyncConfigs(SETTINGS_SYNC_CATEGORIES);
   if (configs.ok) {
     syncBackend().note("[setup] Syncing your vault's core plugin settings (daily notes, etc).");
   } else {

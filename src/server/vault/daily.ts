@@ -1,8 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
-import { env } from "../env";
 import { resolveNotePath, toVaultRelative, VaultPathError } from "./paths";
 import { createNote, appendToNote, prependToNote, readNote, readNoteRange, noteExists } from "./notes";
+import { readObsidianConfig, configString } from "./obsidian-config";
 import { DEFAULT_TIMEZONE, configuredTimeZone, isValidTimeZone } from "./timezone";
 
 interface DailyConfig {
@@ -30,18 +28,13 @@ export interface DailyResolution extends DailyConfig {
 
 // The vault's own Daily Notes settings, if Obsidian Sync sent them.
 function vaultDailyConfig(): { folder?: string; format?: string; template?: string } | null {
-  try {
-    const raw = fs.readFileSync(path.join(env.vaultDir, ".obsidian", "daily-notes.json"), "utf8");
-    const cfg = JSON.parse(raw);
-    return {
-      folder: typeof cfg.folder === "string" ? cfg.folder : undefined,
-      format: typeof cfg.format === "string" && cfg.format ? cfg.format : undefined,
-      template: typeof cfg.template === "string" ? cfg.template : undefined,
-    };
-  } catch {
-    // Absent, unreadable or not JSON — all mean "no vault config to use".
-    return null;
-  }
+  const cfg = readObsidianConfig("daily-notes");
+  if (!cfg) return null;
+  return {
+    folder: configString(cfg, "folder"),
+    format: configString(cfg, "format") || undefined,
+    template: configString(cfg, "template"),
+  };
 }
 
 /**
@@ -140,6 +133,45 @@ export function partsFromISO(iso: string): DateParts {
 }
 
 // Minimal moment-format subset covering common daily note formats.
+/**
+ * Date and time tokens together, the way a filename format such as
+ * "YYYY-MM-DD HHmm" needs them, in one pass so a month's M is never read
+ * again as a minute. Text in square brackets is literal, as in moment.
+ */
+export function formatMoment(d: DateParts, t: { hour: number; minute: number; second: number }, format: string): string {
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const h12 = t.hour % 12 === 0 ? 12 : t.hour % 12;
+  const tokens: Record<string, string> = {
+    YYYY: String(d.year),
+    YY: String(d.year).slice(-2),
+    MMMM: months[d.month - 1],
+    MMM: months[d.month - 1].slice(0, 3),
+    MM: pad(d.month),
+    M: String(d.month),
+    DDDD: days[d.weekday],
+    dddd: days[d.weekday],
+    ddd: days[d.weekday].slice(0, 3),
+    DD: pad(d.day),
+    D: String(d.day),
+    HH: pad(t.hour),
+    H: String(t.hour),
+    hh: pad(h12),
+    h: String(h12),
+    mm: pad(t.minute),
+    m: String(t.minute),
+    ss: pad(t.second),
+    s: String(t.second),
+    A: t.hour < 12 ? "AM" : "PM",
+    a: t.hour < 12 ? "am" : "pm",
+  };
+  return format.replace(
+    /\[([^\]]*)\]|YYYY|YY|MMMM|MMM|MM|M|dddd|ddd|DDDD|DD|D|HH|H|hh|h|mm|m|ss|s|A|a/g,
+    (tok, literal?: string) => (literal !== undefined ? literal : tokens[tok] ?? tok),
+  );
+}
+
 export function formatDate(d: DateParts, format: string): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
   const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -224,12 +256,19 @@ export function formatTime(t: { hour: number; minute: number; second: number }, 
  * empty note, as before, rather than a refusal: the person asked for a daily
  * note, not for the template.
  */
-export function fillDailyTemplate(raw: string, title: string, d: DateParts, dateFormat: string, now = new Date()): string {
+export function fillDailyTemplate(
+  raw: string,
+  title: string,
+  d: DateParts,
+  dateFormat: string,
+  now = new Date(),
+  timeFormat = "HH:mm",
+): string {
   const t = timeInZone(now, configuredTimeZone());
   return raw.replace(/\{\{\s*(title|date|time)(?::([^}]*))?\s*\}\}/g, (_m, key: string, fmt?: string) => {
     if (key === "title") return title;
     if (key === "date") return formatDate(d, fmt ?? dateFormat);
-    return formatTime(t, fmt ?? "HH:mm");
+    return formatTime(t, fmt ?? timeFormat);
   });
 }
 

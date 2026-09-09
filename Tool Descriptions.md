@@ -122,9 +122,13 @@ at once, before `read_note` with `offset` or `edit_note`.
 
 ### create_note — write
 
-Creates a note. Refused if it exists, if the path carries a reserved name
-(`CON`, `__proto__` and the like), or if the content is over the write cap.
-Folders on the path are created.
+Creates a note. A bare filename with no folder goes to Obsidian's *Default
+location for new notes* when the vault sets one to a folder (`app.json`,
+delivered by settings sync); otherwise to the vault root. Obsidian's "same
+folder as current file" has no meaning on a server and counts as the root. A
+path that names a folder goes exactly there. Refused if the note exists, if
+the path carries a reserved name (`CON`, `__proto__` and the like), or if the
+content is over the write cap. Folders on the path are created.
 
 ### edit_note — write
 
@@ -341,6 +345,10 @@ something forgotten, not for finding a specific note.
 
 ### unique_note — write
 
-Creates a Zettelkasten-style note named by the minute, `YYYYMMDDHHmm.md`, at
-the vault root, with optional content. The stamp is taken in the configured
-timezone.
+Creates a Zettelkasten-style timestamped note, following the vault's own
+Unique Note Creator settings (`.obsidian/zk-prefixer.json`) for the folder,
+the filename format and the template, as `daily_note` follows Daily Notes.
+Without them: `YYYYMMDDHHmm.md` at the vault root, no template. The stamp is
+taken in the configured timezone. A template's `{{date}}` and `{{time}}` use
+the Templates plugin's formats (`templates.json`) when set; content passed
+in goes after the template as its own block.

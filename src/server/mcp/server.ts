@@ -7,6 +7,7 @@ import { syncBackend } from "../sync";
 import { VaultPathError } from "../vault/paths";
 import { arrange, type SortKey, type SortOrder } from "../vault/listing";
 import { listDirectory } from "../vault/directory";
+import { placeNewNote } from "../vault/obsidian-config";
 import { rewriteLinksForMove } from "../vault/links";
 import { moveFolder, deleteFolder } from "../vault/folders";
 import { configuredTimeZone } from "../vault/timezone";
@@ -452,14 +453,17 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       {
         title: "Create note",
         annotations: ADD,
-        description: "Create a new note. Fails if the note already exists (use update_note to replace).",
+        description:
+          "Create a new note. A bare filename goes to Obsidian's default location for new notes when " +
+          "the vault sets one, otherwise the vault root; a path with a folder goes exactly there. " +
+          "Fails if the note already exists (use update_note to replace).",
         inputSchema: {
-          path: z.string().describe("Vault-relative path for the new note"),
+          path: z.string().describe("Vault-relative path for the new note, or a bare filename"),
           content: z.string().describe("Markdown content"),
         },
       },
       safe(({ path, content }: { path: string; content: string }) =>
-        text(`Created ${w(createNote(path, content), "create_note")}`),
+        text(`Created ${w(createNote(placeNewNote(path), content), "create_note")}`),
       ),
     );
 
@@ -1064,7 +1068,10 @@ export function createMcpServer(access: McpAccess, req: RequestInfo = {}): McpSe
       {
         title: "Create unique note",
         annotations: ADD,
-        description: "Create a Zettelkasten-style timestamped note (YYYYMMDDHHmm) with optional content.",
+        description:
+          "Create a Zettelkasten-style timestamped note, following the vault's own Unique Note Creator " +
+          "settings for folder, filename format and template (YYYYMMDDHHmm at the vault root when it " +
+          "has none), with optional content after the template.",
         inputSchema: { content: z.string().optional().describe("Initial markdown content; omit for an empty note") },
       },
       safe(({ content }: { content?: string }) => text(`Created ${w(uniqueNote(content), "unique_note")}`)),

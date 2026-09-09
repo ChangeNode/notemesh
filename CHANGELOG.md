@@ -105,6 +105,17 @@ default changed: `move_note` now rewrites links, as described under Changed.
   Obsidian's app settings alongside the core plugin ones, for features that
   will read them.
 
+- **`unique_note` follows your Unique Note Creator settings**, as `daily_note`
+  follows Daily Notes: the folder, the filename format (time tokens included,
+  brackets literal) and the template from `zk-prefixer.json`, with the
+  Templates plugin's date and time formats inside the template. Without the
+  file it is `YYYYMMDDHHmm.md` at the vault root, as before.
+
+- **`create_note` honours your default location for new notes.** A bare
+  filename goes to the folder Obsidian's *Default location for new notes*
+  names, when it names one; a path with a folder goes exactly there, as
+  before. The Settings tab shows both locations beside the daily note's.
+
 - **`daily_note` applies your template.** The *Template file location* setting
   was read and shown on the Settings tab but a note created from here started
   empty. It now starts from the template, with `{{title}}`, `{{date}}` and

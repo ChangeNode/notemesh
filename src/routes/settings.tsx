@@ -172,6 +172,19 @@ export default function Settings() {
                   to. Change it there and it changes here on the next sync.
                 </Show>
               </small>
+              <p>
+                <b>Unique notes</b> go to{" "}
+                <code>
+                  {d.unique.folder ? `${d.unique.folder}/` : ""}
+                  {d.unique.format}.md
+                </code>
+                {" "}— {d.unique.vaultConfigFound ? "your Unique Note Creator settings" : "Obsidian's defaults"}.
+              </p>
+              <p>
+                <b>New notes</b> with no folder in their path go to{" "}
+                <code>{d.newNote.folder ? `${d.newNote.folder}/` : "the vault root"}</code>
+                {" "}— {d.newNote.source === "vault" ? "your default location for new notes" : "Obsidian's default"}.
+              </p>
             </article>
 
             <article>

@@ -2,7 +2,6 @@ import fs from "node:fs";
 import { countWords, stripCr } from "./text";
 import { extractStructure, splitFrontmatter } from "./markdown";
 import { indexerStatus } from "./indexer";
-import crypto from "node:crypto";
 import { db, getSetting } from "../db";
 import { env } from "../env";
 import { resolveNotePath, resolveFolderPath, toVaultRelative, readVaultFile, VaultPathError } from "./paths";
@@ -10,8 +9,8 @@ import { parseInstant } from "./listing";
 import { isoInZone } from "./modified";
 import { configuredTimeZone as zoneSetting } from "./timezone";
 import { headroom, writeVaultFile } from "./disk";
-import { readNote, createNote } from "./notes";
-import { dailyNotePath , timestampInZone, configuredTimeZone} from "./daily";
+import { readNote } from "./notes";
+import { dailyNotePath } from "./daily";
 
 export interface SearchHit {
   path: string;
@@ -326,15 +325,4 @@ export function randomNote(): { path: string } {
 }
 
 // Zettelkasten-style unique note (Obsidian default format: YYYYMMDDHHmm).
-export function uniqueNote(content?: string): string {
-  // Stamped in the configured zone, not the server's. The container runs on
-  // UTC, so Date's local getters named every evening note in the Americas after
-  // tomorrow — the same bug daily notes had, in a second place that formatted
-  // its own timestamp instead of asking daily.ts.
-  const stamp = timestampInZone(new Date(), configuredTimeZone());
-  let name = `${stamp}.md`;
-  if (fs.existsSync(resolveNotePath(name))) {
-    name = `${stamp}-${crypto.randomBytes(2).toString("hex")}.md`;
-  }
-  return createNote(name, content ?? "");
-}
+export { uniqueNote } from "./unique";

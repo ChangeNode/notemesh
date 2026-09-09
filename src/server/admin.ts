@@ -13,6 +13,8 @@ import { vaultInfo } from "./vault/queries";
 import { diskStatus } from "./vault/disk";
 import { redactRemote } from "./sync/remote";
 import { configuredTimeZone, isValidTimeZone, resolveDailyConfig } from "./vault/daily";
+import { resolveUniqueConfig } from "./vault/unique";
+import { resolveNewNoteLocation } from "./vault/obsidian-config";
 import { formatBytes } from "./vault/paths";
 import { indexer, ensureIndexerStarted } from "./vault/indexer";
 import { obLogin, looksLikeMfaRequired } from "./ob/cli";
@@ -161,6 +163,8 @@ export async function getSettingsPage() {
     // Daily Notes settings. Shown so the operator can see what it resolved to
     // and whether the vault actually sent its config.
     daily: resolveDailyConfig(),
+    unique: resolveUniqueConfig(),
+    newNote: resolveNewNoteLocation(),
     timezone: configuredTimeZone(),
     syncLogs: syncLogFiles(),
     logTailLines: MAX_LOG_LINES,

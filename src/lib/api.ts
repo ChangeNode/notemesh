@@ -110,6 +110,7 @@ export const api = {
   getSetupProgress: (() => call("getSetupProgress")) as P<typeof Setup.getSetupProgress>,
   getClaimState: (() => call("getClaimState")) as P<typeof Setup.getClaimState>,
   relinkVault: (() => call("relinkVault")) as P<typeof Setup.relinkVault>,
+  syncObsidianSettings: (() => call("syncObsidianSettings")) as P<typeof Setup.syncObsidianSettings>,
   setupChooseBackend: ((kind: "obsidian" | "git") =>
     call("setupChooseBackend", [kind])) as P<typeof Setup.setupChooseBackend>,
   setupGitRepo: ((remote: string, branch: string, username: string, token: string) =>

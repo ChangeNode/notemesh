@@ -236,7 +236,9 @@ follows on the next sync. Without that file the tool falls back to
 `YYYY-MM-DD` at the vault root; the **Settings** tab says which of the two
 your vault has. Obsidian Sync does not send the `.obsidian` folder unless
 asked, so linking a vault runs `ob sync-config --configs core-plugin-data` to
-bring `daily-notes.json` over. A git backend needs `.obsidian` committed. The
+bring `daily-notes.json` over; a vault linked before that step existed has a
+*Turn on settings sync* button on the Settings tab that runs the same call.
+A git backend needs `.obsidian` committed. The
 Periodic Notes community plugin keeps its settings elsewhere and is not read.
 
 **Which day it is.** Today is resolved in the timezone on the **Settings**

@@ -17,6 +17,7 @@ import {
 } from "./ob/cli";
 import { storeObsidianAccount, storeVaultPassword } from "./ob/credentials";
 import { syncBackend } from "./sync";
+import { runSettingsSync, type SettingsSyncResult } from "./ob/settings-sync";
 import { requireAdmin } from "./session";
 import { probeRemote, cloneVault, repoDisplayName } from "./sync/git";
 import { storeGitCredentials, clearGitCredentials } from "./sync/git-credentials";
@@ -105,6 +106,13 @@ export async function getSetupProgress(): Promise<{
  * notices: it sends every admin page to the wizard, so it should be something
  * the operator chose, not something a background check did to them.
  */
+/** The config sync the link step runs, by itself — see ob/settings-sync.ts. */
+export async function syncObsidianSettings(): Promise<SettingsSyncResult> {
+  "use server";
+  await requireAdmin();
+  return runSettingsSync();
+}
+
 export async function relinkVault(): Promise<{ ok: boolean }> {
   "use server";
   await requireAdmin();

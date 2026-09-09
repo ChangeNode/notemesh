@@ -59,6 +59,7 @@ const PROTECTED_RPC = [
   "setTimezone",
   "setDeleteEnabled",
   "relinkVault",
+  "syncObsidianSettings",
   "acknowledgeNotifications",
   "syncNow",
   "stopSync",

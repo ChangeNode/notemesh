@@ -7,6 +7,7 @@ import {
   toVaultRelative,
   readVaultFile,
   withVaultFile,
+  openVaultFile,
   hasNul,
   isLfsPointerHead,
   formatBytes,
@@ -16,10 +17,18 @@ import {
   MAX_WRITE_BYTES,
 } from "./paths";
 import { writeVaultFile } from "./disk";
+import { extractStructure, splitFrontmatter } from "./markdown";
+import { createdFor, forgetModification, isoInZone, modifiedFor } from "./modified";
+import { configuredTimeZone } from "./timezone";
 
 export interface NoteInfo {
   path: string;
+  /** Filesystem mtime, epoch ms. What a checkout or sync set; kept for callers that compare it. */
   mtime: number;
+  /** When the file last changed as a person means it, ISO 8601 in the configured timezone. See modified.ts. */
+  modified: string;
+  /** When it came into being, the same way: git's first commit, else the filesystem's birthtime. */
+  created: string;
   size: number;
   /** Present, and false, only for a note over the index size cap: listed and readable, not searchable. */
   indexed?: false;
@@ -170,44 +179,68 @@ export interface AttachmentMeta {
  * sniffs and (for callers that want them) the bytes all come from it. The
  * `read` handed to `fn` is valid only inside it.
  */
+function resolveAttachmentPath(notePath: string): string {
+  const abs = resolveNotePath(notePath, { allowMissingExt: true });
+  return fs.existsSync(abs) ? abs : resolveByFilename(notePath);
+}
+
+/** What one open descriptor says the attachment is; the refusals a caller gets before any bytes. */
+function attachmentMetaFrom(abs: string, stat: fs.Stats, head: Buffer): AttachmentMeta {
+  // Mirror read_note's refusal in the other direction: handing a markdown note
+  // back as base64 octet-stream is never what the caller wanted, and leaving it
+  // to "work" makes the two tools quietly inconsistent.
+  if (!hasNul(head) && path.extname(abs).toLowerCase() === ".md") {
+    throw new VaultPathError(
+      `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
+    );
+  }
+  // The pointer is small, so this fires well before the size cap.
+  if (isLfsPointerHead(head)) throw lfsPointerError();
+
+  const ext = path.extname(abs).slice(1).toLowerCase();
+  const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
+  return {
+    path: toVaultRelative(abs),
+    mimeType,
+    bytes: stat.size,
+    isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
+    tooLarge: stat.size > MAX_ATTACHMENT_BYTES,
+  };
+}
+
 function withAttachment<T>(
   notePath: string,
   fn: (meta: AttachmentMeta, read: () => Buffer<ArrayBuffer>) => T,
 ): T {
-  let abs = resolveNotePath(notePath, { allowMissingExt: true });
-  if (!fs.existsSync(abs)) abs = resolveByFilename(notePath);
-  return withVaultFile(abs, ({ stat, head, read }) => {
-    // Mirror read_note's refusal in the other direction: handing a markdown note
-    // back as base64 octet-stream is never what the caller wanted, and leaving it
-    // to "work" makes the two tools quietly inconsistent.
-    if (!hasNul(head) && path.extname(abs).toLowerCase() === ".md") {
-      throw new VaultPathError(
-        `${toVaultRelative(abs)} is a markdown note, not a binary attachment. Use read_note instead.`,
-      );
-    }
-    // The pointer is small, so this fires well before the size cap.
-    if (isLfsPointerHead(head)) throw lfsPointerError();
-
-    const ext = path.extname(abs).slice(1).toLowerCase();
-    const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
-    const meta: AttachmentMeta = {
-      path: toVaultRelative(abs),
-      mimeType,
-      bytes: stat.size,
-      isImage: mimeType.startsWith("image/") && mimeType !== "image/svg+xml",
-      tooLarge: stat.size > MAX_ATTACHMENT_BYTES,
-    };
-    return fn(meta, read);
-  });
+  const abs = resolveAttachmentPath(notePath);
+  return withVaultFile(abs, ({ stat, head, read }) => fn(attachmentMetaFrom(abs, stat, head), read));
 }
 
 export function attachmentMeta(notePath: string): AttachmentMeta {
   return withAttachment(notePath, (meta) => meta);
 }
 
-/** The whole file, whatever its size, with its metadata: what the signed download link serves. */
-export function readAttachmentFile(notePath: string): { meta: AttachmentMeta; data: Buffer<ArrayBuffer> } {
-  return withAttachment(notePath, (meta, read) => ({ meta, data: read() }));
+/**
+ * The file as a stream from its verified descriptor, with its metadata: what
+ * the signed download link serves. Whatever its size, because a synced vault
+ * can hold a video, and reading one whole into memory to serve it took the
+ * process down. The stream owns the descriptor and closes it when it ends or
+ * is destroyed; the metadata's refusals fire before any of that.
+ */
+export function openAttachmentStream(notePath: string): { meta: AttachmentMeta; stream: fs.ReadStream } {
+  const abs = resolveAttachmentPath(notePath);
+  const { fd, stat, head } = openVaultFile(abs);
+  let meta: AttachmentMeta;
+  try {
+    meta = attachmentMetaFrom(abs, stat, head);
+  } catch (e) {
+    fs.closeSync(fd);
+    throw e;
+  }
+  // start: 0, or the stream would continue from wherever the head sniff left
+  // the offset. The path is informational once an fd is given.
+  const stream = fs.createReadStream(abs, { fd, start: 0, autoClose: true, highWaterMark: 256 * 1024 });
+  return { meta, stream };
 }
 
 export function readAttachment(notePath: string): {
@@ -247,11 +280,16 @@ export function noteExists(notePath: string): boolean {
 // resolveNotePath; these are cosmetic/robustness).
 const RESERVED_SEGMENTS = new Set(["~", "__proto__", "constructor", "prototype", "CON", "PRN", "AUX", "NUL"]);
 
+/** Refuses a path with a segment that is a hazard on some platform or in some runtime. */
+export function assertNoReservedSegments(abs: string) {
+  if (toVaultRelative(abs).split("/").some((s) => RESERVED_SEGMENTS.has(s))) {
+    throw new VaultPathError(`Reserved name in path: ${toVaultRelative(abs)}`);
+  }
+}
+
 export function createNote(notePath: string, content: string): string {
   const abs = resolveNotePath(notePath);
-  if (toVaultRelative(abs).split("/").some((s) => RESERVED_SEGMENTS.has(s))) {
-    throw new VaultPathError("Note path contains a reserved name");
-  }
+  assertNoReservedSegments(abs);
   if (fs.existsSync(abs)) {
     throw new VaultPathError(`Note already exists: ${toVaultRelative(abs)} (use update_note to replace it)`);
   }
@@ -313,10 +351,84 @@ export function updateNote(notePath: string, content: string, opts: UpdateOption
   return rel;
 }
 
-export function appendToNote(notePath: string, content: string): string {
+export interface SectionOptions {
+  /** A heading in the note; the addition goes inside its section instead of at the note's edge. */
+  heading?: string;
+}
+
+interface Section {
+  /** 0-based index of the heading line in the file's lines. */
+  headingIdx: number;
+  /** 0-based index of the last line of the section, inclusive. */
+  endIdx: number;
+}
+
+const LISTED_HEADINGS = 10;
+
+/**
+ * The lines a heading owns: from the heading to the line before the next
+ * heading of the same or a higher level, or the end of the note. Found with
+ * the same scan the index uses, so a "#" inside a code fence or frontmatter
+ * is not a heading here either. The heading must occur once: with two
+ * "## Notes" the caller wanted one of them, and guessing would put text in
+ * the other.
+ */
+function findSection(content: string, lines: string[], heading: string, rel: string): Section {
+  const wanted = heading.trim().replace(/^#{1,6}\s+/, "");
+  if (wanted === "") throw new VaultPathError("heading must not be empty");
+  const { body, fmOffset } = splitFrontmatter(content);
+  const headings = extractStructure(body).headings.map((h) => ({ ...h, line: h.line + fmOffset }));
+  const found = headings.filter((h) => h.text === wanted);
+  if (found.length === 0) {
+    const listed = headings.slice(0, LISTED_HEADINGS).map((h) => JSON.stringify(h.text));
+    const more = headings.length > LISTED_HEADINGS ? `, and ${headings.length - LISTED_HEADINGS} more` : "";
+    throw new VaultPathError(
+      `No heading ${JSON.stringify(wanted)} in ${rel}.` +
+        (listed.length ? ` Its headings: ${listed.join(", ")}${more}.` : " It has no headings."),
+    );
+  }
+  if (found.length > 1) {
+    throw new VaultPathError(
+      `${JSON.stringify(wanted)} occurs ${found.length} times in ${rel}, at lines ${listLines(found.map((h) => h.line))}. ` +
+        "Use edit_note to place text under one of them.",
+    );
+  }
+  const target = found[0];
+  const next = headings.find((h) => h.line > target.line && h.level <= target.level);
+  return { headingIdx: target.line - 1, endIdx: (next ? next.line - 1 : lines.length) - 1 };
+}
+
+/** Insert lines into a note's lines, keeping its line-ending convention. */
+function spliceLines(lines: string[], at: number, insert: string[], eol: string): string {
+  const out = [...lines];
+  out.splice(at, 0, ...insert);
+  return out.join(eol);
+}
+
+function blockLines(content: string): string[] {
+  return (content.endsWith("\n") ? content.slice(0, -1) : content).split(/\r?\n/);
+}
+
+export function appendToNote(notePath: string, content: string, opts: SectionOptions = {}): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const existing = readVaultFile(abs);
+  if (opts.heading !== undefined) {
+    const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+    const lines = existing.split(/\r?\n/);
+    const { headingIdx, endIdx } = findSection(existing, lines, opts.heading, toVaultRelative(abs));
+    // After the section's last line of text, so the block sits inside the
+    // section rather than after the blank lines that separate it from the
+    // next heading; a blank line on each side keeps it its own block.
+    let last = endIdx;
+    while (last > headingIdx && lines[last].trim() === "") last--;
+    const insert = ["", ...blockLines(content)];
+    if (last + 1 < lines.length && lines[last + 1].trim() !== "") insert.push("");
+    const next = spliceLines(lines, last + 1, insert, eol);
+    assertWriteSize(next);
+    writeVaultFile(abs, next);
+    return toVaultRelative(abs);
+  }
   // Separate with a blank line so appended text becomes its own block. A single
   // newline would render as a soft break inside the preceding paragraph, which
   // silently mangles the note for a tool documented as the safest way to add
@@ -334,10 +446,22 @@ export function appendToNote(notePath: string, content: string): string {
 }
 
 // Insert after YAML frontmatter (matching the Obsidian CLI's prepend behavior).
-export function prependToNote(notePath: string, content: string): string {
+export function prependToNote(notePath: string, content: string, opts: SectionOptions = {}): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   const existing = readVaultFile(abs);
+  if (opts.heading !== undefined) {
+    const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+    const lines = existing.split(/\r?\n/);
+    const { headingIdx } = findSection(existing, lines, opts.heading, toVaultRelative(abs));
+    // Directly under the heading, as its first block.
+    const insert = ["", ...blockLines(content)];
+    if (headingIdx + 1 < lines.length && lines[headingIdx + 1].trim() !== "") insert.push("");
+    const next = spliceLines(lines, headingIdx + 1, insert, eol);
+    assertWriteSize(next);
+    writeVaultFile(abs, next);
+    return toVaultRelative(abs);
+  }
   // Trailing blank line for the same reason as append: keep the inserted text
   // a distinct block rather than merging into what follows.
   let block = content.endsWith("\n") ? content : content + "\n";
@@ -595,6 +719,115 @@ export function previewEdit(
   return preview;
 }
 
+export interface FindMatch {
+  /** 1-based file line. */
+  line: number;
+  /** 1-based column of the match on that line, in UTF-16 units. */
+  column: number;
+  /**
+   * The matching line, excerpted around the match when it is longer than
+   * EXCERPT_CHARS; a cut end is marked with an ellipsis. See windowStart.
+   */
+  text: string;
+  /**
+   * 1-based column of the first character of text after any leading
+   * ellipsis, so the match begins in text at column - windowStart, plus one
+   * when text starts with the ellipsis. 1 when the line was not clipped.
+   */
+  windowStart: number;
+  /**
+   * The lines around it, joined with newlines, when context was asked for.
+   * Each is cut at EXCERPT_CHARS from its start, with an ellipsis, so no
+   * line in a result exceeds that width.
+   */
+  context?: string;
+}
+
+export interface FindOptions {
+  /** Default true, as Obsidian's own search is. */
+  ignoreCase?: boolean;
+  /** Lines to include on each side of a match, 0 to MAX_FIND_CONTEXT. */
+  context?: number;
+  /** The page to build: matches before offset are counted, not returned. */
+  offset?: number;
+  limit?: number;
+}
+
+export interface FindPage {
+  path: string;
+  /** Matches found, counting stopping at MAX_FIND_MATCHES. */
+  total: number;
+  offset: number;
+  /** The page: matches offset .. offset + limit, built only for that window. */
+  matches: FindMatch[];
+}
+
+export const MAX_FIND_CONTEXT = 5;
+/** Matches counted before the scan stops; total reads this and hasMore stays true. */
+export const MAX_FIND_MATCHES = 10_000;
+const MAX_PATTERN_CHARS = 500;
+
+/**
+ * Where something is in a note, by line. For a note read in pages this is
+ * the alternative to paging through it, and it is the honest form of what
+ * preview_edit was being used for. Every match is its own entry, so a line
+ * that says the word twice appears twice, at two columns.
+ *
+ * Literal text only. A regular expression option was here for a day and
+ * left: a nine-character pattern can hold the event loop for seconds, and
+ * nothing short of a second engine makes that safe.
+ *
+ * The scan is budgeted: matches are counted up to MAX_FIND_MATCHES and only
+ * the requested page is built, so a note that is one enormous line of a
+ * repeated character costs a count, not an allocation per match.
+ */
+export function findInNote(notePath: string, pattern: string, opts: FindOptions = {}): FindPage {
+  const abs = resolveNotePath(notePath);
+  if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
+  if (pattern === "") throw new VaultPathError("pattern must not be empty");
+  if (pattern.length > MAX_PATTERN_CHARS) {
+    throw new VaultPathError(`pattern is longer than ${MAX_PATTERN_CHARS} characters`);
+  }
+  const ignoreCase = opts.ignoreCase !== false;
+  const context = Math.min(Math.max(Math.trunc(opts.context ?? 0), 0), MAX_FIND_CONTEXT);
+  const offset = Math.max(Math.trunc(opts.offset ?? 0), 0);
+  const limit = Math.max(Math.trunc(opts.limit ?? MAX_FIND_MATCHES), 0);
+  const needle = ignoreCase ? pattern.toLowerCase() : pattern;
+
+  const content = readVaultFile(abs);
+  const lines = content.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+  const matches: FindMatch[] = [];
+  let total = 0;
+  for (let i = 0; i < lines.length && total < MAX_FIND_MATCHES; i++) {
+    const hay = ignoreCase ? lines[i].toLowerCase() : lines[i];
+    for (let col = hay.indexOf(needle); col !== -1 && total < MAX_FIND_MATCHES; col = hay.indexOf(needle, col + needle.length)) {
+      const n = total++;
+      if (n < offset || n >= offset + limit) continue;
+      const window = excerptLine(lines[i], col);
+      const match: FindMatch = { line: i + 1, column: col + 1, text: window.text, windowStart: window.start + 1 };
+      if (context > 0) {
+        match.context = lines
+          .slice(Math.max(0, i - context), Math.min(lines.length, i + context + 1))
+          .map(clipLine)
+          .join("\n");
+      }
+      matches.push(match);
+    }
+  }
+  return { path: toVaultRelative(abs), total, offset, matches };
+}
+
+function excerptLine(line: string, col: number): { text: string; start: number } {
+  if (line.length <= EXCERPT_CHARS) return { text: line, start: 0 };
+  const start = Math.max(0, Math.min(col - Math.floor(EXCERPT_CHARS / 4), line.length - EXCERPT_CHARS));
+  const end = Math.min(line.length, start + EXCERPT_CHARS);
+  return { text: (start > 0 ? "…" : "") + line.slice(start, end) + (end < line.length ? "…" : ""), start };
+}
+
+function clipLine(line: string): string {
+  return line.length <= EXCERPT_CHARS ? line : line.slice(0, EXCERPT_CHARS) + "…";
+}
+
 export function moveNote(notePath: string, newPath: string): { from: string; to: string } {
   const absFrom = resolveNotePath(notePath);
   const absTo = resolveNotePath(newPath);
@@ -602,6 +835,8 @@ export function moveNote(notePath: string, newPath: string): { from: string; to:
   if (fs.existsSync(absTo)) throw new VaultPathError(`Target already exists: ${toVaultRelative(absTo)}`);
   fs.mkdirSync(path.dirname(absTo), { recursive: true });
   fs.renameSync(absFrom, absTo);
+  // A rename keeps the file's own time; only the old path's record is stale.
+  forgetModification(toVaultRelative(absFrom));
   return { from: toVaultRelative(absFrom), to: toVaultRelative(absTo) };
 }
 
@@ -609,6 +844,7 @@ export function deleteNote(notePath: string): string {
   const abs = resolveNotePath(notePath);
   if (!fs.existsSync(abs)) throw new VaultPathError(`Note not found: ${notePath}`);
   fs.rmSync(abs);
+  forgetModification(toVaultRelative(abs));
   return toVaultRelative(abs);
 }
 
@@ -626,7 +862,7 @@ export function listAttachments(folder?: string): NoteInfo[] {
   return listFiles(folder, (name) => !isMarkdown(name));
 }
 
-function isMarkdown(name: string): boolean {
+export function isMarkdown(name: string): boolean {
   return name.toLowerCase().endsWith(".md");
 }
 
@@ -634,7 +870,7 @@ function listFiles(folder: string | undefined, include: (name: string) => boolea
   const root = folder ? resolveFolderPath(folder) : env.vaultDir;
   if (!fs.existsSync(root)) throw new VaultPathError(`Folder not found: ${folder}`);
   const out: NoteInfo[] = [];
-  walk(root, out, 0, include);
+  walk(root, out, 0, include, configuredTimeZone());
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
@@ -647,6 +883,7 @@ function walk(
   out: NoteInfo[],
   depth = 0,
   include: (name: string) => boolean = isMarkdown,
+  timeZone = "UTC",
 ) {
   if (depth > MAX_WALK_DEPTH) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -654,7 +891,7 @@ function walk(
     const abs = path.join(dir, entry.name);
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
-      walk(abs, out, depth + 1, include);
+      walk(abs, out, depth + 1, include, timeZone);
     } else if (entry.isFile() && include(entry.name)) {
       const st = fs.statSync(abs);
       // Round: statSync reports sub-millisecond precision, so mtimeMs is a
@@ -662,7 +899,15 @@ function walk(
       // and comparing them for equality — and a fractional tail makes both
       // unreliable. The indexer already rounds at its own two ingestion points,
       // so this keeps the value a caller sees consistent with the stored one.
-      const info: NoteInfo = { path: toVaultRelative(abs), mtime: Math.round(st.mtimeMs), size: st.size };
+      const rel = toVaultRelative(abs);
+      const mtime = Math.round(st.mtimeMs);
+      const info: NoteInfo = {
+        path: rel,
+        mtime,
+        modified: isoInZone(modifiedFor(rel, mtime), timeZone),
+        created: isoInZone(createdFor(rel, st), timeZone),
+        size: st.size,
+      };
       // The same rule the indexer applies, decided from the same number, so the
       // listing can say why a note that plainly exists is missing from search.
       if (isMarkdown(entry.name) && st.size > MAX_INDEX_BYTES) info.indexed = false;

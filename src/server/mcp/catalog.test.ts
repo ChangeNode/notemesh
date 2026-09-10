@@ -192,8 +192,26 @@ describe("tool definitions, as a client reads them", () => {
       // Every tool that can write says whether it can discard content.
       if (!ro) expect(t.annotations!.destructiveHint, `${t.name} says whether it is destructive`).toBeTypeOf("boolean");
     }
-    // The three that can lose content a person wrote, and only those.
+    // The five that can lose content a person wrote, and only those.
     const destructive = (await catalog()).filter((t) => t.annotations!.destructiveHint).map((t) => t.name).sort();
-    expect(destructive).toEqual(["delete_note", "move_note", "update_note"]);
+    expect(destructive).toEqual(["delete_folder", "delete_note", "move_folder", "move_note", "update_note"]);
+  });
+});
+
+// Tool Descriptions.md is the longer explanation beside the catalogue. A tool
+// added without a section there, or a section for a tool that no longer
+// exists, is drift a reader would find before a test did.
+describe("Tool Descriptions.md", () => {
+  it("has a section for every tool, and no section for a tool that is gone", async () => {
+    const doc = fs.readFileSync("Tool Descriptions.md", "utf8");
+    const documented = [...doc.matchAll(/^### (\w+) — /gm)].map((m) => m[1]).sort();
+    const tools = (await catalog()).map((t) => t.name).sort();
+    expect(documented).toEqual(tools);
+    // Each section says whether the tool reads or writes, matching its annotation.
+    for (const t of await catalog()) {
+      const line = doc.match(new RegExp(`^### ${t.name} — (read|write)`, "m"));
+      expect(line, `${t.name} says read or write`).not.toBeNull();
+      expect(line![1]).toBe(t.annotations!.readOnlyHint ? "read" : "write");
+    }
   });
 });

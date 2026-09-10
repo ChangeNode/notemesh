@@ -17,6 +17,7 @@ import {
 } from "./ob/cli";
 import { storeObsidianAccount, storeVaultPassword } from "./ob/credentials";
 import { syncBackend } from "./sync";
+import { SETTINGS_SYNC_CATEGORIES } from "./ob/settings-sync";
 import { requireAdmin } from "./session";
 import { probeRemote, cloneVault, repoDisplayName } from "./sync/git";
 import { storeGitCredentials, clearGitCredentials } from "./sync/git-credentials";
@@ -326,7 +327,7 @@ export async function setupConfigureVault(
   // failing setup over a convenience would be the wrong trade; the Settings tab
   // can still set the folder by hand. Reported into the sync log so the reason
   // is visible if the daily path later looks wrong.
-  const configs = await obSyncConfigs(["core-plugin-data"]);
+  const configs = await obSyncConfigs(SETTINGS_SYNC_CATEGORIES);
   if (configs.ok) {
     syncBackend().note("[setup] Syncing your vault's core plugin settings (daily notes, etc).");
   } else {

@@ -606,6 +606,12 @@ describe("attachments over signed URLs", () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "big.png"), Buffer.alloc(1_200_000, 7));
     fs.writeFileSync(path.join(dir, "small.png"), Buffer.alloc(64, 3));
+    // Sparse: 200 MB on disk for nothing, the size a synced video has. The
+    // route used to read the whole file into a buffer before answering.
+    const huge = fs.openSync(path.join(dir, "huge.mp4"), "w");
+    fs.writeSync(huge, Buffer.from([0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70]));
+    fs.ftruncateSync(huge, 200_000_000);
+    fs.closeSync(huge);
     // A file a browser would execute if served by its own type.
     // Over the inline cap on purpose: only an oversized file gets a URL, and
     // the URL is what serves a content type.
@@ -644,6 +650,38 @@ describe("attachments over signed URLs", () => {
     expect(res.headers.get("cache-control")).toContain("no-store");
     await res.arrayBuffer();
   });
+
+  it("streams a very large file rather than holding it whole", async () => {
+    const res = await mcp(
+      server,
+      "tools/call",
+      { name: "read_attachment", arguments: { path: "Attachments/huge.mp4" } },
+      `Bearer ${apiKey}`,
+    );
+    const payload = JSON.parse(res.json.result.content[0].text);
+    // Resident memory of the server process, in bytes; ps reports kilobytes
+    // on both Linux and macOS.
+    const { execFileSync } = await import("node:child_process");
+    const rss = () => Number(execFileSync("ps", ["-o", "rss=", "-p", String(server.pid)], { encoding: "utf8" }).trim()) * 1024;
+    const before = rss();
+    const served = await fetch(payload.url);
+    expect(served.status).toBe(200);
+    expect(Number(served.headers.get("content-length"))).toBe(200_000_000);
+    // The first bytes arrive before the file could have been read whole, and
+    // the whole of it does arrive.
+    const reader = served.body!.getReader();
+    const first = await reader.read();
+    expect(first.value!.subarray(0, 8)).toEqual(new Uint8Array([0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70]));
+    let total = first.value!.length;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+    }
+    expect(total).toBe(200_000_000);
+    // A 200 MB file served for well under 200 MB: it was never whole in memory.
+    expect(rss() - before).toBeLessThan(100_000_000);
+  }, 60_000);
 
   it("refuses a signature that has been edited", async () => {
     const u = new URL(big.url);

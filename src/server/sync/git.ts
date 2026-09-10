@@ -6,6 +6,7 @@ import path from "node:path";
 import { env } from "../env";
 import { getSetting } from "../db";
 import { runGit } from "./git-exec";
+import { refreshGitTimes } from "../vault/modified";
 import type { ConflictRecord } from "./types";
 import { probeMerge, resolveConflict } from "./conflict";
 import { LogRing, type LogLine, type SyncBackend, type SyncState, type SyncStatus } from "./types";
@@ -150,9 +151,10 @@ class GitBackend implements SyncBackend {
         "warn",
       );
     }
-    // Pull promptly on boot so the model isn't reading a stale vault, then on
-    // the configured interval.
-    void this.cycle("startup");
+    // Commit times first, so the index a boot rebuilds carries them; then pull
+    // promptly so the model isn't reading a stale vault, then on the
+    // configured interval.
+    void this.refreshTimes().finally(() => void this.cycle("startup"));
     this.pullTimer = setInterval(() => void this.cycle("poll"), pullMs());
   }
 
@@ -340,6 +342,7 @@ class GitBackend implements SyncBackend {
       this.counts.downloaded += n;
       this.counts.lastEventAt = Date.now();
       this.log(`[git] merged ${n} remote commit${n === 1 ? "" : "s"}`);
+      await this.refreshTimes();
       return true;
     }
 
@@ -364,7 +367,16 @@ class GitBackend implements SyncBackend {
       this.conflicts.splice(0, this.conflicts.length - MAX_RECENT_CONFLICTS);
     }
     this.log(`[git] ${outcome.message}`, "warn");
+    await this.refreshTimes();
     return true;
+  }
+
+  // The pulled files now carry the pull as their mtime; git knows better. A
+  // failure here is a degraded listing, not a sync problem, so it is logged
+  // and the cycle carries on.
+  private async refreshTimes() {
+    const n = await refreshGitTimes(env.vaultDir);
+    if (n === null) this.log("[git] could not read commit times; listings show file mtimes", "warn");
   }
 
   private async push(cfg: GitConfig): Promise<boolean> {

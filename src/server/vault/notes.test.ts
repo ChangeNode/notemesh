@@ -7,6 +7,8 @@ import {
   createNote,
   deleteNote,
   editNote,
+  findInNote,
+  openAttachmentStream,
   listAttachments,
   listFolders,
   listNotes,
@@ -15,13 +17,13 @@ import {
   prependToNote,
   previewEdit,
   readAttachment,
-  readAttachmentFile,
   readNote,
   readNoteRange,
   updateNote,
   DEFAULT_READ_LINES,
   EXCERPT_CHARS,
   MAX_ATTACHMENT_BYTES,
+  MAX_FIND_MATCHES,
   MAX_PREVIEW_MATCHES,
   MAX_READ_BYTES,
 } from "./notes";
@@ -184,6 +186,187 @@ describe("appendToNote", () => {
 
   it("refuses a note that isn't there", () => {
     expect(() => appendToNote("Missing.md", "x")).toThrow(/not found/i);
+  });
+});
+
+describe("appending and prepending under a heading", () => {
+  const note = "# Title\n\n## Ideas\n\n- one\n\n### Sub\n\n- deep\n\n## Done\n\n- x\n";
+
+  it("appends at the end of the section, before the next heading of the same level, as its own block", () => {
+    put("Note.md", note);
+    appendToNote("Note.md", "- two", { heading: "Ideas" });
+    expect(get("Note.md")).toBe("# Title\n\n## Ideas\n\n- one\n\n### Sub\n\n- deep\n\n- two\n\n## Done\n\n- x\n");
+  });
+
+  it("a subheading's section ends at the next heading of its own level or higher", () => {
+    put("Note.md", note);
+    appendToNote("Note.md", "- deeper", { heading: "Sub" });
+    expect(get("Note.md")).toBe("# Title\n\n## Ideas\n\n- one\n\n### Sub\n\n- deep\n\n- deeper\n\n## Done\n\n- x\n");
+  });
+
+  it("appends under the last heading at the end of the note", () => {
+    put("Note.md", note);
+    appendToNote("Note.md", "- y\n", { heading: "Done" });
+    expect(get("Note.md")).toBe(note + "\n- y\n");
+  });
+
+  it("separates from a heading that follows immediately, and from an empty section", () => {
+    put("Note.md", "## A\n## B\ntext\n");
+    appendToNote("Note.md", "under a", { heading: "A" });
+    expect(get("Note.md")).toBe("## A\n\nunder a\n\n## B\ntext\n");
+  });
+
+  it("prepends directly under the heading as the section's first block", () => {
+    put("Note.md", note);
+    prependToNote("Note.md", "- zero", { heading: "Ideas" });
+    expect(get("Note.md")).toBe("# Title\n\n## Ideas\n\n- zero\n\n- one\n\n### Sub\n\n- deep\n\n## Done\n\n- x\n");
+    put("Tight.md", "## A\ntext\n");
+    prependToNote("Tight.md", "first", { heading: "A" });
+    expect(get("Tight.md")).toBe("## A\n\nfirst\n\ntext\n");
+  });
+
+  it("counts lines from the file, frontmatter included, and ignores a # inside a code fence", () => {
+    put("Note.md", "---\ntitle: t\n---\n## Real\n\n```\n## Not a heading\n```\n\n## Other\n");
+    appendToNote("Note.md", "added", { heading: "Real" });
+    expect(get("Note.md")).toBe("---\ntitle: t\n---\n## Real\n\n```\n## Not a heading\n```\n\nadded\n\n## Other\n");
+    expect(() => appendToNote("Note.md", "x", { heading: "Not a heading" })).toThrow(/No heading "Not a heading"/);
+  });
+
+  it("accepts the heading with its # marks and keeps CRLF endings", () => {
+    put("Note.md", "## A\r\n\r\ntext\r\n\r\n## B\r\n");
+    appendToNote("Note.md", "more\nlines", { heading: "## A" });
+    expect(get("Note.md")).toBe("## A\r\n\r\ntext\r\n\r\nmore\r\nlines\r\n\r\n## B\r\n");
+  });
+
+  it("refuses an ambiguous heading, naming the lines, and a missing one, naming the headings", () => {
+    put("Note.md", "## Notes\na\n## Notes\nb\n");
+    expect(() => appendToNote("Note.md", "x", { heading: "Notes" })).toThrow(/occurs 2 times in Note\.md, at lines 1, 3/);
+    expect(get("Note.md")).toBe("## Notes\na\n## Notes\nb\n");
+    expect(() => prependToNote("Note.md", "x", { heading: "Nope" })).toThrow(/No heading "Nope" in Note\.md\. Its headings: "Notes", "Notes"/);
+    put("Plain.md", "no headings\n");
+    expect(() => appendToNote("Plain.md", "x", { heading: "Nope" })).toThrow(/It has no headings/);
+    expect(() => appendToNote("Plain.md", "x", { heading: "  " })).toThrow(/must not be empty/);
+  });
+});
+
+describe("openAttachmentStream", () => {
+  it("hands back the metadata and a stream over the verified descriptor, never the whole file", () => {
+    const bytes = Buffer.alloc(300_000, 9);
+    bytes[0] = 0;
+    put("Attachments/blob.bin", bytes);
+    const whole = vi.spyOn(fs, "readFileSync");
+    const { meta, stream } = openAttachmentStream("Attachments/blob.bin");
+    expect(meta).toMatchObject({ path: "Attachments/blob.bin", bytes: 300_000, mimeType: "application/octet-stream" });
+    return new Promise<void>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on("data", (c) => chunks.push(c as Buffer));
+      stream.on("error", reject);
+      stream.on("close", () => {
+        try {
+          const got = Buffer.concat(chunks);
+          expect(got.length).toBe(300_000);
+          expect(got.equals(bytes)).toBe(true);
+          expect(whole).not.toHaveBeenCalled();
+          whole.mockRestore();
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+
+  it("refuses what read_attachment refuses, with nothing left open", () => {
+    put("Note.md", "text\n");
+    expect(() => openAttachmentStream("Note.md")).toThrow(/markdown note/);
+    expect(() => openAttachmentStream("Nope.png")).toThrow(/No attachment named/);
+  });
+});
+
+describe("findInNote", () => {
+  it("finds every occurrence by line and column, ignoring case by default", () => {
+    put("Note.md", "one\nZebra here\nthree\nzebra and zebra\n");
+    const res = findInNote("Note.md", "zebra");
+    expect(res.path).toBe("Note.md");
+    expect(res.matches).toEqual([
+      { line: 2, column: 1, text: "Zebra here", windowStart: 1 },
+      { line: 4, column: 1, text: "zebra and zebra", windowStart: 1 },
+      { line: 4, column: 11, text: "zebra and zebra", windowStart: 1 },
+    ]);
+    expect(findInNote("Note.md", "zebra", { ignoreCase: false }).matches.map((m) => m.line)).toEqual([4, 4]);
+  });
+
+  it("gives the lines around a match when asked, bounded by the note", () => {
+    put("Note.md", "a\nb\nc\nd\ne\n");
+    const [m] = findInNote("Note.md", "b", { context: 2 }).matches;
+    expect(m.context).toBe("a\nb\nc\nd");
+    const [last] = findInNote("Note.md", "e", { context: 1 }).matches;
+    expect(last.context).toBe("d\ne\n");
+    // Asking for more than the cap gets the cap: five lines each side.
+    put("Twenty.md", Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+    const [mid] = findInNote("Twenty.md", "line 10", { context: 99 }).matches;
+    expect(mid.context!.split("\n")).toEqual(Array.from({ length: 11 }, (_, i) => `line ${i + 5}`));
+    // Context lines are cut at the same width as text, from their start.
+    put("Wide.md", "z".repeat(300) + "\nhit\n");
+    const [w] = findInNote("Wide.md", "hit", { context: 1 }).matches;
+    expect(w.context).toBe("z".repeat(EXCERPT_CHARS) + "…\nhit\n");
+  });
+
+  it("is literal: what looks like a regular expression is just characters", () => {
+    put("Note.md", "2026-08-01\nnot a date\n2026-09-15\nliterally \\d{4}-\\d{2}-\\d{2} here\n");
+    expect(findInNote("Note.md", "\\d{4}-\\d{2}-\\d{2}").matches.map((m) => m.line)).toEqual([4]);
+    expect(findInNote("Note.md", "^(a+)+$").matches).toEqual([]);
+  });
+
+  it("builds only the requested page and counts the rest", () => {
+    put("Note.md", "a a a\nb\na\n");
+    const page = findInNote("Note.md", "a", { offset: 1, limit: 2 });
+    expect(page).toMatchObject({ total: 4, offset: 1 });
+    expect(page.matches.map((m) => [m.line, m.column])).toEqual([
+      [1, 3],
+      [1, 5],
+    ]);
+    expect(findInNote("Note.md", "a", { offset: 10, limit: 5 }).matches).toEqual([]);
+    expect(findInNote("Note.md", "a", { offset: 10, limit: 5 }).total).toBe(4);
+  });
+
+  it("strips the carriage return from a CRLF note's lines and excerpts a long line around the match", () => {
+    put("Note.md", "alpha\r\nbeta\r\n");
+    expect(findInNote("Note.md", "beta").matches).toEqual([{ line: 2, column: 1, text: "beta", windowStart: 1 }]);
+    put("Long.md", "x".repeat(300) + "needle" + "y".repeat(300) + "\n");
+    const [m] = findInNote("Long.md", "needle").matches;
+    expect(m.column).toBe(301);
+    expect(m.text).toMatch(/^…x+needley+…$/);
+    expect(m.text.length).toBeLessThanOrEqual(EXCERPT_CHARS + 2);
+    // windowStart maps column into the window: the match is where it says.
+    const at = m.column - m.windowStart + (m.text.startsWith("…") ? 1 : 0);
+    expect(m.text.slice(at, at + "needle".length)).toBe("needle");
+    // A match near the start keeps the line's head, and windowStart says so.
+    put("Head.md", "needle" + "y".repeat(300) + "\n");
+    const [h] = findInNote("Head.md", "needle").matches;
+    expect(h.windowStart).toBe(1);
+    expect(h.text.slice(0, 6)).toBe("needle");
+    expect(h.text.endsWith("…")).toBe(true);
+  });
+
+  it("refuses an empty or absurd pattern and a missing note", () => {
+    put("Note.md", "x\n");
+    expect(() => findInNote("Note.md", "")).toThrow(/must not be empty/);
+    expect(() => findInNote("Note.md", "p".repeat(501))).toThrow(/longer than 500/);
+    expect(() => findInNote("Nope.md", "x")).toThrow(/Note not found/);
+  });
+
+  it("stops counting at the cap, on one line as across many, without building what it does not return", () => {
+    put("Note.md", "a a a a a a a a a a\n".repeat(1100));
+    expect(findInNote("Note.md", "a").matches).toHaveLength(MAX_FIND_MATCHES);
+    expect(findInNote("Note.md", "a").total).toBe(MAX_FIND_MATCHES);
+    // One line of a million characters, one-character pattern: a count and
+    // one page, not a million entries.
+    put("Line.md", "a".repeat(1_000_000) + "\n");
+    const page = findInNote("Line.md", "a", { limit: 3 });
+    expect(page.total).toBe(MAX_FIND_MATCHES);
+    expect(page.matches).toHaveLength(3);
+    expect(page.matches[2].column).toBe(3);
   });
 });
 
@@ -709,13 +892,15 @@ describe("readAttachment, against a swap after the stat", () => {
     expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
   });
 
-  it("cannot be redirected: the signed download is the original bytes", () => {
+  it("cannot be redirected: the signed download streams the original bytes", async () => {
     put("image.png", original);
     const abs = path.join(vault, "image.png");
     swapAfterStat(abs);
-    const { meta, data } = readAttachmentFile("image.png");
-    expect(data).toEqual(original);
+    const { meta, stream } = openAttachmentStream("image.png");
     expect(meta.bytes).toBe(original.length);
+    const chunks: Buffer[] = [];
+    for await (const c of stream) chunks.push(c as Buffer);
+    expect(Buffer.concat(chunks)).toEqual(original);
     expect(fs.lstatSync(abs).isSymbolicLink()).toBe(true);
   });
 });

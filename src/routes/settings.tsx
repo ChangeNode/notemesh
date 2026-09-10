@@ -160,9 +160,10 @@ export default function Settings() {
                       Read from your vault's Daily Notes plugin settings — except this vault hasn't
                       sent <code>.obsidian/daily-notes.json</code>, so the{" "}
                       <code>daily_note</code> tool is using Obsidian's defaults. Settings sync is
-                      turned on when a vault is linked; a vault linked before that, or a git repo
-                      without its <code>.obsidian</code> folder committed, won't have it. Re-linking
-                      from the Setup tab turns it on.
+                      turned on when a vault is linked and again every time the server starts, so
+                      the file should arrive with the next sync; if this stays, the sync log on the
+                      Status tab says why. A git repo needs its <code>.obsidian</code> folder
+                      committed.
                     </>
                   }
                 >
@@ -171,6 +172,19 @@ export default function Settings() {
                   to. Change it there and it changes here on the next sync.
                 </Show>
               </small>
+              <p>
+                <b>Unique notes</b> go to{" "}
+                <code>
+                  {d.unique.folder ? `${d.unique.folder}/` : ""}
+                  {d.unique.format}.md
+                </code>
+                {" "}— {d.unique.vaultConfigFound ? "your Unique Note Creator settings" : "Obsidian's defaults"}.
+              </p>
+              <p>
+                <b>New notes</b> with no folder in their path go to{" "}
+                <code>{d.newNote.folder ? `${d.newNote.folder}/` : "the vault root"}</code>
+                {" "}— {d.newNote.source === "vault" ? "your default location for new notes" : "Obsidian's default"}.
+              </p>
             </article>
 
             <article>

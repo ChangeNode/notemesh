@@ -44,6 +44,168 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
+## 1.3.0 — 2026-09-09
+
+**Taking this update:** redeploy, then restart or reconnect your MCP client so it
+sees the four new tools: `list_directory`, `find_in_note`, `move_folder` and
+`delete_folder`. Clients cache the tool list when they connect; the tools that
+gained arguments work either way, since every new argument is optional. One
+default changed: `move_note` now rewrites links, as described under Changed.
+
+### Added
+
+- **`list_directory`** — one level of the vault the way `ls` shows it: files
+  and folders side by side, each with a name, path, kind, modified time and
+  size. A folder's time is the newest thing beneath it and its size the bytes
+  beneath, read from the index; a folder with nothing indexed under it shows
+  its own mtime and says so with `modifiedFrom: "folder"`. Pass an entry's
+  path back to descend.
+
+- **`find_in_note`** — where text occurs in one note, by line: every match with
+  its line, column and the line's text, optionally with the lines around it,
+  paged like a listing. Locating a passage in a note too long to read at once
+  meant paging `read_note` in windows, or using `preview_edit` as a grep.
+  Literal and case-insensitive. A line over 160 characters comes back as a
+  window around the match, and `windowStart` says where that window begins, so
+  `column` still locates the match inside it; context lines are cut at the
+  same width.
+
+- **`move_folder`** and **`delete_folder`** — a folder could be created through
+  a note's path and then never touched. `move_folder` renames or moves one with
+  everything in it and fixes every link to anything inside, as `move_note` now
+  does for one note. `delete_folder` removes an empty folder and refuses one
+  with anything in it; it appears under the same setting as `delete_note`.
+  There is no create: git cannot store an empty folder, so one made here would
+  not survive a sync on that backend. With these the server offers
+  33 tools covering notes, attachments, daily notes, search, properties,
+  tasks, links and tags.
+
+- **`heading`** on `append_to_note` and `prepend_to_note` — "add this under
+  Ideas" is the most common Obsidian append, and it took `get_outline` plus a
+  hand-built `edit_note`. Append goes at the end of the heading's section,
+  before the next heading of the same or a higher level; prepend goes directly
+  under the heading. The heading must occur once; the refusal names the lines,
+  and a missing heading names the headings the note has.
+
+- **`name`** on the three listing tools — find a file by filename: a glob over
+  the whole name when it has `*` or `?` (`2026-08*`, `*.png`), otherwise a
+  fragment matched anywhere. Case-insensitive.
+
+- **`folder`, `modifiedAfter` and `sort`** on `search_vault`, and `modified` on
+  every hit. "What did I write about X this month in Projects" was two tools
+  and a join by hand. `sort: "modified"` orders newest first instead of by
+  relevance; the count is of the narrowed set, so `hasMore` stays honest.
+
+- **Settings sync is turned on for every Obsidian-synced vault.** A vault
+  linked before 1.1 never had Obsidian's config sync on, so its
+  `daily-notes.json` stayed on your machine, the daemon reported "config
+  syncing disabled", and the only route was re-linking through the wizard.
+  The server now turns it on once every time it starts, best effort, with a
+  line in the sync log; the file arrives with the next sync. It also asks for
+  Obsidian's app settings alongside the core plugin ones, for features that
+  will read them.
+
+- **`unique_note` follows your Unique Note Creator settings**, as `daily_note`
+  follows Daily Notes: the folder, the filename format (time tokens included,
+  brackets literal) and the template from `zk-prefixer.json`, with the
+  Templates plugin's date and time formats inside the template. Without the
+  file it is `YYYYMMDDHHmm.md` at the vault root, as before.
+
+- **`create_note` honours your default location for new notes.** A bare
+  filename goes to the folder Obsidian's *Default location for new notes*
+  names, when it names one; a path with a folder goes exactly there, as
+  before. The Settings tab shows both locations beside the daily note's.
+
+- **`daily_note` applies your template.** The *Template file location* setting
+  was read and shown on the Settings tab but a note created from here started
+  empty. It now starts from the template, with `{{title}}`, `{{date}}` and
+  `{{time}}` filled the way Obsidian fills them, formats included. A missing
+  template still gives an empty note rather than a refusal.
+
+- **`created`** beside `modified` on every listing, and `sort: "created"`. The
+  same git pass gives it for free: the oldest commit mentioning the path,
+  where modified is the newest. Files git has not seen use the filesystem's
+  birthtime. It is never later than modified.
+
+- **Sorting and narrowing** on `list_notes`, `list_attachments` and
+  `list_directory`: `sort` by `name` (the default), `modified` or `size`,
+  `order` (`asc` or `desc`; by modified or size the default is newest or largest
+  first), and `modifiedAfter`, which keeps only what changed after an instant.
+  All three apply before paging, so `total` and `hasMore` describe the narrowed
+  list and page two follows page one under the same order. `sort: "modified"`
+  is the recently-updated list; `modifiedAfter: "2026-09-01"` is what changed
+  this month. The instant can be an ISO 8601 timestamp, or a bare date meaning
+  midnight in the timezone the Settings tab holds (the one daily notes use); a
+  timestamp without an offset is read on that clock too.
+
+### Changed
+
+- **`move_note` rewrites links.** It used to rename the file and nothing else,
+  so an assistant renaming a note silently orphaned its backlinks; Obsidian
+  rewrites them on a rename inside the app, and now so does this. Every
+  `[[wikilink]]` that resolved to the note is rewritten, keeping its alias,
+  heading or block suffix and its form: a bare name stays bare unless the new
+  name is shared with another file, in which case it becomes a path. Links
+  inside code fences and inline code are left alone. The result says how many
+  links in which notes changed. `updateLinks: false` is the old behaviour.
+
+- Every listing now carries **`modified`**, an ISO 8601 timestamp in the
+  configured timezone, meaning the last change a person made. On a git-synced
+  vault that is the commit that last touched the file. Until now the only time
+  on offer was the file's mtime, and on the git backend a pull sets every
+  pulled file's mtime to the moment of the pull, so a listing said the whole
+  vault changed at the last sync. The server now reads git's own record once
+  at start and again after every pull, and falls back to the mtime for files
+  git has no opinion on — an Obsidian-synced vault, where sync preserves the
+  mtime and it was right all along, or a note a tool wrote a moment ago. The
+  raw `mtime` stays beside it, unchanged, for anything that compared it.
+
+- The index gains a `modified` column on notes and attachments. It is added
+  to an existing database on boot and filled by the rebuild, so there is
+  nothing to do.
+
+### Security
+
+From a review of this branch before release. None of these change how the
+server is set up or used; the first three close ways a single tool call could
+hold or crash the server, which matters because vault content can steer the
+assistant that makes the calls.
+
+- **`find_in_note` is literal only.** A regular-expression option was on this
+  branch for a day. A nine-character pattern such as `^(a+)+$` holds the event
+  loop for seconds against a short line, and nothing short of a second engine
+  makes that safe. The scan is also budgeted now: matches are counted up to
+  the cap and only the requested page is built, so a note that is one enormous
+  line of a repeated character costs a count, not an allocation per match.
+
+- **The `name` glob no longer becomes a regular expression.** `*a*a*a*a*` made
+  a backtracking regex take seconds against an ordinary filename; the matcher
+  is now the two-pointer wildcard match, bounded by the product of the two
+  lengths, and the pattern is capped at 200 characters.
+
+- **The signed attachment download streams.** It read the whole file into
+  memory before answering, whatever its size, and a synced vault can hold a
+  video: one valid download of a two-gigabyte file took the process down. It
+  now streams from the verified descriptor with backpressure, so a slow client
+  costs a few chunks in flight rather than the file.
+
+- **Notes are written atomically.** A note was opened with `O_TRUNC`, so a
+  write that failed after the open — the disk full after all, the process
+  killed — left it empty or half written. The bytes now go to a temporary
+  file beside it, are synced, and are renamed over it: the note is the old
+  version or the new one, never anything else.
+
+- **Reads and writes verify where the descriptor landed.** `O_NOFOLLOW` guards
+  the final path component only; a directory above it swapped for a symlink by
+  sync between the check and the open is followed by the kernel. On Linux the
+  server now asks where the descriptor is and refuses if that is not under the
+  vault. Move and delete have no descriptor form in Node and keep the
+  resolve-time check; SECURITY.md describes the boundary.
+
+- **The workflows pin every action to a commit**, with Dependabot moving the
+  pins, and `pnpm audit` now fails CI at high or critical instead of being
+  advisory; a reviewed exception goes in `pnpm-workspace.yaml` with its reason.
+
 ## 1.2.1 — 2026-09-07
 
 **Taking this update:** redeploy. Nothing else.

@@ -4,16 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A branch can be run by hand: gh workflow run ci.yml --ref <branch>.
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.1.0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -61,7 +63,7 @@ jobs:
 
       - name: Keep the trace from a failed browser test
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: |
@@ -72,17 +74,18 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Advisory, not blocking: a new advisory in a transitive dependency
-      # shouldn't wedge unrelated pull requests, but it should be visible.
+      # Blocking at high and critical. A new advisory in a transitive
+      # dependency turns CI red until it is fixed or, after review, listed
+      # under auditConfig.ignoreCves in pnpm-workspace.yaml with the reason.
       - name: Audit production dependencies
-        run: pnpm audit --prod || true
+        run: pnpm audit --prod --audit-level=high
 
   # The image is what actually runs on Railway, and nothing above builds it:
   # the HTTP suite boots the compiled server with node directly. So the
@@ -94,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build the image
         run: docker build -t notemesh:ci .

@@ -151,6 +151,51 @@ describe("headroom", () => {
     expect(isDiskFull(new Error("EACCES: permission denied"))).toBe(false);
   });
 
+  it("leaves the existing note intact when the write fails, and no temporary file behind", async () => {
+    const abs = path.join(root, "vault", "a.md");
+    fs.writeFileSync(abs, "OLD");
+    vi.spyOn(fs, "writeSync").mockImplementation(() => {
+      throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    });
+    const { writeVaultFile } = await import("./disk");
+    expect(() => writeVaultFile(abs, "NEW")).toThrow(/volume is full/);
+    expect(fs.readFileSync(abs, "utf8")).toBe("OLD");
+    expect(fs.readdirSync(path.join(root, "vault"))).toEqual(["a.md"]);
+  });
+
+  it("replaces the note in one step, keeps its mode, and syncs the file and the directory", async () => {
+    const abs = path.join(root, "vault", "a.md");
+    fs.writeFileSync(abs, "OLD");
+    fs.chmodSync(abs, 0o600);
+    const before = fs.statSync(abs).ino;
+    const fsync = vi.spyOn(fs, "fsyncSync");
+    const { writeVaultFile } = await import("./disk");
+    writeVaultFile(abs, "NEW");
+    expect(fs.readFileSync(abs, "utf8")).toBe("NEW");
+    expect(fs.statSync(abs).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(abs).ino).not.toBe(before);
+    expect(fs.readdirSync(path.join(root, "vault"))).toEqual(["a.md"]);
+    // The file, then the directory holding the rename.
+    expect(fsync.mock.calls.length).toBeGreaterThanOrEqual(2);
+    fsync.mockRestore();
+    // A new note gets the usual mode.
+    const fresh = path.join(root, "vault", "b.md");
+    writeVaultFile(fresh, "x");
+    expect(fs.statSync(fresh).mode & 0o777).toBe(0o644 & ~process.umask());
+  });
+
+  it("skips the syncs when asked, and is still atomic", async () => {
+    const abs = path.join(root, "vault", "a.md");
+    fs.writeFileSync(abs, "OLD");
+    const fsync = vi.spyOn(fs, "fsyncSync");
+    const { writeVaultFile } = await import("./disk");
+    writeVaultFile(abs, "NEW", { sync: false });
+    expect(fsync).not.toHaveBeenCalled();
+    fsync.mockRestore();
+    expect(fs.readFileSync(abs, "utf8")).toBe("NEW");
+    expect(fs.readdirSync(path.join(root, "vault"))).toEqual(["a.md"]);
+  });
+
   it("logs a level change once, not every check", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

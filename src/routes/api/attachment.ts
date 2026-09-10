@@ -1,5 +1,6 @@
 import type { APIEvent } from "@solidjs/start/server";
-import { readAttachmentFile } from "~/server/vault/notes";
+import { pipeline } from "node:stream/promises";
+import { openAttachmentStream } from "~/server/vault/notes";
 import { VaultPathError } from "~/server/vault/paths";
 import {
   dispositionFilename,
@@ -17,7 +18,7 @@ import {
  * together, and it lasts fifteen minutes.
  *
  * The signature is not, however, permission to skip anything. The path is
- * resolved through readAttachmentFile exactly as a tool call would resolve it, so
+ * resolved through openAttachmentStream exactly as a tool call would resolve it, so
  * traversal, symlinks, dot-directories and LFS pointers are refused here on
  * their own merits. A valid signature over a bad path is still a bad path — and
  * signing is the one step in this system that could otherwise be argued into
@@ -48,32 +49,44 @@ export async function GET(event: APIEvent) {
       : refuse(403, "Invalid or missing signature.");
   }
 
-  let file: ReturnType<typeof readAttachmentFile>;
+  let file: ReturnType<typeof openAttachmentStream>;
   try {
-    // Metadata and bytes from one open descriptor; see withAttachment.
-    file = readAttachmentFile(relPath!);
+    // Metadata and the bytes from one open descriptor, the bytes as a
+    // stream: the file is never held in memory whole, whatever its size.
+    file = openAttachmentStream(relPath!);
   } catch (e) {
     if (e instanceof VaultPathError) return refuse(404, e.message);
     console.error("[attachment] failed:", e);
     return refuse(500, "Could not read that attachment.");
   }
 
-  const { meta, data: body } = file;
-  return new Response(body, {
-    headers: {
-      // Never the file's own type when that type can execute. This origin holds
-      // the admin session cookie, and vault files arrive from anywhere.
-      "Content-Type": safeContentType(meta.mimeType),
-      // Downloaded, not rendered — belt to the braces above.
-      "Content-Disposition": dispositionFilename(meta.path),
-      // No sniffing back to the type we just refused to honour.
-      "X-Content-Type-Options": "nosniff",
-      "Content-Length": String(body.byteLength),
-      // The URL is short-lived by design; a cache holding the response would
-      // outlive it.
-      "Cache-Control": "private, no-store",
-      // Nothing here should ever be framed or fetched cross-origin.
-      "Content-Security-Policy": "default-src 'none'; sandbox",
-    },
-  });
+  const { meta, stream } = file;
+  // Written to the Node response directly, not returned as a Response. h3
+  // sends a web-stream body with res.write() and never waits for drain, so
+  // a client slower than the disk had the whole file queued in the socket
+  // buffer — memory again, just later. pipeline() honours backpressure: a
+  // few chunks in flight, however large the file or slow the reader. A GET
+  // handler that has written its response returns nothing.
+  const res = event.nativeEvent.node.res;
+  res.statusCode = 200;
+  // Never the file's own type when that type can execute. This origin holds
+  // the admin session cookie, and vault files arrive from anywhere.
+  res.setHeader("Content-Type", safeContentType(meta.mimeType));
+  // Downloaded, not rendered — belt to the braces above.
+  res.setHeader("Content-Disposition", dispositionFilename(meta.path));
+  // No sniffing back to the type we just refused to honour.
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Length", String(meta.bytes));
+  // The URL is short-lived by design; a cache holding the response would
+  // outlive it.
+  res.setHeader("Cache-Control", "private, no-store");
+  // Nothing here should ever be framed or fetched cross-origin.
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+  try {
+    await pipeline(stream, res);
+  } catch {
+    // The client went away mid-download; the stream's descriptor is closed
+    // by its own destroy, and there is no one left to tell.
+  }
+  return undefined;
 }

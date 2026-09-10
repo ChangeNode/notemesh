@@ -94,6 +94,28 @@ Stated so you don't spend time on them:
   audience is bound to the resource named at authorization. It was never
   exploitable here — one user, one resource server — but it was open.
 
+## Symlinks and the paths the kernel resolves
+
+Every path a tool receives is resolved and checked before use: it must stay
+inside the vault, and no component of it may be a symlink. A file is then
+opened with `O_NOFOLLOW`, so a symlink swapped into the final position by sync
+between the check and the open is refused rather than followed, and everything
+the server learns about the file comes from that one descriptor.
+
+`O_NOFOLLOW` guards the final component only. A *directory* above it swapped
+for a symlink in that window is followed by the kernel. Node has no `openat`,
+so the traversal cannot be made descriptor-relative; what the server does
+instead, on Linux, is ask the kernel where the descriptor actually landed
+(`/proc/self/fd`) and refuse if that is not under the vault. Reads and writes
+go through that check. Writes also land in a temporary file first and are
+renamed into place, which replaces a symlink rather than writing through it.
+
+`rename` and `unlink`, used by move and delete, have no descriptor form in
+Node, so they keep the resolve-time check only. A sync source that can plant
+a symlinked directory and time it against a tool call could redirect one of
+those; the same source could rewrite the vault directly, so this is noted
+rather than treated as a boundary.
+
 ## Running as non-root
 
 Since 1.2.0 the server, the Obsidian sync daemon and every git command run as

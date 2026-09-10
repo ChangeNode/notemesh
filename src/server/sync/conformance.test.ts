@@ -86,7 +86,9 @@ afterEach(async () => {
     if (v === undefined) delete process.env[k as keyof typeof originalEnv];
     else process.env[k] = v;
   }
-  fs.rmSync(root, { recursive: true, force: true });
+  // A git subprocess can still be finishing inside .git when this runs;
+  // rmSync retries the directory rather than failing the test that just passed.
+  fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   delete process.env.DATA_DIR;
 });
 
@@ -204,6 +206,9 @@ async function untilIdle(b: SyncBackend) {
 async function shutdown(b: SyncBackend) {
   b.stop();
   await untilState(b, "stopped");
+  // stop() does not interrupt a cycle in flight; wait for it, so teardown
+  // never races a git process still writing under the vault.
+  await untilIdle(b);
 }
 
 describe.each([gitDriver, obsidianDriver])("SyncBackend conformance: $kind", (driver) => {

@@ -44,7 +44,7 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
-## 1.3.0 — 2026-09-07
+## 1.3.0 — 2026-09-09
 
 **Taking this update:** redeploy, then restart or reconnect your MCP client so it
 sees the four new tools: `list_directory`, `find_in_note`, `move_folder` and

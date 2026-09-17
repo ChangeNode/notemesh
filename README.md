@@ -1,5 +1,7 @@
 # NoteMesh
 
+[![Watch the NoteMesh video](https://img.youtube.com/vi/rnPVV98Lu2M/hqdefault.jpg)](https://www.youtube.com/watch?v=rnPVV98Lu2M)
+
 **Talk to your Obsidian vault from an AI assistant.**
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/notemesh?referralCode=changenode&utm_medium=integration&utm_source=template&utm_campaign=generic)

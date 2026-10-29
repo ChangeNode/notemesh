@@ -44,7 +44,7 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
-## Unreleased
+## 1.3.1 — 2026-10-29
 
 **Taking this update:** redeploy. Nothing else.
 

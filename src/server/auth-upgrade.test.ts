@@ -3,11 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// The 1.6 → 1.7 upgrade, on the database an existing deployment has: one
-// admin row in an account table without the `issuer` column 1.7 requires.
-// Better Auth's migrator refuses to add a required column to a populated
-// table, so without the backfill in runAuthMigrations every upgraded
-// instance threw at boot and could not sign in. Reproduced before the fix.
+// Upgrades to the current Better Auth, from the account tables deployments
+// have in the field. 1.6 had no `issuer` column. 1.7.0–1.7.2 added one, NOT
+// NULL with a unique index; NoteMesh 1.3.0 backfilled it with a default on
+// databases upgraded from 1.6. Later 1.7 releases dropped it and refuse to
+// boot while a NOT NULL column they never write is present, so every
+// deployment created on 1.3.0 threw at boot and could not sign in.
+// Reproduced against a database written by 1.7.2 before the fix.
 
 let root: string;
 
@@ -30,47 +32,77 @@ async function boot() {
   return auth;
 }
 
-/** Turn a fresh 1.7 account table into the shape 1.6 left behind. */
-async function reshapeTo16() {
+const KEPT = `id, accountId, providerId, userId, accessToken, refreshToken, idToken,
+  accessTokenExpiresAt, refreshTokenExpiresAt, scope, password, createdAt, updatedAt`;
+
+/** Rebuild the account table with the given `issuer` column definition and indexes. */
+async function reshape(issuer: string | null, indexes: string[] = []) {
   const { db } = await import("./db");
   const d = db();
   d.exec(`
-    CREATE TABLE account_16 AS SELECT id, accountId, providerId, userId, accessToken, refreshToken, idToken,
-      accessTokenExpiresAt, refreshTokenExpiresAt, scope, password, createdAt, updatedAt FROM account;
+    CREATE TABLE account_old AS SELECT * FROM account;
     DROP TABLE account;
-    ALTER TABLE account_16 RENAME TO account;
+    CREATE TABLE account ("id" text not null primary key, ${issuer ? `"issuer" ${issuer},` : ""}
+      "accountId" text not null, "providerId" text not null,
+      "userId" text not null references "user" ("id") on delete cascade,
+      "accessToken" text, "refreshToken" text, "idToken" text, "accessTokenExpiresAt" date,
+      "refreshTokenExpiresAt" date, "scope" text, "password" text, "createdAt" date not null,
+      "updatedAt" date not null);
+    INSERT INTO account (${issuer ? "issuer, " : ""}${KEPT})
+      SELECT ${issuer ? "'local:credential', " : ""}${KEPT} FROM account_old;
+    DROP TABLE account_old;
+    CREATE INDEX "account_userId_idx" on "account" ("userId");
+    ${indexes.join(";\n")}
   `);
-  const columns = (d.prepare("PRAGMA table_info(account)").all() as { name: string }[]).map((c) => c.name);
-  expect(columns).not.toContain("issuer");
   return d;
 }
 
-describe("upgrading a claimed 1.6 database", () => {
-  it("migrates, backfills the issuer, and the admin can still sign in", async () => {
-    const auth = await boot();
-    await auth.api.signUpEmail({
-      body: { email: "admin@example.com", password: "the-original-password", name: "Admin" },
-    });
-    const d = await reshapeTo16();
+const columns = (d: { prepare(sql: string): { all(): unknown[] } }) =>
+  (d.prepare("PRAGMA table_info(account)").all() as { name: string }[]).map((c) => c.name);
 
+async function signUp() {
+  const auth = await boot();
+  await auth.api.signUpEmail({
+    body: { email: "admin@example.com", password: "the-original-password", name: "Admin" },
+  });
+}
+
+async function expectSignIn(auth: Awaited<ReturnType<typeof boot>>) {
+  const res = await auth.api.signInEmail({
+    body: { email: "admin@example.com", password: "the-original-password" },
+  });
+  expect(res.user.email).toBe("admin@example.com");
+}
+
+describe("upgrading the account table", () => {
+  it("drops the issuer column and index a 1.7.2 database has, and the admin can still sign in", async () => {
+    await signUp();
+    const d = await reshape("text not null", [
+      'CREATE UNIQUE INDEX "account_issuer_accountId_uidx" on "account" ("issuer", "accountId")',
+    ]);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const upgraded = await boot();
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/added issuer/));
-    expect(d.prepare("SELECT issuer FROM account").all()).toEqual([{ issuer: "local:credential" }]);
-
-    const res = await upgraded.api.signInEmail({
-      body: { email: "admin@example.com", password: "the-original-password" },
-    });
-    expect(res.user.email).toBe("admin@example.com");
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/removed issuer/));
+    expect(columns(d)).not.toContain("issuer");
+    await expectSignIn(upgraded);
   });
 
-  it("leaves a database that already has the column alone", async () => {
-    const auth = await boot();
-    await auth.api.signUpEmail({
-      body: { email: "admin@example.com", password: "the-original-password", name: "Admin" },
-    });
+  it("drops the column NoteMesh 1.3.0 backfilled on a database upgraded from 1.6", async () => {
+    await signUp();
+    const d = await reshape("text not null default 'local:credential'", [
+      'CREATE UNIQUE INDEX "account_issuer_accountId_uidx" on "account" ("issuer", "accountId")',
+    ]);
+    const upgraded = await boot();
+    expect(columns(d)).not.toContain("issuer");
+    await expectSignIn(upgraded);
+  });
+
+  it("boots a 1.6 database, which never had the column", async () => {
+    await signUp();
+    await reshape(null);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    await boot();
-    expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/added issuer/));
+    const upgraded = await boot();
+    expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/removed issuer/));
+    await expectSignIn(upgraded);
   });
 });

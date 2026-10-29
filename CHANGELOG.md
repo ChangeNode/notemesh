@@ -44,6 +44,34 @@ Two labels appear inside entries:
 If a release is quiet, that is the information. The intent is that the rare
 entry needing your attention cannot get lost among routine ones.
 
+## Unreleased
+
+**Taking this update:** redeploy. Nothing else.
+
+### Fixed
+
+- **Security** — dependencies updated to clear 53 of the 54 advisories `pnpm
+  audit` reported (3 critical, 19 high). The ones that reach the running
+  server: Better Auth to 1.7.14 (OAuth state reusable as a magic link; OAuth
+  proxy sign-in as another user), the MCP SDK to 1.32 (bearer-token and
+  per-session checks in the HTTP transport), seroval (deserialization of
+  attacker-chosen callables), and Express's `proxy-addr` and `body-parser`
+  (IP spoofing, DoS). zod moves to 4. The rest are build and test tooling.
+  The one left, a low-severity `deepmerge` advisory used only at build time,
+  has no fixed release yet.
+
+- **Upgrade safety** — Better Auth 1.7.3 and later remove the account table's
+  `issuer` column, which 1.7.0–1.7.2 required, and refuse to start while it
+  is there. Every deployment set up on 1.3.0 has it. The server now drops the
+  column and its index before migrating; the value was the same constant on
+  every row here, so nothing is lost. Tested against a database written by
+  1.3.0 and one upgraded from 1.2.
+
+- Better Auth now checks the database schema on every call. The dashboard's
+  request gate called it before the auth tables were created, so on a
+  brand-new instance its first request would have failed with a 500. The gate
+  now creates the tables first, as every other entry point already did.
+
 ## 1.3.0 — 2026-09-09
 
 **Taking this update:** redeploy, then restart or reconnect your MCP client so it

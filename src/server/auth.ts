@@ -253,28 +253,37 @@ let migrated = false;
 
 // Creates/updates Better Auth's own tables (user, session, account,
 // apikey, OAuth client/token tables) inside app.sqlite. Runs once per boot.
-// Better Auth 1.7 added `issuer` to the account table: NOT NULL, no default.
-// Its migrator refuses to add such a column to a populated table rather than
-// invent a value, so a deployment upgraded from 1.6 — one admin row — would
-// throw here on every boot and never sign in again. This server knows the
-// value: every account it creates is an email-and-password one, which 1.7
-// records as "local:credential". Added with that backfill before the
-// migrator runs, so it finds the column present and only adds its index.
-// Reproduced and pinned against a 1.6-shaped populated table in
-// auth-upgrade.test.ts.
-function backfillAccountIssuer(): void {
+// Better Auth 1.7.0–1.7.2 added a required `issuer` column to the account
+// table, with a unique index on (issuer, accountId); later 1.7 releases took
+// it out again. They never write it, and refuse to boot while the store has a
+// NOT NULL column they don't write, so every deployment created on those
+// versions would throw here and never sign in again. Deployments upgraded
+// from 1.6 got the column from an earlier version of this function, with a
+// default. Either way the value carries nothing: every account this server
+// creates is an email-and-password one, recorded as "local:credential". So
+// the index and the column come out before the migrator runs. Reproduced
+// against a database written by 1.7.2 and pinned in auth-upgrade.test.ts.
+function dropAccountIssuer(): void {
   const d = db();
   const table = d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account'").get();
   if (!table) return;
   const columns = d.prepare("PRAGMA table_info(account)").all() as { name: string }[];
-  if (columns.some((c) => c.name === "issuer")) return;
-  d.exec("ALTER TABLE account ADD COLUMN issuer TEXT NOT NULL DEFAULT 'local:credential'");
-  console.log("[auth] account table: added issuer for the Better Auth 1.7 upgrade");
+  if (!columns.some((c) => c.name === "issuer")) return;
+  const indexes = d.prepare("PRAGMA index_list(account)").all() as { name: string; origin: string }[];
+  d.transaction(() => {
+    for (const { name, origin } of indexes) {
+      if (origin !== "c") continue;
+      const cols = d.prepare("SELECT name FROM pragma_index_info(?)").all(name) as { name: string }[];
+      if (cols.some((c) => c.name === "issuer")) d.exec(`DROP INDEX "${name.replaceAll('"', '""')}"`);
+    }
+    d.exec("ALTER TABLE account DROP COLUMN issuer");
+  })();
+  console.log("[auth] account table: removed issuer, which Better Auth no longer uses");
 }
 
 export async function runAuthMigrations() {
   if (migrated) return;
-  backfillAccountIssuer();
+  dropAccountIssuer();
   const { runMigrations } = await getMigrations(auth.options);
   await runMigrations();
   // The guard on the user table can only be created once Better Auth has
